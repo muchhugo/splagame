@@ -111,6 +111,7 @@ export function rampVertices(b: BlockSpec): Vec3[] {
 export function buildFaces(map: MapSpec): MapFace[] {
   const faces: MapFace[] = [];
   map.blocks.forEach((b, bi) => {
+    if (b.hidden) return;
     if (b.shape === 'box') boxFaces(b, bi, faces);
     else rampFaces(b, bi, faces);
   });

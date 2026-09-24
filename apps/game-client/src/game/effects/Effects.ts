@@ -149,6 +149,7 @@ export class Effects {
   private time = 0;
   private markers = new Map<number, { mesh: Mesh; life: number }>();
   reduceFlashes = false;
+  cameraPos: Vec3 = [0, 0, 0];
 
   constructor(
     private readonly scene: Scene,
@@ -160,7 +161,8 @@ export class Effects {
       const m = new StandardMaterial(name, scene);
       m.diffuseColor = new Color3(1, 1, 1);
       m.specularColor = new Color3(spec, spec, spec);
-      m.specularPower = 48;
+      m.specularPower = 64;
+      m.emissiveColor = new Color3(0.22, 0.2, 0.24);
       this.objectMats.push(m);
       return m;
     };
@@ -205,12 +207,17 @@ export class Effects {
 
   impact(p: Vec3, n: Vec3, team: TeamId, size = 1) {
     const c = this.teamColors[team];
-    const count = Math.round(6 + size * 6);
+    // perto da câmera: menos e menores (não cobre a mira nem o adversário)
+    const camD = Math.hypot(p[0] - this.cameraPos[0], p[1] - this.cameraPos[1], p[2] - this.cameraPos[2]);
+    const near = camD < 2.5 ? 0.35 : 1;
+    const count = Math.round((6 + size * 6) * near * (this.reduceFlashes ? 0.5 : 1));
     for (let i = 0; i < count; i++) {
       const r = () => Math.random() - 0.5;
       const sp = 2 + Math.random() * 3 * size;
-      this.splash.spawn([p[0] + n[0] * 0.05, p[1] + n[1] * 0.05, p[2] + n[2] * 0.05], [n[0] * sp + r() * 3, n[1] * sp + r() * 3 + 1, n[2] * sp + r() * 3], 0.35 + Math.random() * 0.3, 0.06 + Math.random() * 0.08 * size, c, 16);
+      this.splash.spawn([p[0] + n[0] * 0.05, p[1] + n[1] * 0.05, p[2] + n[2] * 0.05], [n[0] * sp + r() * 3, n[1] * sp + r() * 3 + 1, n[2] * sp + r() * 3], 0.35 + Math.random() * 0.3, (0.07 + Math.random() * 0.09 * size) * (near < 1 ? 0.6 : 1), c, 16);
     }
+    // coroa de respingo: anel curto no ponto de impacto (tamanho controlado)
+    if (size >= 0.6 && camD > 2.5) this.rings.spawn([p[0] + n[0] * 0.04, p[1] + n[1] * 0.04, p[2] + n[2] * 0.04], [0, 0, 0], 0.22, 0.5 + size * 0.5, c, 0, n[1] > 0.6);
   }
 
   burst(p: Vec3, team: TeamId, radius: number) {

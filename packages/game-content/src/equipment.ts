@@ -141,7 +141,7 @@ export const ESTILINGUE: ChargeWeaponDefinition = {
   minDamage: 35,
   maxDamage: 140,
   minRange: 9,
-  maxRange: 24,
+  maxRange: 20,
   chargingMoveFactor: 0.42,
   impactPaintMin: 0.6,
   impactPaintMax: 1.3,

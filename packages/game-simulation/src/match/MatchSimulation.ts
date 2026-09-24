@@ -434,7 +434,7 @@ export class MatchSimulation {
       this.damageWheel(best.wheel, dmg);
     } else if (worldHit) {
       const c = addScaled(worldHit.point, worldHit.normal, 0.12);
-      this.paint.paintSplat({ center: c, radius: lerp(w.impactPaintMin, w.impactPaintMax, charge), team: p.team, seed: this.rng.int(1e9), occluded: this.occluder }, sink);
+      this.paint.paintSplat({ center: c, radius: lerp(w.impactPaintMin, w.impactPaintMax, charge), team: p.team, seed: this.rng.int(1e9), occluded: this.occluder, stretch: dir, normal: worldHit.normal, satellites: 3 }, sink);
       this.emit({ k: 'impact', p: r3v(worldHit.point), n: r3v(worldHit.normal), team: p.team, s: 1 + charge });
     }
     this.emit({ k: 'beam', pid: p.id, team: p.team, from: r3v(origin), to: r3v(hitPoint), charge: Math.round(charge * 100) / 100 });
@@ -549,7 +549,7 @@ export class MatchSimulation {
     }
     if (wh && tWorld <= 1) {
       const c = addScaled(wh.point, wh.normal, 0.12);
-      this.paint.paintSplat({ center: c, radius: pr.paintRadius, team: pr.team, seed: this.rng.int(1e9), occluded: this.occluder }, this.sinkFor(owner));
+      this.paint.paintSplat({ center: c, radius: pr.paintRadius, team: pr.team, seed: this.rng.int(1e9), occluded: this.occluder, stretch: dir, normal: wh.normal, satellites: pr.kind === 'flick' ? 1 : 2 }, this.sinkFor(owner));
       this.emit({ k: 'impact', p: r3v(wh.point), n: r3v(wh.normal), team: pr.team, s: pr.kind === 'flick' ? 0.8 : 0.6 });
       return false;
     }
@@ -636,7 +636,7 @@ export class MatchSimulation {
   private burstMoringa(o: MoringaObject) {
     const owner = this.players.get(o.owner) ?? null;
     const c: Vec3 = add(o.pos, [0, 0.25, 0]);
-    this.paint.paintSplat({ center: c, radius: MORINGA.paintRadius, team: o.team, seed: this.rng.int(1e9), occluded: this.occluder, wobble: 0.22 }, this.sinkFor(owner));
+    this.paint.paintSplat({ center: c, radius: MORINGA.paintRadius, team: o.team, seed: this.rng.int(1e9), occluded: this.occluder, wobble: 0.24, normal: [0, 1, 0], satellites: 6 }, this.sinkFor(owner));
     this.emit({ k: 'burst', id: o.id, team: o.team, p: r3v(c), r: MORINGA.paintRadius });
     for (const t of this.sortedPlayers()) {
       if (t.team === o.team || !t.state.alive) continue;

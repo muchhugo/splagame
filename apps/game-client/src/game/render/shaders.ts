@@ -1,9 +1,12 @@
 import { Effect } from '@babylonjs/core';
 
 /**
- * Shaders próprios do cenário e do céu. Padrões procedurais (terracota,
- * tijolo, madeira, azulejo, pedra, telha, latão, muro caiado) + tinta vinda do
- * atlas lógico, com borda orgânica, relevo e brilho moderado.
+ * Shaders próprios do cenário e do céu (direção de arte cartoon):
+ * - luz em duas faixas suaves com sombras de matiz frio (nunca preto);
+ * - padrões limpos (poucas linhas, variação por peça, sem ruído realista);
+ * - acabamento por estilo de peça usando coordenadas locais da face
+ *   (moldura e marca em caixotes, faixa de borda em plataformas, chanfro);
+ * - tinta úmida: brilho recortado, reflexo de céu e borda com espessura.
  */
 
 const COMMON = /* glsl */ `
@@ -23,6 +26,8 @@ attribute vec4 color;
 attribute vec4 rect;
 attribute vec3 tang;
 attribute vec3 bitang;
+attribute vec4 fx;
+attribute vec2 st;
 uniform mat4 world;
 uniform mat4 viewProjection;
 varying vec3 vPos;
@@ -33,11 +38,13 @@ varying vec4 vColor;
 varying vec4 vRect;
 varying vec3 vT;
 varying vec3 vB;
+varying vec4 vFx;
+varying vec2 vSt;
 void main(void){
   vec4 wp = world * vec4(position, 1.0);
   vPos = wp.xyz;
   vNormal = normalize(mat3(world) * normal);
-  vUV = uv; vUV2 = uv2; vColor = color; vRect = rect; vT = tang; vB = bitang;
+  vUV = uv; vUV2 = uv2; vColor = color; vRect = rect; vT = tang; vB = bitang; vFx = fx; vSt = st;
   gl_Position = viewProjection * wp;
 }
 `;
@@ -52,6 +59,8 @@ varying vec4 vColor;
 varying vec4 vRect;
 varying vec3 vT;
 varying vec3 vB;
+varying vec4 vFx;
+varying vec2 vSt;
 uniform sampler2D atlas;
 uniform vec2 atlasTexel;
 uniform vec3 cameraPosition;
@@ -59,6 +68,7 @@ uniform vec3 sunDir;
 uniform vec3 sunColor;
 uniform vec3 skyColor;
 uniform vec3 groundColor;
+uniform vec3 shadowTint;
 uniform vec3 fogColor;
 uniform float fogDensity;
 uniform vec3 team0;
@@ -67,74 +77,112 @@ uniform float patterns;
 uniform float time;
 ${COMMON}
 
+// distância até a borda da face (metros) e coordenadas locais
+float edgeDist(){ vec2 m = vFx.xy * vFx.zw; return min(min(m.x, vFx.z - m.x), min(m.y, vFx.w - m.y)); }
+
 vec3 surfaceAlbedo(int m, vec2 uv, vec3 base, out float gloss){
-  gloss = 0.12;
-  if (m == 0) { // terracota em ladrilhos de 1 m
-    vec2 g = fract(uv); vec2 id = floor(uv);
-    float e = min(min(g.x, 1.0-g.x), min(g.y, 1.0-g.y));
-    float grout = smoothstep(0.015, 0.04, e);
-    vec3 tile = base * (0.86 + 0.22*hash21(id)) * (0.92 + 0.16*fbm(uv*3.1));
-    gloss = 0.18;
-    return mix(base*0.55, tile, grout);
+  gloss = 0.08;
+  if (m == 0) { // lajota clara em placas grandes
+    vec2 g = fract(uv / 1.5); vec2 id = floor(uv / 1.5);
+    float e = min(min(g.x, 1.0-g.x), min(g.y, 1.0-g.y)) * 1.5;
+    float grout = smoothstep(0.02, 0.05, e);
+    vec3 tile = base * (0.94 + 0.1*hash21(id));
+    return mix(base*0.78, tile, grout);
   }
-  if (m == 1) { // tijolo
-    vec2 b = uv / vec2(0.46, 0.2); b.x += 0.5*mod(floor(b.y), 2.0);
-    vec2 g = fract(b); float e = min(min(g.x,1.0-g.x)*0.46, min(g.y,1.0-g.y)*0.2);
-    float mortar = smoothstep(0.008, 0.02, e);
-    vec3 brick = base * (0.8 + 0.3*hash21(floor(b))) * (0.9 + 0.15*fbm(uv*6.0));
-    return mix(vec3(0.78,0.72,0.64), brick, mortar);
+  if (m == 1) { // tijolo simples
+    vec2 b = uv / vec2(0.55, 0.26); b.x += 0.5*mod(floor(b.y), 2.0);
+    vec2 g = fract(b); float e = min(min(g.x,1.0-g.x)*0.55, min(g.y,1.0-g.y)*0.26);
+    float mortar = smoothstep(0.01, 0.025, e);
+    vec3 brick = base * (0.9 + 0.14*hash21(floor(b)));
+    return mix(vec3(0.95,0.88,0.8), brick, mortar);
   }
-  if (m == 2) { // madeira em tábuas
-    float p = uv.y / 0.3; float id = floor(p); float fp = fract(p);
-    float seam = smoothstep(0.0, 0.06, fp) * smoothstep(1.0, 0.94, fp);
-    float grain = fbm(vec2(uv.x*0.9 + id*7.0, uv.y*22.0));
-    vec3 w = base * (0.78 + 0.3*hash21(vec2(id, 3.0))) * (0.82 + 0.3*grain);
-    gloss = 0.22;
-    return mix(base*0.4, w, seam);
+  if (m == 2) { // madeira em tábuas largas
+    float p = uv.y / 0.32; float id = floor(p); float fp = fract(p);
+    float seam = smoothstep(0.0, 0.05, fp) * smoothstep(1.0, 0.95, fp);
+    vec3 w = base * (0.88 + 0.16*hash21(vec2(id, 3.0)));
+    w *= 0.95 + 0.06*sin(uv.x*3.0 + id*2.1);
+    gloss = 0.12;
+    return mix(base*0.55, w, seam);
   }
-  if (m == 3) { // azulejo esmaltado (não pintável)
-    vec2 g = fract(uv / 0.3) - 0.5; float r = length(g);
-    float petal = abs(cos(atan(g.y, g.x)*2.0)) * 0.34;
-    float motif = smoothstep(0.02, 0.0, abs(r - petal) - 0.02) + smoothstep(0.08, 0.06, r);
+  if (m == 3) { // azulejo esmaltado (NÃO pintável): leitura clara por padrão e brilho
+    vec2 g = fract(uv / 0.4) - 0.5; float r = length(g);
+    float petal = abs(cos(atan(g.y, g.x)*2.0)) * 0.3;
+    float motif = smoothstep(0.03, 0.0, abs(r - petal) - 0.02) + smoothstep(0.09, 0.07, r);
     float border = smoothstep(0.44, 0.47, max(abs(g.x), abs(g.y)));
-    vec3 white = vec3(0.93, 0.92, 0.88);
-    vec3 blue = vec3(0.13, 0.25, 0.55);
-    gloss = 0.85;
-    return mix(white, blue, clamp(motif + border, 0.0, 1.0));
+    gloss = 0.7;
+    return mix(vec3(0.97, 0.96, 0.93), vec3(0.16, 0.33, 0.75), clamp(motif + border, 0.0, 1.0));
   }
-  if (m == 4) { // pedra em lajes
-    vec2 p = uv / 0.95; vec2 id = floor(p); vec2 g = fract(p);
-    float e = min(min(g.x,1.0-g.x), min(g.y,1.0-g.y));
-    float joint = smoothstep(0.01, 0.035, e);
-    vec3 s = base * (0.85 + 0.2*hash21(id)) * (0.85 + 0.25*fbm(uv*2.3));
-    return mix(base*0.5, s, joint);
+  if (m == 4) { // pedra em blocos
+    vec2 p = uv / vec2(1.2, 0.6); p.x += 0.5*mod(floor(p.y), 2.0); vec2 id = floor(p); vec2 g = fract(p);
+    float e = min(min(g.x,1.0-g.x)*1.2, min(g.y,1.0-g.y)*0.6);
+    float joint = smoothstep(0.012, 0.03, e);
+    return mix(base*0.72, base * (0.92 + 0.12*hash21(id)), joint);
   }
   if (m == 5) { // telha de barro
-    vec2 p = vec2(uv.x/0.22, uv.y/0.3); float row = floor(p.y);
+    vec2 p = vec2(uv.x/0.28, uv.y/0.34); float row = floor(p.y);
     float sc = abs(fract(p.x + 0.5*mod(row,2.0)) - 0.5);
-    float shade = 0.75 + 0.35*smoothstep(0.0, 0.5, fract(p.y)) - sc*0.2;
-    gloss = 0.3;
-    return base * shade * (0.9 + 0.2*hash21(vec2(floor(p.x), row)));
+    gloss = 0.15;
+    return base * (0.82 + 0.28*smoothstep(0.0, 0.6, fract(p.y)) - sc*0.18);
   }
-  if (m == 6) { gloss = 0.7; return base * (0.85 + 0.2*fbm(uv*8.0)); }
-  // m == 7: muro caiado com faixa pintada na base
-  vec3 lime = base * (0.9 + 0.12*fbm(uv*1.7));
-  float band = step(vPos.y, 0.7) * step(0.02, vPos.y);
-  vec3 bandCol = vec3(0.55, 0.32, 0.22);
-  return mix(lime, bandCol, band*0.85);
+  if (m == 6) { gloss = 0.6; return base; }
+  // 7: muro caiado com faixa de mural colorida
+  vec3 lime = base;
+  float band = step(vPos.y, 0.9) * step(0.02, vPos.y);
+  float k = floor((vUV.x) / 2.4);
+  vec3 muralA = vec3(0.35, 0.72, 0.66), muralB = vec3(0.96, 0.72, 0.3), muralC = vec3(0.86, 0.45, 0.55);
+  vec3 mural = mod(k, 3.0) < 1.0 ? muralA : mod(k, 3.0) < 2.0 ? muralB : muralC;
+  float wave = step(vPos.y, 0.62 + 0.12*sin(vUV.x*2.6));
+  vec3 bandCol = mix(vec3(0.62, 0.42, 0.34), mural, wave);
+  float cap = step(3.75, vPos.y);
+  return mix(mix(lime, bandCol, band), vec3(0.8, 0.5, 0.36), cap);
 }
 
-float cov(vec2 p){ return 0.0; }
+// acabamento por estilo da peça (vSt.x) e tipo de face (vSt.y: 0 topo, 1 lateral, 2 base)
+vec3 styleFinish(vec3 col, int sty, int face, inout float gloss){
+  vec2 m = vFx.xy * vFx.zw;
+  float ed = edgeDist();
+  // chanfro sugerido: realce claro nas bordas superiores, escurece a base (contato)
+  if (face == 0) col *= 1.0 + 0.16 * (1.0 - smoothstep(0.0, 0.07, ed));
+  if (face == 1) {
+    col *= mix(0.8, 1.0, smoothstep(0.0, 0.45, m.y));
+    col *= 1.0 + 0.14 * (1.0 - smoothstep(0.0, 0.06, vFx.w - m.y));
+  }
+  if (sty == 1) { // caixote: moldura, travessa diagonal e marca carimbada
+    float frame = 1.0 - smoothstep(0.1, 0.12, ed);
+    vec2 c = vFx.xy - 0.5;
+    float diag = 1.0 - smoothstep(0.035, 0.05, abs(c.x - c.y) * min(vFx.z, vFx.w));
+    col = mix(col, col * 0.62, max(frame, diag * (1.0 - frame)) * (face == 1 ? 1.0 : 0.6));
+    float r = length(c * vec2(vFx.z, vFx.w) / min(vFx.z, vFx.w));
+    float ring = smoothstep(0.02, 0.0, abs(r - 0.2) - 0.03);
+    float drop = smoothstep(0.012, 0.0, length(c * vec2(1.0, 0.8)) - 0.09);
+    if (face == 1) col = mix(col, vec3(0.28, 0.16, 0.12), (ring + drop) * 0.55);
+  }
+  if (sty == 5 || sty == 6 || sty == 12) { // plataformas e rampas: faixa clara na borda (leitura da queda)
+    if (face == 0) col = mix(col, vec3(0.98, 0.9, 0.62), (1.0 - smoothstep(0.18, 0.22, ed)) * 0.85);
+  }
+  if (sty == 2 && face == 1) { // varal: ripas verticais
+    float slat = smoothstep(0.02, 0.06, abs(fract(m.x / 0.5) - 0.5));
+    col *= mix(0.78, 1.0, slat);
+  }
+  return col;
+}
 
 void main(void){
   int m = int(floor(vColor.a * 8.0 + 0.5));
+  int sty = int(floor(vSt.x + 0.5));
+  int face = int(floor(vSt.y + 0.5));
   float gloss;
   vec3 albedo = surfaceAlbedo(m, vUV, vColor.rgb, gloss);
+  albedo = styleFinish(albedo, sty, face, gloss);
   vec3 N = normalize(vNormal);
   vec2 auv = clamp(vUV2, vRect.xy, vRect.zw);
   vec4 s0 = texture2D(atlas, auv);
-  float sunVis = s0.b;
-  float ao = s0.a;
+  // sombra pré-calculada recortada (borda suave, estilo desenho)
+  float sunVis = smoothstep(0.3, 0.62, s0.b);
+  float ao = mix(0.55, 1.0, s0.a);
+  float paint = 0.0;
+  vec3 paintCol = vec3(0.0);
+  float wet = 0.0;
   if (vRect.x >= 0.0 && vRect.z > vRect.x) {
     vec2 dx = vec2(atlasTexel.x*0.55, 0.0);
     vec2 dy = vec2(0.0, atlasTexel.y*0.55);
@@ -143,40 +191,56 @@ void main(void){
     vec2 sc = texture2D(atlas, clamp(auv+dy, vRect.xy, vRect.zw)).rg;
     vec2 sd = texture2D(atlas, clamp(auv-dy, vRect.xy, vRect.zw)).rg;
     vec2 c = (s0.rg*2.0 + sa + sb + sc + sd) / 6.0;
-    float n = fbm(vUV*3.3 + vPos.y*0.7) - 0.5;
-    float c0 = smoothstep(0.42, 0.58, c.r + n*0.3);
-    float c1 = smoothstep(0.42, 0.58, c.g + n*0.3);
-    float paint = max(c0, c1);
+    // borda orgânica: ruído de baixa frequência + recorte (manchas reconhecíveis)
+    float n = fbm(vUV*2.6 + vPos.y*0.7) - 0.5;
+    float n2 = vnoise(vUV*9.0) - 0.5;
+    float c0 = smoothstep(0.44, 0.56, c.r + n*0.34 + n2*0.08);
+    float c1 = smoothstep(0.44, 0.56, c.g + n*0.34 + n2*0.08);
+    paint = max(c0, c1);
     if (paint > 0.001) {
       vec3 tc = c0 >= c1 ? team0 : team1;
-      // padrões de acessibilidade: listras (equipe 0) e pontos (equipe 1)
       if (patterns > 0.5) {
-        if (c0 >= c1) tc *= 0.86 + 0.18*step(0.5, fract((vPos.x + vPos.z + vPos.y)*2.2));
-        else tc *= 1.0 - 0.22*step(length(fract(vUV*3.2) - 0.5), 0.2);
+        if (c0 >= c1) tc *= 0.84 + 0.2*step(0.5, fract((vPos.x + vPos.z + vPos.y)*2.2));
+        else tc *= 1.0 - 0.24*step(length(fract(vUV*3.2) - 0.5), 0.2);
       }
-      float body = 0.9 + 0.12*fbm(vUV*7.0 + 3.0);
-      // relevo: gradiente da cobertura ao longo das tangentes da face
       float gU = (sa.r + sa.g) - (sb.r + sb.g);
       float gV = (sc.r + sc.g) - (sd.r + sd.g);
-      vec3 Np = normalize(N - (vT*gU + vB*gV) * 0.9 * paint);
-      float rim = smoothstep(0.35, 0.95, paint) - smoothstep(0.95, 1.0, paint);
-      albedo = mix(albedo, tc * body * (1.0 - rim*0.15), paint);
-      gloss = mix(gloss, 0.78, paint);
-      N = Np;
+      // leve ondulação de superfície úmida
+      vec2 rip = vec2(vnoise(vUV*3.0 + time*0.25), vnoise(vUV*3.0 - time*0.21)) - 0.5;
+      vec3 Np = normalize(N - (vT*(gU + rip.x*0.18) + vB*(gV + rip.y*0.18)) * 1.1 * paint);
+      float rim = smoothstep(0.3, 0.8, paint) - smoothstep(0.8, 1.0, paint);
+      paintCol = tc * (1.0 - rim * 0.28);
+      N = normalize(mix(N, Np, paint));
+      wet = paint;
     }
   }
   vec3 L = normalize(-sunDir);
-  float ndl = max(dot(N, L), 0.0);
-  vec3 amb = mix(groundColor, skyColor, N.y*0.5 + 0.5) * (0.3 + 0.7*ao);
-  vec3 col = albedo * (amb + sunColor * ndl * sunVis * 1.05);
+  float ndl = dot(N, L);
+  // duas faixas suaves; sombra com matiz frio
+  float lit = smoothstep(-0.06, 0.22, ndl) * sunVis;
+  vec3 amb = mix(groundColor, skyColor, N.y*0.5 + 0.5);
+  vec3 base = mix(albedo, paintCol, paint);
+  vec3 shade = base * amb * shadowTint * ao;
+  vec3 light = base * (sunColor * (0.95 + 0.08*smoothstep(0.6, 0.7, ndl)) + amb * 0.2) * mix(0.85, 1.0, ao);
+  vec3 col = mix(shade, light, lit);
+  // a tinta mantém a saturação mesmo na sombra (sombra da tinta = mesma cor, mais escura)
+  vec3 paintShaded = paintCol * mix(0.72 * mix(vec3(0.9, 0.92, 1.0), vec3(1.0), 0.5), vec3(1.04), lit) * mix(0.85, 1.0, ao);
+  col = mix(col, paintShaded, paint * 0.85);
   vec3 V = normalize(cameraPosition - vPos);
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), mix(10.0, 110.0, gloss)) * gloss * sunVis;
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0) * gloss * 0.3;
-  col += sunColor * spec * 0.9 + skyColor * fres * ao;
+  float nh = max(dot(N, H), 0.0);
+  // brilho: fosco no cenário, recortado e forte na tinta úmida
+  float specBase = pow(nh, 24.0) * gloss * 0.3;
+  // reflexos pequenos e recortados, quebrados pela ondulação (aparência úmida sem estourar)
+  float glint = smoothstep(0.45, 0.7, vnoise(vUV*6.0 + vec2(time*0.3, -time*0.2)));
+  float specWet = smoothstep(0.975, 0.99, nh) * wet * (0.35 + 0.65*glint);
+  col += sunColor * (specBase + specWet * 0.6) * lit;
+  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+  col += skyColor * fres * (wet * 0.14 + gloss * 0.06) * (1.0 - lit * 0.4);
+  // perspectiva aérea: névoa clara e fria à distância
   float d = length(cameraPosition - vPos);
-  float f = 1.0 - exp(-pow(d*fogDensity, 1.4));
-  col = mix(col, fogColor, clamp(f, 0.0, 0.9));
+  float f = 1.0 - exp(-pow(d*fogDensity, 1.3));
+  col = mix(col, fogColor, clamp(f, 0.0, 0.8));
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -201,16 +265,18 @@ ${COMMON}
 void main(void){
   vec3 d = normalize(vDir);
   float h = clamp(d.y, -0.2, 1.0);
-  vec3 col = mix(skyHorizon, skyTop, smoothstep(-0.02, 0.55, h));
+  vec3 col = mix(skyHorizon, skyTop, smoothstep(-0.02, 0.5, h));
   vec3 L = normalize(-sunDir);
   float s = max(dot(d, L), 0.0);
-  col += sunColor * (pow(s, 900.0) * 3.0 + pow(s, 12.0) * 0.28);
-  // nuvens estilizadas
-  if (d.y > 0.02) {
-    vec2 p = d.xz / (d.y + 0.25) * 1.6 + vec2(time*0.004, 0.0);
-    float c = smoothstep(0.52, 0.78, fbm(p*1.3) + fbm(p*3.1)*0.25);
-    vec3 cloud = mix(vec3(1.0, 0.93, 0.86), sunColor, 0.25) * (0.9 + 0.1*s);
-    col = mix(col, cloud, c * smoothstep(0.02, 0.2, d.y) * 0.85);
+  col += sunColor * (smoothstep(0.9975, 0.999, s) * 1.2 + pow(s, 10.0) * 0.18);
+  // nuvens de desenho: bolhas com borda recortada e base sombreada
+  if (d.y > 0.0) {
+    vec2 p = d.xz / (d.y + 0.2) * 1.2 + vec2(time*0.005, 0.0);
+    float v = fbm(p*1.1) + fbm(p*2.7)*0.3;
+    float cloud = smoothstep(0.62, 0.68, v);
+    float under = smoothstep(0.62, 0.82, v);
+    vec3 cc = mix(vec3(0.82, 0.86, 0.96), vec3(1.0, 1.0, 1.0), under);
+    col = mix(col, cc, cloud * smoothstep(0.0, 0.18, d.y));
   }
   gl_FragColor = vec4(col, 1.0);
 }

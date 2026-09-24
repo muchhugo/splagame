@@ -8,7 +8,7 @@ import type { PhysicsWorld } from '@borrifo/game-simulation';
  */
 export class CameraRig {
   readonly camera: FreeCamera;
-  private dist = 3.6;
+  private dist = 4.2;
   private pivotH = 1.35;
   private shakeT = 0;
   private shakeAmp = 0;
@@ -43,8 +43,8 @@ export class CameraRig {
     const cp = Math.cos(pitch);
     const fwd = new Vector3(Math.sin(yaw) * cp, -Math.sin(pitch), Math.cos(yaw) * cp);
     const right = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-    const wantDist = 3.6 + Math.max(0, pitch) * 0.6;
-    const offset = right.scale(this.shoulder).add(new Vector3(0, 0.25, 0)).subtract(fwd.scale(wantDist));
+    const wantDist = 4.2 + Math.max(0, pitch) * 0.6;
+    const offset = right.scale(this.shoulder).add(new Vector3(0, 0.4, 0)).subtract(fwd.scale(wantDist));
     const len = offset.length();
     const dir = offset.scale(1 / len);
     const hit = this.physics.raycast([pivot.x, pivot.y, pivot.z], [dir.x, dir.y, dir.z], len + 0.3);

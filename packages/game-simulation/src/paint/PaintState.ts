@@ -18,6 +18,11 @@ export interface SplatOptions {
   floorsOnly?: boolean;
   /** Amplitude do contorno orgânico (0 = círculo). */
   wobble?: number;
+  /** Direção do impacto: alonga a mancha no plano da superfície ("derrapada" do respingo). */
+  stretch?: Vec3;
+  /** Normal da superfície atingida + número de respingos satélites ao redor. */
+  normal?: Vec3;
+  satellites?: number;
 }
 
 export interface PaintChangeSink {
@@ -102,6 +107,32 @@ export class PaintState {
    * Isso impede pintar através de paredes ou entre andares.
    */
   paintSplat(opts: SplatOptions, sink?: PaintChangeSink): number {
+    let changed = this.paintBlob(opts, sink);
+    // respingos satélites: gotas menores ao redor, pela mesma regra geométrica
+    const n = opts.satellites ?? 0;
+    if (n > 0 && opts.normal) {
+      const rng = new Rng((opts.seed ^ 0x5bd1e995) >>> 0);
+      const nrm = opts.normal;
+      const ref: Vec3 = Math.abs(nrm[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      const t1 = normalize3(cross3(nrm, ref));
+      const t2 = cross3(nrm, t1);
+      const dir = opts.stretch ? normalize3([opts.stretch[0] - nrm[0] * dot(opts.stretch, nrm), opts.stretch[1] - nrm[1] * dot(opts.stretch, nrm), opts.stretch[2] - nrm[2] * dot(opts.stretch, nrm)]) : null;
+      for (let k = 0; k < n; k++) {
+        let a = rng.range(0, Math.PI * 2);
+        // com direção, os satélites tendem a cair à frente do impacto
+        if (dir && rng.next() < 0.6) a = Math.atan2(dot(dir, t2), dot(dir, t1)) + rng.gauss() * 0.7;
+        const d = opts.radius * rng.range(1.15, 1.85);
+        const off: Vec3 = [t1[0] * Math.cos(a) * d + t2[0] * Math.sin(a) * d, t1[1] * Math.cos(a) * d + t2[1] * Math.sin(a) * d, t1[2] * Math.cos(a) * d + t2[2] * Math.sin(a) * d];
+        const c: Vec3 = [opts.center[0] + off[0], opts.center[1] + off[1], opts.center[2] + off[2]];
+        // o satélite só existe se houver linha livre do centro até ele (não atravessa parede)
+        if (opts.occluded && opts.occluded(opts.center, c)) continue;
+        changed += this.paintBlob({ center: c, radius: opts.radius * rng.range(0.16, 0.32), team: opts.team, seed: rng.int(1e9), occluded: opts.occluded, wobble: 0.1 }, sink);
+      }
+    }
+    return changed;
+  }
+
+  private paintBlob(opts: SplatOptions, sink?: PaintChangeSink): number {
     const { center, radius, team } = opts;
     const L = this.layout;
     const min: Vec3 = [center[0] - radius, center[1] - (opts.verticalBand ?? radius), center[2] - radius];
@@ -137,6 +168,20 @@ export class PaintState {
       const j1 = Math.min(s.rows - 1, Math.floor((v0 + rPlane) / cs));
       if (i0 > i1 || j0 > j1) continue;
       losCache.clear();
+      // alongamento no plano da superfície
+      let su = 0,
+        sv = 0,
+        elong = 1;
+      if (opts.stretch && !wave) {
+        su = dot(opts.stretch, s.axisU);
+        sv = dot(opts.stretch, s.axisV);
+        const sl = Math.hypot(su, sv);
+        if (sl > 0.2) {
+          su /= sl;
+          sv /= sl;
+          elong = 1 + Math.min(0.55, sl * 0.55);
+        } else su = sv = 0;
+      }
       for (let j = j0; j <= j1; j++) {
         for (let i = i0; i <= i1; i++) {
           const cell = s.cellOffset + j * s.cols + i;
@@ -151,10 +196,17 @@ export class PaintState {
             const vd = Math.abs(p[1] - center[1]);
             inside = hd >= (opts.innerRadius ?? 0) && hd <= radius && vd <= (opts.verticalBand ?? 1.5);
           } else {
-            const du = uc - u0;
-            const dv = vc - v0;
+            let du = uc - u0;
+            let dv = vc - v0;
+            if (elong > 1) {
+              // coordenadas ao longo/através da direção do impacto; centro levemente à frente
+              const along = du * su + dv * sv - rPlane * 0.18;
+              const across = -du * sv + dv * su;
+              du = along / elong;
+              dv = across;
+            }
             const rr = Math.hypot(du, dv);
-            inside = rr <= rPlane * shape(Math.atan2(dv, du)) || rr < cs * 0.5;
+            inside = rr <= rPlane * shape(Math.atan2(dv, du)) || Math.hypot(uc - u0, vc - v0) < cs * 0.5;
           }
           if (!inside) continue;
           if (opts.occluded) {
@@ -262,6 +314,14 @@ export class PaintState {
     this.paintSeq = d.toSeq;
     return { ok: true };
   }
+}
+
+function cross3(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function normalize3(a: Vec3): Vec3 {
+  const l = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
 }
 
 export { CHUNK_SIDE };

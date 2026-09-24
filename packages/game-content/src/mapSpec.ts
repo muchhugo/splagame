@@ -26,6 +26,8 @@ export interface BlockSpec {
   sides: SidePaint;
   /** Dica para o renderer (ex.: 'kiln', 'crate', 'rack'). */
   style?: string;
+  /** Só colisor: sem faces renderizadas nem tinta (ex.: corpo da estátua, cuja malha é decoração). */
+  hidden?: boolean;
 }
 
 export interface SpawnPoint {
@@ -66,6 +68,8 @@ export interface MapSpec {
     skyTop: Vec3;
     skyHorizon: Vec3;
     ambient: Vec3;
+    /** Multiplicador de cor das sombras (matiz frio no estilo cartoon). */
+    shadowTint: Vec3;
     fogColor: Vec3;
     fogDensity: number;
   };

@@ -6,16 +6,20 @@ import { RenderAtlas } from './RenderAtlas';
 import './shaders';
 
 export const MATERIAL_CODE: Record<MaterialId, number> = { terracota: 0, tijolo: 1, madeira: 2, azulejo: 3, pedra: 4, barro: 5, latao: 6, muro: 7 };
+/** Cores-base foscas e claras: o cenário dá espaço para a tinta e os personagens. */
 export const MATERIAL_BASE: Record<MaterialId, [number, number, number]> = {
-  terracota: [0.86, 0.72, 0.58],
-  tijolo: [0.64, 0.36, 0.27],
-  madeira: [0.6, 0.45, 0.31],
-  azulejo: [0.9, 0.9, 0.88],
-  pedra: [0.66, 0.64, 0.6],
-  barro: [0.7, 0.34, 0.2],
-  latao: [0.8, 0.64, 0.3],
-  muro: [0.93, 0.9, 0.83],
+  terracota: [0.9, 0.85, 0.76],
+  tijolo: [0.86, 0.68, 0.6],
+  madeira: [0.76, 0.62, 0.48],
+  azulejo: [0.95, 0.95, 0.93],
+  pedra: [0.86, 0.82, 0.76],
+  barro: [0.86, 0.5, 0.34],
+  latao: [0.92, 0.74, 0.36],
+  muro: [0.98, 0.95, 0.89],
 };
+
+/** Estilos de peça (acabamento no shader). */
+export const STYLE_CODE: Record<string, number> = { crate: 1, rack: 2, kiln: 3, deck: 4, plaza: 5, platform: 5, balcony: 6, bridge: 6, lowwall: 7, pillar: 8, roof: 9, boundary: 10, ground: 11, ramp: 12, tiles: 13, post: 14, chimney: 15, pedestal: 15, parapet: 16, wall: 17 };
 
 /**
  * Malha do cenário gerada do MapSpec (mesma fonte dos colisores e da tinta).
@@ -39,6 +43,8 @@ export class LevelRenderer {
     const rects: number[] = [];
     const tangs: number[] = [];
     const bitangs: number[] = [];
+    const fxs: number[] = [];
+    const sts: number[] = [];
     const indices: number[] = [];
 
     for (const r of this.atlas.rects) {
@@ -61,6 +67,9 @@ export class LevelRenderer {
         rects.push(rect[0], rect[1], rect[2], rect[3]);
         tangs.push(f.axisU[0], f.axisU[1], f.axisU[2]);
         bitangs.push(f.axisV[0], f.axisV[1], f.axisV[2]);
+        fxs.push(u / f.width, v / f.height, f.width, f.height);
+        const faceType = f.normal[1] > 0.5 ? 0 : f.normal[1] < -0.5 ? 2 : 1;
+        sts.push(STYLE_CODE[f.style ?? ''] ?? 0, faceType);
       }
       // orientação: a normal geométrica deve coincidir com a normal da face
       const c = cross(f.axisU, f.axisV);
@@ -82,6 +91,8 @@ export class LevelRenderer {
     this.mesh.setVerticesData('rect', rects, false, 4);
     this.mesh.setVerticesData('tang', tangs, false, 3);
     this.mesh.setVerticesData('bitang', bitangs, false, 3);
+    this.mesh.setVerticesData('fx', fxs, false, 4);
+    this.mesh.setVerticesData('st', sts, false, 2);
     this.mesh.isPickable = false;
     this.mesh.freezeWorldMatrix();
 
@@ -94,8 +105,8 @@ export class LevelRenderer {
       scene,
       { vertex: 'borrifoLevel', fragment: 'borrifoLevel' },
       {
-        attributes: ['position', 'normal', 'uv', 'uv2', 'color', 'rect', 'tang', 'bitang'],
-        uniforms: ['world', 'viewProjection', 'cameraPosition', 'sunDir', 'sunColor', 'skyColor', 'groundColor', 'fogColor', 'fogDensity', 'team0', 'team1', 'atlasTexel', 'patterns', 'time'],
+        attributes: ['position', 'normal', 'uv', 'uv2', 'color', 'rect', 'tang', 'bitang', 'fx', 'st'],
+        uniforms: ['world', 'viewProjection', 'cameraPosition', 'sunDir', 'sunColor', 'skyColor', 'groundColor', 'shadowTint', 'fogColor', 'fogDensity', 'team0', 'team1', 'atlasTexel', 'patterns', 'time'],
         samplers: ['atlas'],
       },
     );
@@ -104,9 +115,10 @@ export class LevelRenderer {
     this.material.setVector2('atlasTexel', new Vector2(1 / this.atlas.width, 1 / this.atlas.height));
     this.material.setVector3('sunDir', new Vector3(...L.sunDirection).normalize());
     this.material.setColor3('sunColor', new Color3(...L.sunColor));
-    // ambiente: céu clareado e chão quente (evita sombras azuladas demais no barro)
-    this.material.setColor3('skyColor', Color3.Lerp(new Color3(...L.skyTop), new Color3(1, 0.95, 0.9), 0.55).scale(0.85));
-    this.material.setColor3('groundColor', new Color3(0.56, 0.44, 0.36));
+    // ambiente claro; sombras com matiz frio (lilás-azulado), nunca pretas
+    this.material.setColor3('skyColor', Color3.Lerp(new Color3(...L.skyTop), new Color3(1, 1, 1), 0.45));
+    this.material.setColor3('groundColor', new Color3(...L.ambient));
+    this.material.setColor3('shadowTint', new Color3(...L.shadowTint));
     this.material.setColor3('fogColor', new Color3(...L.fogColor));
     this.material.setFloat('fogDensity', L.fogDensity);
     this.material.setFloat('patterns', 0);
@@ -122,6 +134,10 @@ export class LevelRenderer {
   setTeamColors(c0: Color3, c1: Color3) {
     this.material.setColor3('team0', c0);
     this.material.setColor3('team1', c1);
+  }
+
+  setTime(t: number) {
+    this.material.setFloat('time', t);
   }
 
   setPatterns(on: boolean) {

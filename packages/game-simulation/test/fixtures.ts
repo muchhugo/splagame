@@ -32,7 +32,7 @@ export const TEST_MAP: MapSpec = {
   spawns: { 0: [{ pos: [-8, 0, 0], yaw: Math.PI / 2 }], 1: [{ pos: [8, 2, 0], yaw: -Math.PI / 2 }] },
   spawnZones: { 0: { min: [-10, -1, -2], max: [-6, 3, 2] }, 1: { min: [5, 1, -2], max: [9, 5, 2] } },
   decor: [],
-  lighting: { sunDirection: [0, -1, 0], sunColor: [1, 1, 1], skyTop: [0, 0, 1], skyHorizon: [1, 1, 1], ambient: [0.5, 0.5, 0.5], fogColor: [1, 1, 1], fogDensity: 0 },
+  lighting: { sunDirection: [0, -1, 0], sunColor: [1, 1, 1], skyTop: [0, 0, 1], skyHorizon: [1, 1, 1], ambient: [0.5, 0.5, 0.5], shadowTint: [1, 1, 1], fogColor: [1, 1, 1], fogDensity: 0 },
 };
 
 export const TEST_MAP_HASH = computeMapHash(TEST_MAP);

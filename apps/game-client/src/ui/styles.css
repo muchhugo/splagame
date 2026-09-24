@@ -12,8 +12,10 @@
   --ok: #5fd08a;
   --warn: #ffb347;
   --bad: #ff5c5c;
-  --team0: #f24a1c;
-  --team1: #3346e8;
+  --team0: #ff6414;
+  --team1: #4a3dff;
+  /* contorno de "adesivo" usado nos elementos do HUD */
+  --sticker: 0 0 0 2.5px rgba(255, 244, 230, 0.85), 0 3px 0 2.5px rgba(29, 20, 17, 0.55);
   --radius: 16px;
   --hud-scale: 1;
   --font: 'Fredoka', 'Baloo 2', 'Trebuchet MS', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -374,16 +376,26 @@ kbd {
 }
 .timer {
   font-size: calc(30px * var(--hud-scale));
-  font-weight: 800;
-  padding: 4px 18px;
-  border-radius: 14px;
-  background: rgba(20, 14, 12, 0.72);
+  font-weight: 700;
+  padding: 3px 18px 5px;
+  border-radius: 18px;
+  background: rgba(42, 28, 23, 0.82);
+  box-shadow: var(--sticker);
   min-width: 110px;
   text-align: center;
   letter-spacing: 0.04em;
 }
 .timer.urgent {
   color: #ffd27a;
+  animation: tick 1s ease-out infinite;
+}
+@keyframes tick {
+  0% {
+    transform: scale(1.08);
+  }
+  30% {
+    transform: scale(1);
+  }
 }
 .roster {
   display: flex;
@@ -398,7 +410,8 @@ kbd {
   font-size: calc(12px * var(--hud-scale));
   font-weight: 800;
   color: var(--creme);
-  border: 2px solid rgba(255, 244, 230, 0.7);
+  border: 2.5px solid rgba(255, 244, 230, 0.85);
+  box-shadow: 0 2px 0 rgba(29, 20, 17, 0.5);
 }
 .roster .dot.dead {
   opacity: 0.35;
@@ -416,16 +429,28 @@ kbd {
   left: 50%;
   transform: translateX(-50%);
   width: min(380px, 60vw);
-  height: 10px;
+  height: 12px;
   border-radius: 99px;
   overflow: hidden;
   display: flex;
-  background: rgba(255, 244, 230, 0.25);
-  box-shadow: 0 0 0 2px rgba(20, 14, 12, 0.7);
+  background: rgba(255, 244, 230, 0.3);
+  box-shadow: var(--sticker);
 }
 .territory > div {
   height: 100%;
   transition: width 0.3s ease;
+  /* brilho molhado discreto na parte de cima da barra */
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0 30%, transparent 30%);
+}
+.territory::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(29, 20, 17, 0.55);
 }
 .reticle {
   position: absolute;
@@ -464,6 +489,9 @@ kbd {
   border-radius: 50%;
   mask: radial-gradient(circle, transparent 42%, #000 43%, #000 70%, transparent 71%);
 }
+.hitmarker.lethal {
+  background: conic-gradient(from 45deg, var(--ouro) 0 6deg, transparent 6deg 90deg, var(--ouro) 90deg 96deg, transparent 96deg 180deg, var(--ouro) 180deg 186deg, transparent 186deg 270deg, var(--ouro) 270deg 276deg, transparent 276deg);
+}
 .blocked {
   position: absolute;
   left: 0;
@@ -492,8 +520,8 @@ kbd {
   width: calc(14px * var(--hud-scale));
   height: calc(90px * var(--hud-scale));
   border-radius: 99px;
-  background: rgba(20, 14, 12, 0.6);
-  box-shadow: 0 0 0 2px rgba(255, 244, 230, 0.6);
+  background: rgba(20, 14, 12, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 244, 230, 0.75), 0 2px 0 2px rgba(29, 20, 17, 0.45);
   overflow: hidden;
   display: flex;
   align-items: flex-end;
@@ -502,6 +530,18 @@ kbd {
   width: 100%;
   border-radius: 99px;
   transition: height 0.08s linear;
+}
+/* reflexo vertical de cápsula de vidro (mesma leitura do tanque nas costas) */
+.inktank::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  top: 8%;
+  bottom: 8%;
+  width: 22%;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
 }
 .inktank.low {
   animation: pulse 0.6s infinite alternate;
@@ -554,8 +594,9 @@ kbd {
 }
 .equip {
   padding: 10px 14px;
-  border-radius: 14px;
-  background: rgba(20, 14, 12, 0.7);
+  border-radius: 18px;
+  background: rgba(42, 28, 23, 0.8);
+  box-shadow: var(--sticker);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -586,9 +627,17 @@ kbd {
   font-size: calc(13px * var(--hud-scale));
 }
 .killfeed .k {
-  padding: 5px 10px;
-  border-radius: 10px;
-  background: rgba(20, 14, 12, 0.72);
+  padding: 5px 11px;
+  border-radius: 12px;
+  background: rgba(42, 28, 23, 0.8);
+  box-shadow: 0 2px 0 rgba(29, 20, 17, 0.5);
+  animation: slidein 0.18s ease-out;
+}
+@keyframes slidein {
+  from {
+    transform: translateX(24px) scale(0.9);
+    opacity: 0;
+  }
 }
 .killfeed .k.mine {
   box-shadow: inset 0 0 0 2px var(--ouro);
@@ -604,6 +653,18 @@ kbd {
 .center-msg .big {
   font-size: calc(72px * var(--hud-scale));
   line-height: 1;
+  font-weight: 700;
+  /* contorno grosso de "tinta" para ler sobre qualquer fundo */
+  -webkit-text-stroke: 6px var(--barro-800);
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 rgba(29, 20, 17, 0.45);
+  animation: popnum 0.35s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+@keyframes popnum {
+  from {
+    transform: scale(1.5);
+    opacity: 0.4;
+  }
 }
 .center-msg .sub {
   font-size: calc(18px * var(--hud-scale));
@@ -855,5 +916,15 @@ table.stats tr:nth-child(even) td {
   }
   .setting {
     grid-template-columns: 1fr;
+  }
+}
+
+/* acessibilidade: sem animações decorativas do HUD para quem pede menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .timer.urgent,
+  .killfeed .k,
+  .center-msg .big,
+  .inktank.low {
+    animation: none;
   }
 }

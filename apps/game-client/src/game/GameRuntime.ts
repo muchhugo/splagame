@@ -24,6 +24,7 @@ import { PaintLayout, PaintReplica, PhysicsWorld, aimDirection, buildFaces, init
 import { PALETTES, settingsStore, type Settings } from '../app/settings';
 import { AudioEngine, type SfxId } from './audio';
 import { CharacterView, type CharacterVisual } from './render/CharacterView';
+import { setToonLight } from './render/ToonMaterial';
 import { CameraRig } from './render/CameraRig';
 import { Environment } from './render/Environment';
 import { LevelRenderer } from './render/LevelRenderer';
@@ -99,6 +100,7 @@ export class GameRuntime {
   private frames = 0;
   private fpsTimer = 0;
   private hitmarkerT = 0;
+  private hitmarkerLethal = false;
   private damageT = 0;
   private prevInk = 100;
   private prevSpecial = 0;
@@ -111,6 +113,8 @@ export class GameRuntime {
   private hooks: RuntimeHooks;
   private lastPos = new Map<number, Vec3>();
   pendingTravelTarget: number | null = null;
+  /** Câmera de inspeção (somente testes/diagnóstico em dev): segue um ponto fixo em vez do jogador. */
+  debugView: { pos: Vec3; yaw: number; pitch: number } | null = null;
   private impactBudget = 0;
 
   private constructor(
@@ -152,6 +156,14 @@ export class GameRuntime {
     const rt = new GameRuntime(canvas, map, hooks);
     onProgress(0.15, 'Montando o pátio…');
     rt.physics = new PhysicsWorld(map);
+    const Lt = map.lighting;
+    setToonLight({
+      sunDir: new Vector3(...Lt.sunDirection).normalize(),
+      sunColor: new Color3(...Lt.sunColor),
+      skyColor: Color3.Lerp(new Color3(...Lt.skyTop), new Color3(1, 1, 1), 0.45),
+      groundColor: new Color3(...Lt.ambient),
+      shadowTint: new Color3(...Lt.shadowTint),
+    });
     const colors = rt.teamColors();
     rt.level = new LevelRenderer(rt.scene, map, rt.faces, rt.layout);
     rt.level.setTeamColors(colors[0], colors[1]);
@@ -326,8 +338,10 @@ export class GameRuntime {
         }
         return;
       case 'hit':
+        this.views.get(e.dst)?.hitReaction();
         if (e.src === this.myId) {
           this.hitmarkerT = e.lethal ? 0.35 : 0.18;
+          this.hitmarkerLethal = !!e.lethal;
           this.play('hit_confirm', undefined, undefined, e.lethal ? 1 : 0.8);
         }
         if (e.dst === this.myId) {
@@ -482,10 +496,13 @@ export class GameRuntime {
 
     // ---------- câmera e personagens ----------
     const alpha = this.acc / TICK_DT;
+    if (this.debugView) {
+      this.rig.update(dt, this.debugView.pos, this.debugView.yaw, this.debugView.pitch, false);
+    }
     if (pred) {
       const rp = pred.renderPos(alpha, dt);
       const s = pred.state;
-      this.rig.update(dt, rp, this.input.yaw, this.input.pitch, s.form === FORM_FLOW);
+      if (!this.debugView) this.rig.update(dt, rp, this.input.yaw, this.input.pitch, s.form === FORM_FLOW);
       this.updateView(this.myId, {
         pos: rp,
         yaw: s.yaw,
@@ -546,8 +563,10 @@ export class GameRuntime {
       this.remoteCosmetics(id, vis, dt);
     }
 
+    this.effects.cameraPos = [this.rig.camera.position.x, this.rig.camera.position.y, this.rig.camera.position.z];
     this.effects.update(dt);
     this.env.update(dt);
+    this.level.setTime(now / 1000);
     this.level.flushTexture();
     const cp = this.rig.camera.position;
     const cf = this.rig.camera.getDirection(Vector3.Forward());
@@ -700,14 +719,35 @@ export class GameRuntime {
       this.views.set(id, view);
     }
     const ground = this.physics.raycast([v.pos[0], v.pos[1] + 0.3, v.pos[2]], [0, -1, 0], 8);
-    view.update(dt, v, ground ? ground.point[1] : null);
+    const cp = this.rig.camera.position;
+    const camDist = Math.hypot(v.pos[0] - cp.x, v.pos[1] + 0.8 - cp.y, v.pos[2] - cp.z);
+    view.nearFade = Math.min(1, Math.max(0.2, (camDist - 0.9) / 0.9));
+    view.update(dt, v, ground ? ground.point[1] : null, this.sunAt(v.pos));
+  }
+
+  /** Luz do sol pré-calculada no chão sob o personagem (personagem escurece na sombra do cenário). */
+  private sunAt(p: Vec3): number {
+    const hit = this.layout.floorAt([p[0], p[1] + 0.05, p[2]], 1.2, 0.2);
+    if (!hit) return 1;
+    const r = this.level.atlas.rectBySurface[hit.surface.index];
+    if (!r) return 1;
+    const i = Math.min(r.w - 1, Math.floor(hit.u / r.texel));
+    const j = Math.min(r.h - 1, Math.floor(hit.v / r.texel));
+    const b = this.level.atlas.data[((r.y + j) * this.level.atlas.width + r.x + i) * 4 + 2] / 255;
+    return Math.min(1, Math.max(0, (b - 0.3) / 0.32));
   }
 
   private updateDomHud(dt: number) {
     this.hitmarkerT = Math.max(0, this.hitmarkerT - dt);
     this.damageT = Math.max(0, this.damageT - dt);
     const { hitmarker, blocked, damage } = hudDom;
-    if (hitmarker) hitmarker.style.opacity = String(Math.min(1, this.hitmarkerT * 6));
+    if (hitmarker) {
+      hitmarker.style.opacity = String(Math.min(1, this.hitmarkerT * 6));
+      // "pop" curto: começa um pouco maior e assenta (sem cobrir a mira)
+      const t = this.hitmarkerLethal ? this.hitmarkerT / 0.35 : this.hitmarkerT / 0.18;
+      hitmarker.style.transform = `scale(${(1 + Math.max(0, t - 0.5) * 0.5).toFixed(3)})`;
+      hitmarker.classList.toggle('lethal', this.hitmarkerLethal);
+    }
     if (damage) damage.style.opacity = String(Math.min(0.8, this.damageT * 2));
     if (blocked) {
       if (this.aimBlocked && this.predictor) {

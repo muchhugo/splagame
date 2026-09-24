@@ -52,7 +52,8 @@ export class NavGraph {
           const dy = m.pos[1] - n.pos[1];
           const hd = Math.hypot(m.pos[0] - n.pos[0], m.pos[2] - n.pos[2]);
           if (hd < 0.3 || hd > 1.6) continue;
-          const walk = Math.abs(dy) <= 0.45;
+          // degrau curto ou rampa dentro do limite de inclinação do controlador (~40°)
+          const walk = Math.abs(dy) <= 0.45 || Math.abs(dy) <= hd * 0.84;
           const drop = dy < -0.45 && dy > -3.2 && hd <= 1.6;
           if (!walk && !drop) continue;
           const hi = Math.max(n.pos[1], m.pos[1]);

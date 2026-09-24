@@ -72,7 +72,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** Paletas de apresentação. A regra lógica continua em TeamId, nunca em RGB. */
 export const PALETTES: Record<Settings['palette'], { name: string; team: [string, string] }> = {
-  padrao: { name: 'Padrão (Urucum × Anil)', team: ['#f24a1c', '#3346e8'] },
+  padrao: { name: 'Padrão (Urucum × Anil)', team: ['#ff6414', '#4a3dff'] },
   alto_contraste: { name: 'Alto contraste', team: ['#ffd500', '#6a00ff'] },
   daltonismo: { name: 'Daltonismo (laranja × azul)', team: ['#e69f00', '#0072b2'] },
 };

@@ -133,7 +133,9 @@ export function Hud() {
 
       {h.phase === 'countdown' ? (
         <div className="center-msg">
-          <div className="big">{Math.max(1, Math.ceil(h.timeLeftMs / 1000))}</div>
+          <div className="big" key={Math.ceil(h.timeLeftMs / 1000)}>
+            {Math.max(1, Math.ceil(h.timeLeftMs / 1000))}
+          </div>
           <div className="sub">Pinte o chão! Vence quem cobrir mais área.</div>
         </div>
       ) : null}
