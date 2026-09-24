@@ -6,7 +6,7 @@
 //    locais, fixture de voz ausente no host de produção, modo dev bloqueado em produção);
 // 3. custo do tick autoritativo com 4/8/16 participantes;
 // 4. uma pilha ISOLADA do commit atual (worktree temporária, portas livres, .env local
-//    derivado) e os testes de navegador: shell/iframe, partida, controle, treino,
+//    derivado) e os testes de navegador: shell/iframe, partida, controle, treino, menus,
 //    contrato de voz (fixture), e — com --voz e um LiveKit local em LIVEKIT_URL — a voz
 //    com mídia simulada; com --desempenho, a medição do cliente.
 // Relatório: e2e/out/validacao.json (e resumo no terminal). Código de saída ≠ 0 se algo falhar.
@@ -131,6 +131,7 @@ try {
       e2e('navegador: partida com dois humanos, tinta idêntica, limpeza', 'gameplay.mjs');
       e2e('navegador: controle (entrada, glifos, vibração, menu)', 'gamepad.mjs');
       e2e('navegador: treino rápido v2', 'tutorial.mjs');
+      e2e('navegador: menus sobre a arena (lobby, vitrine 3D, configurações, entrada na rodada, celular)', 'menus.mjs');
       e2e('navegador: contrato de voz pelo bridge (mesmo nome, userId)', 'voz-interface.mjs');
       if (!RAPIDO) e2e('navegador: capturas das telas (desktop e celular emulado)', 'capturas.mjs', { PREFIXO: 'validacao' });
       if (DESEMPENHO) e2e('desempenho do cliente (4×4 e 8×8)', 'desempenho.mjs', { ROTULO: 'validacao', CENARIOS: '4x4,8x8', RODADAS: '1' });

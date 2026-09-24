@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GAME_NAME } from '@borrifo/game-contracts';
 import { AppController } from '../app/AppController';
 import { settingsStore, teamColorsFor } from '../app/settings';
@@ -39,7 +39,22 @@ export function App() {
   const palette = useStore(settingsStore, (s) => s.palette);
   const teamPairId = useStore(uiStore, (s) => s.lobby?.teamPairId);
   const hudScale = useStore(settingsStore, (s) => s.hudScale);
+  const reduceMotion = useStore(settingsStore, (s) => s.reduceMotion);
   const [booted, setBooted] = useState(false);
+  // a interface do lobby recolhe (em vez de sumir) quando a rodada começa
+  const [leavingLobby, setLeavingLobby] = useState(false);
+  const prevScreen = useRef(screen);
+  useEffect(() => {
+    const was = prevScreen.current;
+    prevScreen.current = screen;
+    if (was !== 'lobby' || (screen !== 'match' && screen !== 'waiting')) return;
+    setLeavingLobby(true);
+    const t = setTimeout(() => setLeavingLobby(false), 700);
+    return () => clearTimeout(t);
+  }, [screen]);
+  useEffect(() => {
+    document.documentElement.dataset.reduceMotion = reduceMotion ? 'true' : 'false';
+  }, [reduceMotion]);
 
   // variáveis de cor das equipes (apresentação) e escala do HUD
   useEffect(() => {
@@ -120,7 +135,7 @@ export function App() {
     <>
       {screen === 'boot' || screen === 'connecting' ? <BootScreen connecting={screen === 'connecting'} /> : null}
       {screen === 'standalone' ? <StandaloneLogin onSubmit={onStandalone} /> : null}
-      {screen === 'lobby' ? <Lobby /> : null}
+      {screen === 'lobby' ? <Lobby /> : leavingLobby ? <Lobby leaving /> : null}
       {screen === 'waiting' ? <Waiting /> : null}
       <MapLoading />
       {screen === 'match' ? <Hud /> : null}

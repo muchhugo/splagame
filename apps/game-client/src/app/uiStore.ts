@@ -40,6 +40,8 @@ export interface UiState {
   mapLoading: { name: string; variant: string; progress: number } | null;
   /** Modo da rodada atual (vem do round.loading). */
   roundMode: GameModeId;
+  /** Ferramenta escolhida e ainda não confirmada pelo servidor (a vitrine mostra na hora). */
+  pendingWeapon: import('@borrifo/game-contracts').WeaponId | null;
 }
 
 export const uiStore = createStore<UiState>({
@@ -58,6 +60,7 @@ export const uiStore = createStore<UiState>({
   settingsOpen: false,
   mapOpen: false,
   pointerLocked: false,
+  pendingWeapon: null,
   sceneReady: false,
   audioState: 'locked',
   mapLoading: null,

@@ -124,8 +124,16 @@ describe('aparência cosmética', () => {
     expect(a.lobby!.players.find((p) => p.playerId === aid)!.appearance).toBe('a1');
     a.send(C2S.SET_APPEARANCE, { appearance: 'b3' });
     await b.waitFor(() => b.lobby!.players.find((p) => p.playerId === aid)?.appearance === 'b3', 3000, 'b vê b3');
-    // valores fora da lista são descartados pelo esquema (a sala segue viva, nada muda)
+    // forma completa: cabelo e cor do cabelo
+    a.send(C2S.SET_APPEARANCE, { appearance: 'b2h3c5' });
+    await b.waitFor(() => b.lobby!.players.find((p) => p.playerId === aid)?.appearance === 'b2h3c5', 3000, 'b vê b2h3c5');
+    a.send(C2S.SET_APPEARANCE, { appearance: 'b3' });
+    await b.waitFor(() => b.lobby!.players.find((p) => p.playerId === aid)?.appearance === 'b3', 3000, 'b volta a b3');
+    // valores fora do formato são descartados pelo esquema (a sala segue viva, nada muda)
     a.send(C2S.SET_APPEARANCE, { appearance: 'z9' });
+    a.send(C2S.SET_APPEARANCE, { appearance: 'a1h4c0' });
+    a.send(C2S.SET_APPEARANCE, { appearance: 'a1h0c6' });
+    a.send(C2S.SET_APPEARANCE, { appearance: '<b>a1' });
     a.send(C2S.SET_APPEARANCE, { appearance: 'a0', hitbox: 3 });
     await new Promise((r) => setTimeout(r, 300));
     expect(b.lobby!.players.find((p) => p.playerId === aid)!.appearance).toBe('b3');

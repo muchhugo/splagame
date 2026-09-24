@@ -4,7 +4,7 @@
  * permitidos) e o que não passa volta ao padrão, sem derrubar o resto.
  * Sem efeitos colaterais: testável fora do navegador.
  */
-import { APPEARANCE_IDS, DEFAULT_APPEARANCE, type AppearanceId } from '@borrifo/game-contracts';
+import { isAppearanceId, DEFAULT_APPEARANCE, type AppearanceId } from '@borrifo/game-contracts';
 import { DEFAULT_PAD_BINDS, PAD_ACTIONS, type PadAction, type PadPreset, type ResponseCurve } from '../game/input/gamepad';
 
 export const SETTINGS_VERSION = 2;
@@ -62,8 +62,13 @@ export interface Settings {
   gamepad: GamepadSettings;
   /** Versão do tutorial já concluída ou pulada (0 = nunca). */
   tutorialDone: number;
-  /** Aparência cosmética (base + tom de pele); o servidor valida e sincroniza. */
+  /** Aparência cosmética (base, tom de pele, cabelo e cor); o servidor valida e sincroniza. */
   appearance: AppearanceId;
+  /** Toque: sensibilidade da câmera, tamanho e opacidade dos botões, lados trocados (canhoto). */
+  touchSens: number;
+  touchScale: number;
+  touchOpacity: number;
+  touchSwap: boolean;
 }
 
 export const DEFAULT_KEYBINDS: Record<BindableAction, string> = {
@@ -123,6 +128,10 @@ export const DEFAULT_SETTINGS: Settings = {
   gamepad: DEFAULT_GAMEPAD,
   tutorialDone: 0,
   appearance: DEFAULT_APPEARANCE,
+  touchSens: 1,
+  touchScale: 1,
+  touchOpacity: 0.85,
+  touchSwap: false,
 };
 
 // ------------------------------------------------------------ validadores
@@ -212,7 +221,11 @@ export function sanitizeSettings(raw: unknown): Settings {
     keybinds: sanitizeKeybinds(raw.keybinds),
     gamepad: sanitizeGamepad(raw.gamepad),
     tutorialDone: num(raw.tutorialDone, 0, 1000, d.tutorialDone),
-    appearance: oneOf(raw.appearance, APPEARANCE_IDS, d.appearance),
+    appearance: isAppearanceId(raw.appearance) ? raw.appearance : d.appearance,
+    touchSens: num(raw.touchSens, 0.3, 3, d.touchSens),
+    touchScale: num(raw.touchScale, 0.8, 1.4, d.touchScale),
+    touchOpacity: num(raw.touchOpacity, 0.35, 1, d.touchOpacity),
+    touchSwap: bool(raw.touchSwap, d.touchSwap),
   };
 }
 

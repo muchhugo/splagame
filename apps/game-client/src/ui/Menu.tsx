@@ -17,13 +17,13 @@ export function Menu() {
   const c = getController();
   if (settingsOpen) return <SettingsPanel onClose={() => uiStore.set({ settingsOpen: false, ...(screen !== 'match' ? { menuOpen: false } : {}) })} />;
   return (
-    <div className="screen" onKeyDown={(e) => e.key === 'Escape' && c?.resumeGame()}>
+    <div className="screen settings-screen" onKeyDown={(e) => e.key === 'Escape' && c?.resumeGame()}>
       <div className="panel menu" role="dialog" aria-labelledby="menu-title">
-        <h2 id="menu-title" style={{ margin: 0 }}>
+        <h2 id="menu-title" className="menu-title">
           Menu
         </h2>
         {screen === 'match' ? <p className="muted" style={{ margin: 0, fontSize: 13 }}>A partida continua enquanto este menu está aberto.</p> : null}
-        <button className="btn primary" onClick={() => c?.resumeGame()} autoFocus>
+        <button className="btn primary big" onClick={() => c?.resumeGame()} autoFocus>
           {screen === 'match' ? 'Voltar ao jogo' : 'Fechar'}
         </button>
         <button className="btn ghost" onClick={() => uiStore.set({ settingsOpen: true })}>
@@ -57,13 +57,19 @@ export function Menu() {
   );
 }
 
-type Tab = 'controles' | 'controle' | 'video' | 'acessibilidade' | 'audio';
-const TAB_LABELS: Record<Tab, string> = { controles: 'Teclado e mouse', controle: 'Controle', video: 'Vídeo', acessibilidade: 'Acessibilidade', audio: 'Áudio' };
+type Tab = 'jogo' | 'graficos' | 'audio' | 'controles' | 'toque' | 'acessibilidade';
+const TAB_LABELS: Record<Tab, string> = { jogo: 'Jogo', graficos: 'Gráficos', audio: 'Áudio', controles: 'Controles', toque: 'Toque', acessibilidade: 'Acessibilidade' };
 
+/**
+ * Configurações em painel grande, com categorias claras. O cenário fica atrás, escurecido
+ * e desfocado de leve. Teclado, controle (L1/R1 trocam de categoria) e toque.
+ */
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   const s = useStore(settingsStore, (x) => x);
   const hints = useHints();
-  const [tab, setTab] = useState<Tab>(() => (hints.device === 'controle' ? 'controle' : 'controles'));
+  const screen = useStore(uiStore, (x) => x.screen);
+  const [tab, setTab] = useState<Tab>(() => (hints.device === 'controle' ? 'controles' : hints.device === 'toque' ? 'toque' : 'jogo'));
+  const [input, setInput] = useState<'teclado' | 'controle'>(() => (hints.device === 'controle' ? 'controle' : 'teclado'));
   const [listening, setListening] = useState<BindableAction | null>(null);
   const set = (p: Partial<Settings>) => settingsStore.set(p);
   const slider = (label: string, key: keyof Settings, min: number, max: number, step: number, fmt: (v: number) => string = (v) => v.toFixed(2)) => (
@@ -80,6 +86,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       <input type="checkbox" checked={s[key] as boolean} onChange={(e) => set({ [key]: e.target.checked } as Partial<Settings>)} />
     </label>
   );
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
   const bindKey = (e: React.KeyboardEvent) => {
     if (!listening) {
       if (e.code === 'Escape') onClose();
@@ -91,129 +98,160 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     setListening(null);
   };
   return (
-    <div className="screen" onKeyDown={bindKey}>
+    <div className="screen settings-screen" onKeyDown={bindKey}>
       <div className="panel settings" role="dialog" aria-labelledby="set-title">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 id="set-title" style={{ margin: 0 }}>
-            Configurações
-          </h2>
-          <button className="btn small ghost" data-sfx="back" onClick={onClose}>
-            Fechar
+        <header className="set-head">
+          <h2 id="set-title">Configurações</h2>
+          <button className="round-btn" data-sfx="back" onClick={onClose} aria-label="Fechar">
+            ✕
           </button>
-        </div>
-        <div className="tabs" role="tablist">
-          {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
-            <button key={t} className="btn small ghost" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-        {tab === 'controles' ? (
-          <>
-            {slider('Sensibilidade do mouse', 'sensitivity', 0.2, 3, 0.05)}
-            {toggle('Inverter eixo vertical', 'invertY')}
-            <label className="setting">
-              <span>Forma Pião</span>
-              <select value={s.flowMode} onChange={(e) => set({ flowMode: e.target.value as Settings['flowMode'] })}>
-                <option value="hold">Segurar</option>
-                <option value="toggle">Alternar</option>
-              </select>
-            </label>
-            <label className="setting">
-              <span>Mapa tático</span>
-              <select value={s.mapMode} onChange={(e) => set({ mapMode: e.target.value as Settings['mapMode'] })}>
-                <option value="hold">Segurar</option>
-                <option value="toggle">Alternar</option>
-              </select>
-            </label>
-            {(Object.keys(ACTION_LABELS) as BindableAction[]).map((a) => (
-              <div className="setting" key={a}>
-                <span>{ACTION_LABELS[a]}</span>
-                <button className={`keybtn ${listening === a ? 'listening' : ''}`} onClick={() => setListening(a)}>
-                  {listening === a ? 'Pressione uma tecla…' : keyName(s.keybinds[a])}
-                </button>
-              </div>
+        </header>
+        <div className="set-body">
+          <nav className="set-tabs" role="tablist" aria-label="Categorias" aria-orientation="vertical">
+            {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
+              <button key={t} className={`set-tab ${tab === t ? 'on' : ''}`} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+                {TAB_LABELS[t]}
+              </button>
             ))}
-            <button className="btn small ghost" onClick={() => set({ keybinds: DEFAULT_SETTINGS.keybinds })}>
-              Restaurar teclas padrão
-            </button>
-          </>
-        ) : null}
-        {tab === 'controle' ? <GamepadTab /> : null}
-        {tab === 'video' ? (
-          <>
-            <label className="setting">
-              <span>Qualidade gráfica</span>
-              <select value={s.quality} onChange={(e) => set({ quality: e.target.value as Settings['quality'] })}>
-                <option value="baixa">Baixa (GPU integrada)</option>
-                <option value="media">Média</option>
-                <option value="alta">Alta</option>
-              </select>
-            </label>
-            <label className="setting">
-              <span>Limite de FPS</span>
-              <select value={s.fpsCap} onChange={(e) => set({ fpsCap: Number(e.target.value) as Settings['fpsCap'] })}>
-                <option value={0}>Sem limite (vsync)</option>
-                <option value={30}>30</option>
-                <option value={60}>60</option>
-                <option value={120}>120</option>
-              </select>
-            </label>
-            <label className="setting">
-              <span>Resolução interna</span>
-              <select value={s.resolution} onChange={(e) => set({ resolution: Number(e.target.value) })}>
-                <option value={0}>Automática (pela qualidade)</option>
-                <option value={1}>100% (nativa)</option>
-                <option value={0.85}>85%</option>
-                <option value={0.7}>70%</option>
-                <option value={0.5}>50%</option>
-              </select>
-            </label>
-            {toggle('Pós-processamento (antisserrilhado e brilho)', 'postFx')}
-            <label className="setting">
-              <span>Partículas de tinta</span>
-              <select value={s.particles} onChange={(e) => set({ particles: e.target.value as Settings['particles'] })}>
-                <option value="normal">Normais</option>
-                <option value="reduzidas">Reduzidas</option>
-              </select>
-            </label>
-            {slider('Campo de visão (°)', 'fov', 55, 95, 1, (v) => String(v))}
-            {slider('Deslocamento do ombro', 'shoulder', -0.9, 0.9, 0.05)}
-            {slider('Tamanho do HUD', 'hudScale', 0.8, 1.4, 0.05)}
-          </>
-        ) : null}
-        {tab === 'acessibilidade' ? (
-          <>
-            <label className="setting">
-              <span>Paleta das turmas</span>
-              <select value={s.palette} onChange={(e) => set({ palette: e.target.value as Settings['palette'] })}>
-                {Object.entries(PALETTES).map(([k, p]) => (
-                  <option key={k} value={k}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {toggle('Padrões na tinta (listras ▲ / pontos ●)', 'paintPatterns')}
-            {toggle('Reduzir tremor da câmera', 'reduceShake')}
-            {toggle('Reduzir clarões e partículas', 'reduceFlashes')}
-            {toggle('Reduzir animações da interface', 'reduceMotion')}
-            <p className="muted" style={{ fontSize: 12 }}>
-              A cor é só apresentação: trocar a paleta não altera o dono lógico da tinta. As turmas também são identificadas por símbolo (▲ e ●), além da cor.
-            </p>
-          </>
-        ) : null}
-        {tab === 'audio' ? (
-          <>
-            {slider('Volume geral', 'volumeMaster', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
-            {slider('Efeitos', 'volumeSfx', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
-            {slider('Música', 'volumeMusic', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`)}
-            {toggle('Silenciar o jogo', 'muted')}
-            <p className="muted" style={{ fontSize: 12 }}>
-              O volume da voz é controlado pelo aplicativo (host), não pelo jogo.
-            </p>
-          </>
-        ) : null}
+          </nav>
+          <section className="set-page" key={tab}>
+            {tab === 'jogo' ? (
+              <>
+                <h3 className="hub-h">Câmera e HUD</h3>
+                {slider('Campo de visão (°)', 'fov', 55, 95, 1, (v) => String(v))}
+                {slider('Deslocamento do ombro', 'shoulder', -0.9, 0.9, 0.05)}
+                {slider('Tamanho do HUD', 'hudScale', 0.8, 1.4, 0.05)}
+                <h3 className="hub-h">Ações</h3>
+                <label className="setting">
+                  <span>Forma Pião</span>
+                  <select value={s.flowMode} onChange={(e) => set({ flowMode: e.target.value as Settings['flowMode'] })}>
+                    <option value="hold">Segurar</option>
+                    <option value="toggle">Alternar</option>
+                  </select>
+                </label>
+                <label className="setting">
+                  <span>Mapa tático</span>
+                  <select value={s.mapMode} onChange={(e) => set({ mapMode: e.target.value as Settings['mapMode'] })}>
+                    <option value="hold">Segurar</option>
+                    <option value="toggle">Alternar</option>
+                  </select>
+                </label>
+                <h3 className="hub-h">Treino</h3>
+                <button className="btn small ghost" onClick={() => restartTutorial(getController()?.tutorialContext())}>
+                  {screen === 'match' ? 'Refazer o treino rápido agora' : 'Refazer o treino na próxima rodada'}
+                </button>
+              </>
+            ) : null}
+            {tab === 'graficos' ? (
+              <>
+                <label className="setting">
+                  <span>Qualidade gráfica</span>
+                  <select value={s.quality} onChange={(e) => set({ quality: e.target.value as Settings['quality'] })}>
+                    <option value="baixa">Baixa (GPU integrada)</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </label>
+                <label className="setting">
+                  <span>Limite de FPS</span>
+                  <select value={s.fpsCap} onChange={(e) => set({ fpsCap: Number(e.target.value) as Settings['fpsCap'] })}>
+                    <option value={0}>Sem limite (vsync)</option>
+                    <option value={30}>30</option>
+                    <option value={60}>60</option>
+                    <option value={120}>120</option>
+                  </select>
+                </label>
+                <label className="setting">
+                  <span>Resolução interna</span>
+                  <select value={s.resolution} onChange={(e) => set({ resolution: Number(e.target.value) })}>
+                    <option value={0}>Automática (pela qualidade)</option>
+                    <option value={1}>100% (nativa)</option>
+                    <option value={0.85}>85%</option>
+                    <option value={0.7}>70%</option>
+                    <option value={0.5}>50%</option>
+                  </select>
+                </label>
+                {toggle('Pós-processamento (antisserrilhado e brilho)', 'postFx')}
+                <label className="setting">
+                  <span>Partículas de tinta</span>
+                  <select value={s.particles} onChange={(e) => set({ particles: e.target.value as Settings['particles'] })}>
+                    <option value="normal">Normais</option>
+                    <option value="reduzidas">Reduzidas</option>
+                  </select>
+                </label>
+                <p className="muted small">Na qualidade baixa, o palco do lobby mostra até 3 pessoas por turma (a lista mostra todo mundo).</p>
+              </>
+            ) : null}
+            {tab === 'audio' ? (
+              <>
+                {slider('Volume geral', 'volumeMaster', 0, 1, 0.05, pct)}
+                {slider('Efeitos', 'volumeSfx', 0, 1, 0.05, pct)}
+                {slider('Música', 'volumeMusic', 0, 1, 0.05, pct)}
+                {toggle('Silenciar o jogo', 'muted')}
+                <p className="muted small">O volume da voz é controlado pelo aplicativo (host), não pelo jogo.</p>
+              </>
+            ) : null}
+            {tab === 'controles' ? (
+              <>
+                <div className="seg" role="radiogroup" aria-label="Dispositivo">
+                  <button role="radio" aria-checked={input === 'teclado'} className={input === 'teclado' ? 'on' : ''} onClick={() => setInput('teclado')}>
+                    Teclado e mouse
+                  </button>
+                  <button role="radio" aria-checked={input === 'controle'} className={input === 'controle' ? 'on' : ''} onClick={() => setInput('controle')}>
+                    Controle
+                  </button>
+                </div>
+                {input === 'teclado' ? (
+                  <>
+                    {slider('Sensibilidade do mouse', 'sensitivity', 0.2, 3, 0.05)}
+                    {toggle('Inverter eixo vertical', 'invertY')}
+                    {(Object.keys(ACTION_LABELS) as BindableAction[]).map((a) => (
+                      <div className="setting" key={a}>
+                        <span>{ACTION_LABELS[a]}</span>
+                        <button className={`keybtn ${listening === a ? 'listening' : ''}`} onClick={() => setListening(a)}>
+                          {listening === a ? 'Pressione uma tecla…' : keyName(s.keybinds[a])}
+                        </button>
+                      </div>
+                    ))}
+                    <button className="btn small ghost" onClick={() => set({ keybinds: DEFAULT_SETTINGS.keybinds })}>
+                      Restaurar teclas padrão
+                    </button>
+                  </>
+                ) : (
+                  <GamepadTab />
+                )}
+              </>
+            ) : null}
+            {tab === 'toque' ? (
+              <>
+                {slider('Sensibilidade da câmera no toque', 'touchSens', 0.3, 3, 0.05)}
+                {slider('Tamanho dos botões', 'touchScale', 0.8, 1.4, 0.05, pct)}
+                {slider('Opacidade dos botões', 'touchOpacity', 0.35, 1, 0.05, pct)}
+                {toggle('Trocar os lados (analógico à direita)', 'touchSwap')}
+                <p className="muted small">Os controles de toque aparecem em aparelhos com tela de toque. Ainda não foram verificados em celular físico.</p>
+              </>
+            ) : null}
+            {tab === 'acessibilidade' ? (
+              <>
+                <label className="setting">
+                  <span>Paleta das turmas</span>
+                  <select value={s.palette} onChange={(e) => set({ palette: e.target.value as Settings['palette'] })}>
+                    {Object.entries(PALETTES).map(([k, p]) => (
+                      <option key={k} value={k}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {toggle('Padrões na tinta (listras ▲ / pontos ●)', 'paintPatterns')}
+                {toggle('Reduzir tremor da câmera', 'reduceShake')}
+                {toggle('Reduzir clarões e partículas', 'reduceFlashes')}
+                {toggle('Reduzir animações da interface', 'reduceMotion')}
+                <p className="muted small">A cor é só apresentação: trocar a paleta não altera o dono lógico da tinta. As turmas também são identificadas por símbolo (▲ e ●), além da cor.</p>
+              </>
+            ) : null}
+          </section>
+        </div>
       </div>
     </div>
   );

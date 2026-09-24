@@ -1,5 +1,5 @@
-import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
-import type { BuffKind, GameEvent, GameModeId, LobbyPlayer, ObjectiveSnapshot, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
+import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, FreeCamera, HemisphericLight, RenderTargetTexture, Scene, Vector3 } from '@babylonjs/core';
+import type { AppearanceId, BuffKind, GameEvent, GameModeId, LobbyPlayer, ObjectiveSnapshot, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
 
 const BUFF_NAME: Record<BuffKind, string> = { embalo: 'Embalo', folego: 'Fôlego' };
 import {
@@ -32,6 +32,8 @@ import { settingsStore, teamColorsFor, type Settings } from '../app/settings';
 import { AudioEngine, type SfxId } from './audio';
 import { CharacterView, type CharacterVisual } from './render/CharacterView';
 import { ModeView } from './render/ModeView';
+import { LobbyStage, type StageFraming, type StageMode, type StagePlayer } from './render/LobbyStage';
+import { stageStore } from './stage';
 import { setToonLight } from './render/ToonMaterial';
 import { CameraRig } from './render/CameraRig';
 import { Environment } from './render/Environment';
@@ -94,6 +96,14 @@ export class GameRuntime {
   /** Buff/Mutirão do jogador local (do snapshot próprio). */
   private myMode: { bf: BuffKind | null; bt: number; mt: number; mc: number } = { bf: null, bt: 0, mt: 0, mc: 0 };
   rig!: CameraRig;
+  /** Palco do lobby (personagens de quem está na sala, dentro da arena). */
+  stage!: LobbyStage;
+  /** Transição cinematográfica até o spawn: pose de onde a câmera saiu e o instante. */
+  private cineFrom: { pos: Vector3; rot: Vector3; fov: number } | null = null;
+  private cineAt = 0;
+  private roundLoadAt = 0;
+  private flyA0 = 0;
+  private stagePubAt = 0;
   input: InputManager;
   audio: AudioEngine;
   replica: PaintReplica;
@@ -204,6 +214,7 @@ export class GameRuntime {
     rt.modeView = new ModeView(rt.scene, map, colors);
     rt.rig = new CameraRig(rt.scene, rt.physics);
     rt.scene.activeCamera = rt.rig.camera;
+    rt.stage = new LobbyStage(rt.scene, rt.physics, map, colors);
     // luzes para personagens e objetos (o cenário usa shader próprio com a mesma luz)
     const hemi = new HemisphericLight('ceu', new Vector3(0, 1, 0), rt.scene);
     hemi.diffuse = new Color3(...map.lighting.skyTop).scale(0.55).add(new Color3(0.3, 0.3, 0.3));
@@ -247,6 +258,8 @@ export class GameRuntime {
     this.level?.setPatterns(s.paintPatterns);
     this.effects?.setTeamColors(colors);
     this.modeView?.setTeamColors(colors);
+    this.stage?.setColors(colors);
+    if (this.stage) this.stage.perTeam = s.quality === 'baixa' ? 3 : 5;
     if (this.effects) {
       this.effects.reduceFlashes = s.reduceFlashes;
       this.effects.particleScale = s.particles === 'reduzidas' ? 0.5 : 1;
@@ -291,6 +304,17 @@ export class GameRuntime {
 
   beginRound(roundId: number, contextTag: number) {
     this.roundId = roundId;
+    // a interface recolhe; a câmera sai do palco num sobrevoo até o spawn
+    const from = this.rig.camera;
+    this.cineFrom = { pos: from.position.clone(), rot: from.rotation.clone(), fov: from.fov };
+    this.roundLoadAt = performance.now();
+    this.cineAt = 0;
+    {
+      const { min, max } = this.map.bounds;
+      this.flyA0 = Math.atan2(from.position.x - (min[0] + max[0]) / 2, from.position.z - (min[2] + max[2]) / 2);
+    }
+    this.stage.hide();
+    stageStore.set({ tags: [], intro: false });
     this.replica.expectRound(roundId, contextTag);
     this.level.atlas.setAll(this.replica.state.owner);
     this.effects.clearAll();
@@ -313,6 +337,112 @@ export class GameRuntime {
     this.wheelLoops.clear();
     this.remoteLoops.clear();
     this.chargeLoopOn = this.swimLoopOn = this.enemyLoopOn = this.dragLoopOn = false;
+  }
+
+  /** De volta ao lobby: some com os bonecos da rodada e o palco reaparece. */
+  private backToLobby() {
+    for (const v of this.views.values()) v.dispose();
+    this.views.clear();
+    this.interp.clear();
+    this.predictor?.dispose();
+    this.predictor = null;
+    this.lastSnapshot = null;
+    this.cineFrom = null;
+    this.roundLoadAt = 0;
+    this.stage.show();
+  }
+
+  /* ------------------------------ palco do lobby ------------------------------ */
+
+  setStagePlayers(players: StagePlayer[], myId: number) {
+    this.stage.setPlayers(players, myId);
+    stageStore.set({ hidden: [...this.stage.hidden] as [number, number] });
+  }
+  setStageMode(mode: StageMode) {
+    this.stage.setMode(mode);
+  }
+  setStageFraming(f: StageFraming) {
+    this.stage.framing = f;
+  }
+  rotateStage(delta: number) {
+    this.stage.rotate(delta);
+  }
+  playIntro() {
+    this.stage.playIntro();
+    stageStore.set({ intro: true });
+  }
+  skipIntro() {
+    this.stage.skipIntro();
+    stageStore.set({ intro: false });
+  }
+
+  /**
+   * Retratos do PRÓPRIO modelo 3D (cabeça e ombros), para as miniaturas de cabelo e
+   * visual: cada aparência é montada longe do mapa, desenhada numa textura só com as
+   * malhas dela e lida de volta como imagem. Nenhum desenho 2D à parte.
+   */
+  async portraits(appearances: AppearanceId[], team: TeamId, size = 112): Promise<string[]> {
+    if (this.disposed) return [];
+    const scene = this.scene;
+    const Y = -240;
+    // a projeção segue a proporção da tela: a textura tem a mesma proporção e o
+    // retrato é o quadrado central (sem esticar em tela larga ou celular em pé)
+    const aspect = this.engine.getAspectRatio(this.rig.camera);
+    const rw = Math.round(aspect >= 1 ? size * aspect : size);
+    const rh = Math.round(aspect >= 1 ? size : size / aspect);
+    const rtt = new RenderTargetTexture('retrato', { width: rw, height: rh }, scene, false);
+    rtt.clearColor = new Color4(0, 0, 0, 0);
+    const cam = new FreeCamera('camera-retrato', new Vector3(0.44, Y + 1.58, 1.3), scene);
+    cam.setTarget(new Vector3(0, Y + 1.42, 0));
+    // FOV vertical; em tela em pé, abre para o quadrado central ter o mesmo enquadramento
+    cam.fov = aspect >= 1 ? 0.62 : 2 * Math.atan(Math.tan(0.31) / aspect);
+    cam.minZ = 0.05;
+    rtt.activeCamera = cam;
+    const colors = this.teamColors();
+    const views = appearances.map((a, i) => {
+      const v = new CharacterView(scene, 7000 + i, team, 'esguicho', colors[team], false, false, a);
+      v.hideMarker();
+      const vis: CharacterVisual = { pos: [0, Y, 0], yaw: 0, pitch: 0, speed: 0, vy: 0, grounded: true, form: 0, submerged: false, climbing: false, firing: false, charging: false, charge: 0, dragging: false, swinging: false, alive: true, protected: false, hp: 100, ink: 80, inEnemyInk: false, travel: 0 };
+      v.camDist = 1.2;
+      v.update(0.016, vis, Y, 1);
+      v.root.setEnabled(false);
+      return v;
+    });
+    const out: string[] = [];
+    try {
+      await scene.whenReadyAsync();
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d')!;
+      for (const v of views) {
+        if (this.disposed) break;
+        v.root.setEnabled(true);
+        for (const n of v.root.getDescendants(false)) (n as unknown as { computeWorldMatrix?: (f: boolean) => void }).computeWorldMatrix?.(true);
+        rtt.renderList = v.root.getChildMeshes(false).filter((m) => m.isEnabled() && m.isVisible && !m.name.startsWith('sombra'));
+        rtt.render();
+        const px = (await rtt.readPixels()) as Uint8Array | null;
+        v.root.setEnabled(false);
+        if (!px) {
+          out.push('');
+          continue;
+        }
+        // WebGL devolve de baixo para cima; recorta o quadrado central
+        const img = ctx.createImageData(size, size);
+        const ox = Math.floor((rw - size) / 2);
+        const oy = Math.floor((rh - size) / 2);
+        for (let y = 0; y < size; y++) {
+          const row = rh - 1 - (oy + y);
+          img.data.set(px.subarray((row * rw + ox) * 4, (row * rw + ox + size) * 4), y * size * 4);
+        }
+        ctx.putImageData(img, 0, 0);
+        out.push(canvas.toDataURL('image/png'));
+      }
+    } finally {
+      for (const v of views) v.dispose();
+      rtt.dispose();
+      cam.dispose();
+    }
+    return out;
   }
 
   onPaintSnapshot(s: PaintSnapshotWire) {
@@ -343,6 +473,7 @@ export class GameRuntime {
       this.play('round_start');
       this.audio.startMusic();
     }
+    if (phase === 'lobby' && prev !== 'lobby') this.backToLobby();
     if (phase === 'finishing' && prev !== 'finishing') {
       this.play('round_end');
       this.roundEndAt = performance.now();
@@ -653,7 +784,10 @@ export class GameRuntime {
     if (pred) {
       const rp = pred.renderPos(alpha, dt);
       const s = pred.state;
-      if (!this.debugView) this.rig.update(dt, rp, this.input.yaw, this.input.pitch, s.form === FORM_FLOW);
+      if (!this.debugView) {
+        this.rig.update(dt, rp, this.input.yaw, this.input.pitch, s.form === FORM_FLOW);
+        this.blendCine(dt);
+      }
       this.updateView(this.myId, {
         pos: rp,
         yaw: s.yaw,
@@ -683,10 +817,13 @@ export class GameRuntime {
       this.localAudio(pred);
       this.emptyTankAudio(pred, dt);
     } else if (!this.debugView) {
-      // órbita lenta de apresentação antes da rodada
-      const t = now * 0.00005;
-      this.rig.camera.position.set(Math.cos(t) * 38, 16, Math.sin(t) * 26);
-      this.rig.camera.setTarget(new Vector3(0, 1, 0));
+      if (this.stage.active) {
+        this.stage.update(dt, this.rig.camera, this.engine.getAspectRatio(this.rig.camera), (p) => {
+          const g = this.physics.raycast([p[0], p[1] + 0.3, p[2]], [0, -1, 0], 3);
+          return g ? g.point[1] : null;
+        });
+        if (this.stage.introPlaying !== stageStore.get().intro) stageStore.set({ intro: this.stage.introPlaying });
+      } else this.mapFlyover(now, dt);
     }
     const rTick = this.interp.renderTick(now);
     for (const id of this.interp.ids()) {
@@ -743,6 +880,7 @@ export class GameRuntime {
     this.audio.setListener([cp.x, cp.y, cp.z], [cf.x, cf.y, cf.z]);
     this.updateDomHud(dt);
     this.updateNameplates();
+    this.publishStage(now);
     this.hudTimer += dt;
     if (this.hudTimer >= 1 / 15) {
       this.hudTimer = 0;
@@ -1183,6 +1321,62 @@ export class GameRuntime {
     }
   }
 
+  private publishStage(now: number) {
+    if (!this.stage.active || now - this.stagePubAt < 50) return;
+    this.stagePubAt = now;
+    stageStore.set({ tags: this.stage.tags((p) => this.projectToScreen(p), this.rig.camera) });
+  }
+
+  /**
+   * Sobrevoo do mapa enquanto a rodada carrega: órbita alta que desce em direção ao
+   * centro disputado, continuando de onde a câmera do palco estava.
+   */
+  private mapFlyover(now: number, dt: number) {
+    const cam = this.rig.camera;
+    const { min, max } = this.map.bounds;
+    const mc = new Vector3((min[0] + max[0]) / 2, 0, (min[2] + max[2]) / 2);
+    const half = Math.max(max[0] - min[0], max[2] - min[2]) / 2;
+    if (!this.roundLoadAt) {
+      // sem rodada nem palco (resultado antigo, espera): órbita lenta de apresentação
+      const t = now * 0.00005;
+      cam.position.set(mc.x + Math.cos(t) * half * 0.95, 16, mc.z + Math.sin(t) * half * 0.65);
+      cam.setTarget(new Vector3(mc.x, 1, mc.z));
+      cam.fov += ((56 * Math.PI) / 180 - cam.fov) * Math.min(1, dt * 2);
+      return;
+    }
+    const t = (now - this.roundLoadAt) / 1000;
+    const a = this.flyA0 + t * 0.22;
+    const R = half * (0.95 - Math.min(0.35, t * 0.06));
+    const h = 17 - Math.min(6, t * 1.2);
+    const want = new Vector3(mc.x + Math.sin(a) * R, h, mc.z + Math.cos(a) * R);
+    // sai do palco com suavidade e depois acompanha a órbita
+    const k = t < 1.5 ? 1 - Math.exp(-dt * (1.5 + t * 3)) : 1;
+    cam.position = Vector3.Lerp(cam.position, want, k);
+    cam.setTarget(new Vector3(mc.x, 1, mc.z));
+    cam.fov += ((56 * Math.PI) / 180 - cam.fov) * Math.min(1, dt * 2);
+    // a mistura com a câmera do ombro parte da última pose do sobrevoo
+    this.cineFrom = { pos: cam.position.clone(), rot: cam.rotation.clone(), fov: cam.fov };
+    this.cineAt = 0;
+  }
+
+  /** Mistura a câmera cinematográfica com a do ombro no começo da contagem (~1,4 s). */
+  private blendCine(dt: number) {
+    if (!this.cineFrom) return;
+    const T = 1.4;
+    this.cineAt += dt;
+    const k = Math.min(1, this.cineAt / T);
+    const e = k * k * (3 - 2 * k);
+    const cam = this.rig.camera;
+    // a pose da última câmera do sobrevoo acompanha o fim da órbita
+    cam.position = Vector3.Lerp(this.cineFrom.pos, cam.position, e);
+    const r0 = this.cineFrom.rot;
+    const wrap = (x: number) => Math.atan2(Math.sin(x), Math.cos(x));
+    cam.rotation.set(r0.x + wrap(cam.rotation.x - r0.x) * e, r0.y + wrap(cam.rotation.y - r0.y) * e, 0);
+    const fov = (settingsStore.get().fov * Math.PI) / 180;
+    cam.fov = this.cineFrom.fov + (fov - this.cineFrom.fov) * e;
+    if (k >= 1) this.cineFrom = null;
+  }
+
   private projectToScreen(p: Vec3): [number, number] | null {
     const w = this.engine.getRenderWidth();
     const h = this.engine.getRenderHeight();
@@ -1332,6 +1526,8 @@ export class GameRuntime {
     this.predictor?.dispose();
     this.effects?.dispose();
     this.modeView?.dispose();
+    this.stage?.dispose();
+    stageStore.set({ tags: [], intro: false });
     this.env?.dispose();
     this.level?.dispose();
     this.pipeline?.dispose();

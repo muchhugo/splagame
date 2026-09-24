@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { uiStore } from '../app/uiStore';
+import { useStore } from '../app/store';
+import { settingsStore } from '../app/settings';
 import { getController } from './App';
 
 /**
@@ -16,12 +18,15 @@ export function TouchControls() {
     const rt = () => getController()?.runtime;
     const onLook = (e: PointerEvent) => {
       const s = state.current;
-      if (e.type === 'pointerdown' && e.clientX > innerWidth / 2 && s.lookId < 0 && !(e.target as HTMLElement).closest('button')) {
+      // metade da câmera: direita (ou esquerda, com os lados trocados)
+      const lookSide = settingsStore.get().touchSwap ? e.clientX < innerWidth / 2 : e.clientX > innerWidth / 2;
+      if (e.type === 'pointerdown' && lookSide && s.lookId < 0 && !(e.target as HTMLElement).closest('button')) {
         s.lookId = e.pointerId;
         s.lx = e.clientX;
         s.ly = e.clientY;
       } else if (e.type === 'pointermove' && e.pointerId === s.lookId) {
-        rt()?.input.touchLook(e.clientX - s.lx, e.clientY - s.ly);
+        const k = settingsStore.get().touchSens;
+        rt()?.input.touchLook((e.clientX - s.lx) * k, (e.clientY - s.ly) * k);
         s.lx = e.clientX;
         s.ly = e.clientY;
       } else if ((e.type === 'pointerup' || e.type === 'pointercancel') && e.pointerId === s.lookId) s.lookId = -1;
@@ -32,6 +37,7 @@ export function TouchControls() {
       rt()?.input.setTouch(0, 0, false, false);
     };
   }, [enabled]);
+  const t = { scale: useStore(settingsStore, (x) => x.touchScale), opacity: useStore(settingsStore, (x) => x.touchOpacity), swap: useStore(settingsStore, (x) => x.touchSwap) };
   if (!enabled) return null;
   const push = () => {
     const s = state.current;
@@ -75,7 +81,7 @@ export function TouchControls() {
   });
   const tap = (a: 'jump' | 'secondary' | 'special') => ({ onPointerDown: () => getController()?.runtime?.input.touchAction(a) });
   return (
-    <div className="touch">
+    <div className={`touch ${t.swap ? 'swap' : ''}`} style={{ ['--touch-scale' as string]: t.scale, ['--touch-opacity' as string]: t.opacity }}>
       <div className="tsys">
         <button aria-label="Mapa tático" onPointerDown={() => getController()?.runtime?.input.toggleMap()}>
           Mapa

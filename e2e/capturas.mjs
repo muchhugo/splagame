@@ -25,21 +25,23 @@ async function fluxo(label, ctxOpts, user, modo = 'territorio') {
   const errs = watchErrors(page, label);
   await openStandalone(page, user, `cap-${label}-${Date.now().toString(36)}`);
   await page.waitForTimeout(900);
+  await shot(page, `${label}-abertura`);
+  await page.evaluate(() => window.__borrifo.controller.skipIntro());
+  await page.waitForTimeout(1200);
   if (modo !== 'territorio') {
     await page.evaluate((m) => window.__borrifo.controller.setOptions({ mode: m }), modo);
     await page.waitForFunction((m) => window.__borrifo.uiStore.get().lobby?.mode === m, modo);
     await page.waitForTimeout(400);
   }
   await shot(page, `${label}-lobby`);
-  // abas do lobby no celular (partida e você)
-  if (ctxOpts.hasTouch) {
-    for (const t of ['Partida', 'Você']) {
-      await clickText(page, t);
-      await page.waitForTimeout(350);
-      await shot(page, `${label}-lobby-${t === 'Você' ? 'voce' : 'partida'}`);
-    }
-    await clickText(page, 'Equipes');
+  // abas do lobby (partida e você: na aba Você a câmera fecha no próprio personagem)
+  for (const t of ['Partida', 'Você']) {
+    await page.click(`[role=tab]:has-text("${t}")`);
+    await page.waitForTimeout(t === 'Você' ? 2200 : 500);
+    await shot(page, `${label}-lobby-${t === 'Você' ? 'voce' : 'partida'}`);
   }
+  await page.click('[role=tab]:has-text("Sala")');
+  await page.waitForTimeout(800);
   // configurações (pelo menu)
   await page.evaluate(() => window.__borrifo.uiStore.set({ menuOpen: true }));
   await page.waitForTimeout(500);

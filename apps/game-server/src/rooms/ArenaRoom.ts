@@ -42,7 +42,9 @@ import {
   type FormationPlan,
   type GameModeId,
   type MapChoice,
-  APPEARANCE_IDS,
+  formatAppearanceId,
+  HAIR_COLOR_COUNT,
+  HAIR_STYLE_COUNT,
   DEFAULT_APPEARANCE,
   type AppearanceId,
   StartSchema,
@@ -632,8 +634,8 @@ export class ArenaRoom extends Room {
           userId: null,
           displayName: BOT_NAMES[(id + team) % BOT_NAMES.length],
           avatarUrl: null,
-          // bots variam entre as duas bases e os tons (identificados como bots na interface)
-          appearance: APPEARANCE_IDS[(id * 3) % APPEARANCE_IDS.length],
+          // bots variam base, tom, cabelo e cor (identificados como bots na interface)
+          appearance: formatAppearanceId({ base: (id * 3) % 2 ? 'b' : 'a', tone: (id * 7) % 4, hair: (id * 5) % HAIR_STYLE_COUNT, hairColor: (id * 11) % HAIR_COLOR_COUNT }),
           isBot: true,
           team,
           weaponId: (['esguicho', 'rodo', 'estilingue', 'esguicho'] as const)[(f.humans[team] + k) % 4],

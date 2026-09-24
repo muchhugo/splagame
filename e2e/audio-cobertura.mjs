@@ -11,6 +11,7 @@ async function session(weapon) {
   errs.push(...[]);
   const e = watchErrors(page, weapon);
   await openStandalone(page, 'gabi', `cob-${weapon}-${Date.now().toString(36)}`);
+  await page.click('[role=tab]:has-text("Você")');
   await page.click(`button[role=radio]:has-text("${weapon}")`);
   await page.waitForFunction((w) => window.__borrifo.uiStore.get().lobby.players.some((p) => p.weaponId === w.toLowerCase()), weapon);
   await page.waitForFunction(() => window.__borrifo.controller.runtime.audio.state === 'running', null, { timeout: 15000 });

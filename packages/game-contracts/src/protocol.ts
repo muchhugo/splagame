@@ -10,15 +10,43 @@ export type WeaponId = 'esguicho' | 'rodo' | 'estilingue';
 export const WEAPON_IDS: readonly WeaponId[] = ['esguicho', 'rodo', 'estilingue'];
 
 /**
- * Aparência COSMÉTICA do personagem: base humana ('a' = apresentação masculina,
- * 'b' = apresentação feminina) × tom de pele (0–3), escolhida pelo jogador. Não
- * muda hitbox, movimento nem regras, e nunca é deduzida de foto, nome ou voz.
+ * Aparência COSMÉTICA do personagem, escolhida pelo jogador: base humana ('a' =
+ * apresentação masculina, 'b' = apresentação feminina) × tom de pele (0–3) ×
+ * cabelo (0–3) × cor do cabelo (0–5). Não muda hitbox, movimento nem regras, e
+ * nunca é deduzida de foto, nome ou voz.
+ *
+ * Forma compacta `a1` (legado: cabelo e cor padrão da base) ou completa `a1h2c3`.
+ * `APPEARANCE_IDS` são as predefinições (bots, vitrine).
  */
-export const APPEARANCE_IDS = ['a0', 'a1', 'a2', 'a3', 'b0', 'b1', 'b2', 'b3'] as const;
-export type AppearanceId = (typeof APPEARANCE_IDS)[number];
+type AppBase = 'a' | 'b';
+type D4 = '0' | '1' | '2' | '3';
+type D6 = D4 | '4' | '5';
+export type AppearanceId = `${AppBase}${D4}` | `${AppBase}${D4}h${D4}c${D6}`;
+export const APPEARANCE_IDS = ['a0', 'a1', 'a2', 'a3', 'b0', 'b1', 'b2', 'b3'] as const satisfies readonly AppearanceId[];
 export const DEFAULT_APPEARANCE: AppearanceId = 'a1';
+export const HAIR_STYLE_COUNT = 4;
+export const HAIR_COLOR_COUNT = 6;
+export const APPEARANCE_RE = /^[ab][0-3](h[0-3]c[0-5])?$/;
 export function isAppearanceId(v: unknown): v is AppearanceId {
-  return typeof v === 'string' && (APPEARANCE_IDS as readonly string[]).includes(v);
+  return typeof v === 'string' && APPEARANCE_RE.test(v);
+}
+export interface AppearanceParts {
+  base: AppBase;
+  tone: number;
+  hair: number;
+  hairColor: number;
+}
+/** Decompõe (a forma legado usa o cabelo e a cor originais da base). */
+export function parseAppearanceId(id: string | undefined): AppearanceParts {
+  const a = id && APPEARANCE_RE.test(id) ? id : DEFAULT_APPEARANCE;
+  const base: AppBase = a[0] === 'b' ? 'b' : 'a';
+  const tone = Number(a[1]);
+  if (a.length === 2) return { base, tone, hair: base === 'a' ? 0 : 1, hairColor: base === 'a' ? 0 : 1 };
+  return { base, tone, hair: Number(a[3]), hairColor: Number(a[5]) };
+}
+export function formatAppearanceId(p: AppearanceParts): AppearanceId {
+  const c = (n: number, max: number) => Math.min(max, Math.max(0, Math.round(n) || 0));
+  return `${p.base}${c(p.tone, 3)}h${c(p.hair, 3)}c${c(p.hairColor, 5)}` as AppearanceId;
 }
 
 /**
@@ -62,7 +90,7 @@ export const C2S = {
 
 export const SetTeamSchema = z.object({ team: z.union([z.literal(0), z.literal(1)]) }).strict();
 export const SetWeaponSchema = z.object({ weaponId: z.enum(['esguicho', 'rodo', 'estilingue']) }).strict();
-export const SetAppearanceSchema = z.object({ appearance: z.enum(APPEARANCE_IDS) }).strict();
+export const SetAppearanceSchema = z.object({ appearance: z.string().max(8).regex(APPEARANCE_RE).transform((v) => v as AppearanceId) }).strict();
 export const SetReadySchema = z.object({ ready: z.boolean() }).strict();
 export const SetBotsSchema = z.object({ enabled: z.boolean() }).strict();
 /** Opções da partida (só anfitrião, só no lobby). A família de mapa é validada no servidor. */

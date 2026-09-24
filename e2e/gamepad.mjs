@@ -74,8 +74,13 @@ const ui = (k) => page.evaluate((key) => window.__borrifo.uiStore.get()[key], k)
 await page.evaluate((id) => window.__padConnect(id), XBOX);
 await page.waitForTimeout(400);
 check((await notices()).some((t) => t === 'Controle conectado (Xbox)'), 'aviso "Controle conectado (Xbox)"');
-await press(13); // direcional para baixo: vira o dispositivo ativo
+await press(13); // direcional para baixo: vira o dispositivo ativo (e pula a abertura)
+await page.waitForTimeout(600);
+await press(5); // RB: próxima aba do lobby (Partida, onde ficam os comandos)
+check((await page.textContent('.hub-tab[aria-selected=true]')) === 'Partida', 'RB troca de aba no lobby (Sala → Partida)');
 const lobbyKeys = await page.textContent('.keys');
+await press(4); // LB: volta para a Sala
+check((await page.textContent('.hub-tab[aria-selected=true]')) === 'Sala', 'LB volta de aba no lobby');
 check(/Y\s*Roda de Oleiro/.test(lobbyKeys) && /RT\s*usar ferramenta/.test(lobbyKeys) && /LS\s*mover/.test(lobbyKeys), `lobby mostra botões do Xbox (${lobbyKeys.replace(/\s+/g, ' ').slice(0, 120)}…)`);
 const focusBefore = await page.evaluate(() => document.activeElement?.textContent?.slice(0, 30));
 await press(13);
@@ -164,11 +169,11 @@ check((await page.evaluate(() => document.activeElement?.textContent)) === 'Conf
 await press(0);
 await page.waitForSelector('[role=tab][aria-selected=true]');
 const tabNow = await page.textContent('[role=tab][aria-selected=true]');
-check(tabNow === 'Controle', `configurações abrem na aba do dispositivo em uso (${tabNow})`);
+check(tabNow === 'Controles', `configurações abrem na aba do dispositivo em uso (${tabNow})`);
 await press(5); // R1: próxima aba
-check((await page.textContent('[role=tab][aria-selected=true]')) === 'Vídeo', 'R1 troca de aba');
+check((await page.textContent('[role=tab][aria-selected=true]')) === 'Toque', 'R1 troca de aba');
 await press(4); // L1: volta
-check((await page.textContent('[role=tab][aria-selected=true]')) === 'Controle', 'L1 volta de aba');
+check((await page.textContent('[role=tab][aria-selected=true]')) === 'Controles', 'L1 volta de aba');
 check(/Conectado: controle PlayStation/.test(await page.textContent('.settings')), 'aba Controle mostra o controle detectado');
 await page.click('.setting:has-text("Pular") .keybtn');
 await press(2); // □

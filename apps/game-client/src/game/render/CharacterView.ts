@@ -1,6 +1,6 @@
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, DynamicTexture } from '@babylonjs/core';
-import type { AppearanceId, TeamId, WeaponId } from '@borrifo/game-contracts';
-import { DEFAULT_APPEARANCE } from '@borrifo/game-contracts';
+import type { AppearanceId, AppearanceParts, TeamId, WeaponId } from '@borrifo/game-contracts';
+import { DEFAULT_APPEARANCE, parseAppearanceId } from '@borrifo/game-contracts';
 import { sharedToon, ToonMaterial, type ToonMeshState } from './ToonMaterial';
 
 /** Estado visual por frame (derivado da previsão local ou da interpolação remota). */
@@ -37,12 +37,15 @@ export interface CharacterVisual {
 
 /** Tons de pele escolhidos pelo jogador (nunca deduzidos). */
 export const SKIN_TONES: readonly string[] = ['#f4d4ba', '#dfa982', '#b3764c', '#7a4a2d'];
-const HAIR = { a: '#2b1c14', b: '#3b2318' } as const;
+/** Cores de cabelo (naturais: nenhuma lembra a cor de uma equipe). */
+export const HAIR_COLORS: readonly string[] = ['#2b1c14', '#3b2318', '#5e3a22', '#9a4a26', '#d3a24c', '#a9a197'];
+export const HAIR_COLOR_NAMES: readonly string[] = ['Preto', 'Castanho-escuro', 'Castanho', 'Acobreado', 'Loiro', 'Grisalho'];
+/** Estilos de cabelo: silhuetas diferentes, a mesma cabeça e a mesma hitbox. */
+export const HAIR_STYLE_NAMES: readonly string[] = ['Cachos com faixa', 'Rabo alto', 'Black power', 'Coquinhos'];
 const CLOTH = { camisa: '#f3eadb', short: '#3b3643', legging: '#463d52', sola: '#fbf7f0', olho: '#3a2518' } as const;
 
-export function parseAppearance(id: AppearanceId | undefined): { base: 'a' | 'b'; tone: number } {
-  const a = id ?? DEFAULT_APPEARANCE;
-  return { base: a[0] === 'b' ? 'b' : 'a', tone: Math.min(3, Math.max(0, Number(a[1]) || 0)) };
+export function parseAppearance(id: AppearanceId | undefined): AppearanceParts {
+  return parseAppearanceId(id ?? DEFAULT_APPEARANCE);
 }
 
 let shadowTexture: DynamicTexture | null = null;
@@ -81,7 +84,7 @@ const hex = (h: string) => Color3.FromHexString(h);
  */
 export class CharacterView {
   readonly root: TransformNode;
-  readonly appearance: { base: 'a' | 'b'; tone: number };
+  readonly appearance: AppearanceParts;
   private combat: TransformNode;
   private flow: TransformNode;
   private flowSpin: TransformNode;
@@ -162,12 +165,12 @@ export class CharacterView {
     appearance?: AppearanceId,
   ) {
     this.appearance = parseAppearance(appearance);
-    const { base, tone } = this.appearance;
+    const { base, tone, hair: hairStyle, hairColor } = this.appearance;
     this.idleT = (playerId * 1.37) % 6;
     this.root = new TransformNode(`pessoa-${playerId}`, scene);
     const skin = sharedToon(scene, `pele-${tone}`, hex(SKIN_TONES[tone]), 0.35);
     skin.soft = 1;
-    const hair = sharedToon(scene, `cabelo-${base}`, hex(HAIR[base]), 0.55);
+    const hair = sharedToon(scene, `cabelo-${hairColor}`, hex(HAIR_COLORS[hairColor] ?? HAIR_COLORS[0]), 0.55);
     const shirt = sharedToon(scene, 'camisa', hex(CLOTH.camisa), 0.3);
     const pants = sharedToon(scene, base === 'a' ? 'short' : 'legging', hex(base === 'a' ? CLOTH.short : CLOTH.legging), 0.25);
     const sole = sharedToon(scene, 'sola', hex(CLOTH.sola), 0.3);
@@ -312,8 +315,18 @@ export class CharacterView {
     this.mouth = put(MeshBuilder.CreateTube('boca', { path: arc, radius: 0.0085, tessellation: 5, cap: Mesh.CAP_ALL }, scene), this.head, dark, 0, -0.09, 0.2);
     this.detail.push(this.pupils, this.browL, this.browR, this.mouth);
 
-    // cabelo: cada base com silhueta própria
-    if (base === 'a') {
+    // cabelo: o estilo é independente da base; cílios e brincos são da base 'b'
+    if (base === 'b') {
+      // cílios: traço curto na borda de fora de cada olho
+      const lashes = [-1, 1].map((side) => {
+        const l = at(MeshBuilder.CreateBox('cilio', { width: 0.05, height: 0.014, depth: 0.02 }, scene), 0.125 * side, 0.085, 0.19);
+        l.rotation.z = 0.5 * side;
+        return l;
+      });
+      this.detail.push(this.mergeInto(lashes, this.head, dark, 'cilios'));
+      this.mergeInto([-1, 1].map((side) => at(sph('brinco', 0.035, 6), 0.215 * side, -0.07, 0.01)), this.head, brass, 'brincos');
+    }
+    if (hairStyle === 0) {
       // cachos curtos (várias bolinhas mescladas) e faixa esportiva da equipe
       const curls: Mesh[] = [];
       const pts: Array<[number, number, number, number]> = [
@@ -329,7 +342,7 @@ export class CharacterView {
       const bandana = put(MeshBuilder.CreateTorus('faixa', { diameter: 0.43, thickness: 0.045, tessellation: 20 }, scene), this.head, this.teamMat, 0, 0.1, -0.005);
       bandana.rotation.x = 0.16;
       bandana.scaling.set(1, 0.9, 0.97);
-    } else {
+    } else if (hairStyle === 1) {
       // cabelo volumoso com franja lateral e rabo alto que balança; elástico da equipe
       const capHair = sph('cabelo', 0.47, 12);
       capHair.scaling.set(1.02, 0.94, 1.02);
@@ -347,18 +360,36 @@ export class CharacterView {
         return l;
       });
       this.mergeInto([capHair, fringe, ...locks], this.head, hair, 'cabelo');
-      // cílios: traço curto na borda de fora de cada olho
-      const lashes = [-1, 1].map((side) => {
-        const l = at(MeshBuilder.CreateBox('cilio', { width: 0.05, height: 0.014, depth: 0.02 }, scene), 0.125 * side, 0.085, 0.19);
-        l.rotation.z = 0.5 * side;
-        return l;
-      });
-      this.detail.push(this.mergeInto(lashes, this.head, dark, 'cilios'));
       this.pony = node('rabo', this.head, 0, 0.2, -0.14);
       const tail = put(cap('rabo', 0.07, 0.34), this.pony, hair, 0, -0.14, -0.05);
       tail.rotation.x = 0.35;
       put(MeshBuilder.CreateTorus('elastico', { diameter: 0.09, thickness: 0.03, tessellation: 12 }, scene), this.pony, this.teamMat, 0, 0, 0);
-      this.mergeInto([-1, 1].map((side) => at(sph('brinco', 0.035, 6), 0.215 * side, -0.07, 0.01)), this.head, brass, 'brincos');
+    } else if (hairStyle === 2) {
+      // black power arredondado, com a faixa da equipe marcando a testa
+      const puff = sph('black', 0.6, 14);
+      puff.scaling.set(1.06, 0.9, 1.0);
+      puff.position.set(0, 0.13, -0.06);
+      this.mergeInto([puff], this.head, hair, 'cabelo');
+      const band = put(MeshBuilder.CreateTorus('faixa', { diameter: 0.45, thickness: 0.04, tessellation: 20 }, scene), this.head, this.teamMat, 0, 0.09, -0.01);
+      band.rotation.x = 0.2;
+      band.scaling.set(1, 0.9, 0.97);
+    } else {
+      // coquinhos: cabelo rente e dois coques no alto, presos com elásticos da equipe
+      const capHair = sph('cabelo', 0.46, 12);
+      capHair.scaling.set(1.01, 0.9, 1.0);
+      capHair.position.set(0, 0.06, -0.04);
+      const buns = [-1, 1].map((side) => at(sph('coque', 0.19, 10), 0.14 * side, 0.24, -0.04));
+      this.mergeInto([capHair, ...buns], this.head, hair, 'cabelo');
+      this.mergeInto(
+        [-1, 1].map((side) => {
+          const t = at(MeshBuilder.CreateTorus('elastico', { diameter: 0.13, thickness: 0.03, tessellation: 12 }, scene), 0.125 * side, 0.18, -0.04);
+          t.rotation.z = 0.5 * side;
+          return t;
+        }),
+        this.head,
+        this.teamMat,
+        'elasticos',
+      );
     }
 
     // ---------------- braços ----------------
@@ -557,6 +588,11 @@ export class CharacterView {
       }
     }
     return t;
+  }
+
+  /** Palco do lobby: a seta de aliado some (a etiqueta com nome e avatar já identifica). */
+  hideMarker() {
+    this.marker?.setEnabled(false);
   }
 
   setTeamColor(c: Color3) {

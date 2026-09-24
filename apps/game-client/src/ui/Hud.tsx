@@ -8,6 +8,7 @@ import { hudDom, hudStore } from '../game/hud';
 import { pressText, useHints } from '../app/hints';
 import { useTeams } from '../app/teams';
 import { VoiceChip } from './VoiceChip';
+import { RoundIntro } from './RoundIntro';
 
 function fmtTime(ms: number) {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -139,14 +140,7 @@ export function Hud() {
         {h.denied ? <span className="chip bad">{h.denied}</span> : null}
       </div>
 
-      {h.phase === 'countdown' ? (
-        <div className="center-msg">
-          <div className="big" key={Math.ceil(h.timeLeftMs / 1000)}>
-            {Math.max(1, Math.ceil(h.timeLeftMs / 1000))}
-          </div>
-          <div className="sub">{h.mode === 'correio' ? `Correio do Ara: leve a cápsula à estação. ${CORREIO.targetDeliveries} entregas vencem.` : 'Pinte o chão! Vence quem cobrir mais área.'}</div>
-        </div>
-      ) : null}
+      <RoundIntro />
       {!h.alive && h.phase === 'running' ? (
         <div className="center-msg">
           <div className="sub">Voltando ao galpão em</div>

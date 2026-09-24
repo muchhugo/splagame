@@ -1,4 +1,4 @@
-import { GAME_ID, GAME_VERSION, C2S, paintContextTag, type AppearanceId, type LobbyState, type TeamId, type WeaponId } from '@borrifo/game-contracts';
+import { GAME_ID, GAME_VERSION, C2S, formatAppearanceId, paintContextTag, type AppearanceId, type LobbyState, type TeamId, type WeaponId } from '@borrifo/game-contracts';
 import { ActivityRequestError, MatchCredentialResponseSchema, type ActivityClient } from '@borrifo/activity-sdk';
 import { HostVoiceAdapter, type VoiceAdapter } from '@borrifo/voice-adapter';
 import { CATALOG_HASH, DEFAULT_MAP_ID, MAPS, computeMapHash } from '@borrifo/game-content';
@@ -148,7 +148,10 @@ export class AppController {
       this.runtime = await GameRuntime.create(this.canvas, spec, this.runtimeHooks(), (p) => uiStore.set({ mapLoading: { name: spec.name, variant: spec.variant, progress: p } }), audio);
       this.afterRuntime();
       const lobby = this.lastLobby;
-      if (lobby) this.runtime.setRoster(lobby.players, uiStore.get().welcome?.playerId ?? 0);
+      if (lobby) {
+        this.runtime.setRoster(lobby.players, uiStore.get().welcome?.playerId ?? 0);
+        this.runtime.setStagePlayers(this.stagePlayers(lobby), uiStore.get().welcome?.playerId ?? 0);
+      }
       this.runtime.setVisible(!document.hidden);
       return true;
     } catch (e) {
@@ -266,11 +269,59 @@ export class AppController {
     this.conn?.send(C2S.SET_OPTIONS, o);
   }
 
+  /** Quem aparece no palco do lobby: humanos da formação (sem a fila) e os bots previstos. */
+  private stagePlayers(l: LobbyState): import('../game/render/LobbyStage').StagePlayer[] {
+    const plan = l.plan;
+    const out: import('../game/render/LobbyStage').StagePlayer[] = [];
+    const myId = uiStore.get().welcome?.playerId ?? 0;
+    for (const p of l.players) {
+      if (p.isBot || plan.queue.includes(p.playerId)) continue;
+      // a própria escolha aparece na hora; o servidor confirma logo depois
+      const mine = p.playerId === myId && l.phase === 'lobby';
+      out.push({
+        playerId: p.playerId,
+        team: plan.teamOf[p.playerId] ?? p.team,
+        weaponId: mine ? (uiStore.get().pendingWeapon ?? p.weaponId) : p.weaponId,
+        appearance: mine ? settingsStore.get().appearance : p.appearance,
+        ready: p.ready,
+        isBot: false,
+        isHost: p.playerId === l.hostPlayerId,
+      });
+    }
+    for (const team of [0, 1] as TeamId[]) {
+      for (let k = 0; k < plan.bots[team]; k++) {
+        const id = 9000 + team * 20 + k;
+        out.push({ playerId: id, team, weaponId: (['esguicho', 'rodo', 'estilingue'] as const)[(k + team) % 3], appearance: formatAppearanceId({ base: (k + team) % 2 ? 'b' : 'a', tone: (k * 3 + team) % 4, hair: (k * 2 + team) % 4, hairColor: (k * 5 + team * 2) % 6 }), ready: true, isBot: true, isHost: false });
+      }
+    }
+    return out;
+  }
+
+  /** Aba do lobby → enquadramento do palco (grupo ou vitrine do próprio personagem). */
+  setStageView(mode: import('../game/render/LobbyStage').StageMode, framing: import('../game/render/LobbyStage').StageFraming) {
+    this.runtime?.setStageMode(mode);
+    this.runtime?.setStageFraming(framing);
+  }
+  rotateStage(delta: number) {
+    this.runtime?.rotateStage(delta);
+  }
+  skipIntro() {
+    this.runtime?.skipIntro();
+  }
+  private introShown = false;
+
   private onLobby(l: LobbyState) {
     this.lastLobby = l;
     const myId = uiStore.get().welcome?.playerId ?? 0;
     const me = l.players.find((p) => p.playerId === myId);
     this.runtime?.setRoster(l.players, myId);
+    if (me && uiStore.get().pendingWeapon === me.weaponId) uiStore.set({ pendingWeapon: null });
+    this.runtime?.setStagePlayers(this.stagePlayers(l), myId);
+    // apresentação curta na primeira vez que o lobby aparece nesta sessão
+    if (!this.introShown && l.phase === 'lobby' && this.runtime) {
+      this.introShown = true;
+      if (!document.hidden && !settingsStore.get().reduceMotion) this.runtime.playIntro();
+    }
     if (l.teamPairId) this.runtime?.setTeamPair(l.teamPairId);
     let screen = uiStore.get().screen;
     if (screen !== 'error' && screen !== 'closed') {
@@ -331,9 +382,15 @@ export class AppController {
   setAppearance(appearance: AppearanceId) {
     settingsStore.set({ appearance });
     this.conn?.send(C2S.SET_APPEARANCE, { appearance });
+    this.refreshStage();
   }
   setWeapon(weaponId: WeaponId) {
+    uiStore.set({ pendingWeapon: weaponId });
     this.conn?.send(C2S.SET_WEAPON, { weaponId });
+    this.refreshStage();
+  }
+  private refreshStage() {
+    if (this.lastLobby) this.runtime?.setStagePlayers(this.stagePlayers(this.lastLobby), uiStore.get().welcome?.playerId ?? 0);
   }
   setReady(ready: boolean) {
     this.conn?.send(C2S.SET_READY, { ready });
