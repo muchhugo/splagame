@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { assertNotProduction } from '@/lib/errors';
-import { isChannelMember, LAB_CHANNEL_ID, LAB_USER_IDS } from '@/lib/roster';
+import { accountName, isChannelMember, LAB_CHANNEL_ID, LAB_USER_IDS, type LabUser } from '@/lib/roster';
 import { LAB_SESSION_COOKIE, LAB_SESSION_TTL_SECONDS, signLabSession } from '@/lib/session';
 import { clientIp, errorResponse, getLabConfig, json, limiters, parseBody, rateLimit, readJson, requireLabUser } from '@/lib/server/lab';
 
@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic';
 
 const LoginBody = z.object({ userId: z.enum(LAB_USER_IDS as [string, ...string[]]) }).strict();
 
-function view(user: { id: string; displayName: string }) {
-  return { user: { id: user.id, displayName: user.displayName }, channel: { id: LAB_CHANNEL_ID, member: isChannelMember(user.id) } };
+function view(user: LabUser) {
+  return { user: { id: user.id, displayName: accountName(user) }, channel: { id: LAB_CHANNEL_ID, member: isChannelMember(user.id) } };
 }
 
 /** Sessão atual do laboratório (cookie httpOnly). */

@@ -9,6 +9,7 @@ import { hudStore } from '../game/hud';
 import { deviceStore } from '../game/input/device';
 import { pushNotice, showError, uiStore } from './uiStore';
 import { maybeAutoStartTutorial } from './tutorial';
+import { voiceByUser, type VoiceInfo } from './profiles';
 
 const MAP = MAPS[DEFAULT_MAP_ID];
 const MAP_HASH = computeMapHash(MAP);
@@ -26,6 +27,8 @@ export class AppController {
   private closed = false;
   private rejoinAttempts = 0;
   private lastLobby: LobbyState | null = null;
+  /** userId → voz, recalculado quando o host publica um novo estado da chamada. */
+  private voiceMap = new Map<string, VoiceInfo>();
   private currentRound = 0;
 
   constructor(private readonly bridge: ActivityClient) {
@@ -40,7 +43,13 @@ export class AppController {
     const b = this.bridge;
     uiStore.set({ context: b.context, voice: b.voice });
     this.voice = new HostVoiceAdapter(b);
-    this.offs.push(this.voice.subscribe((v) => uiStore.set({ voice: v })));
+    this.voiceMap = voiceByUser(b.voice);
+    this.offs.push(
+      this.voice.subscribe((v) => {
+        this.voiceMap = voiceByUser(v);
+        uiStore.set({ voice: v });
+      }),
+    );
     this.offs.push(b.on('ACTIVITY_CONTEXT_UPDATED', (p) => uiStore.set({ context: p.context })));
     this.offs.push(b.on('ACTIVITY_VISIBILITY_CHANGED', (p) => this.runtime?.setVisible(p.visible)));
     this.offs.push(b.on('ACTIVITY_SUSPEND', () => this.runtime?.setVisible(false)));
@@ -75,6 +84,7 @@ export class AppController {
         },
         onUserGesture: () => void this.unlockAudio(),
         playerName: (id) => this.lastLobby?.players.find((p) => p.playerId === id)?.displayName ?? `#${id}`,
+        voiceOf: (userId) => this.voiceMap.get(userId),
         requestPaintResync: (roundId, reason) => this.conn?.send(C2S.PAINT_RESYNC, { roundId, reason: reason.slice(0, 40) }),
       }, progress);
       // o controle só move o personagem com a partida visível e sem menu por cima

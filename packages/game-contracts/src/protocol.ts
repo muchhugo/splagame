@@ -87,7 +87,12 @@ export type ConnectionStatus = 'connected' | 'reconnecting' | 'bot' | 'replaced_
 
 export interface LobbyPlayer {
   playerId: number;
+  /** userId verificado pela credencial (null para bots): liga o jogador ao participante da chamada. */
+  userId: string | null;
+  /** Nome já resolvido pelo servidor (apelido → nome de exibição → usuário). Texto puro. */
   displayName: string;
+  /** Avatar https de host permitido, ou null (a interface mostra as iniciais). */
+  avatarUrl: string | null;
   isBot: boolean;
   team: TeamId;
   weaponId: WeaponId;

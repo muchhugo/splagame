@@ -5,22 +5,37 @@
  */
 export interface LabUser {
   id: string;
+  /** Nome de usuário (sempre existe). */
+  username: string;
+  /** Nome de exibição do perfil (pode faltar, como no Trivo). */
   displayName: string;
+  /** Apelido nesta comunidade (opcional; tem prioridade). */
+  nickname?: string;
 }
 
 export const LAB_CHANNEL_ID = 'canal-arena-dev';
 export const LAB_COMMUNITY_ID = 'comunidade-lab';
 
+/**
+ * Perfis fictícios que exercitam a regra de nome (apelido → nome de exibição →
+ * usuário) e os limites: apelido longo (cortado em 24), com emoji, com marcação
+ * (vira texto) e perfil sem nome de exibição.
+ */
 export const LAB_ROSTER: readonly LabUser[] = Object.freeze([
-  { id: 'ana', displayName: 'Ana' },
-  { id: 'bruno', displayName: 'Bruno' },
-  { id: 'carla', displayName: 'Carla' },
-  { id: 'davi', displayName: 'Davi' },
-  { id: 'elis', displayName: 'Elis' },
-  { id: 'fabio', displayName: 'Fábio' },
-  { id: 'gabi', displayName: 'Gabi' },
-  { id: 'hugo', displayName: 'Hugo' },
+  { id: 'ana', username: 'ana.souza', displayName: 'Ana', nickname: 'Aninha' },
+  { id: 'bruno', username: 'bruno.lima', displayName: 'Bruno' },
+  { id: 'carla', username: 'carla', displayName: 'Carla', nickname: 'Carla ✨' },
+  { id: 'davi', username: 'davi_r', displayName: 'Davi', nickname: 'Davi, o Destruidor de Moringas' },
+  { id: 'elis', username: 'elis', displayName: 'Elis', nickname: 'Elis <b>negrito</b>' },
+  { id: 'fabio', username: 'fabio_22', displayName: '' },
+  { id: 'gabi', username: 'gabi', displayName: 'Gabriela', nickname: 'Gabi' },
+  { id: 'hugo', username: 'hugo', displayName: 'Hugo' },
 ]);
+
+/** Nome da conta no host do laboratório (sem apelido de comunidade). */
+export function accountName(u: LabUser): string {
+  return u.displayName || u.username;
+}
 
 export const LAB_USER_IDS = LAB_ROSTER.map((u) => u.id);
 

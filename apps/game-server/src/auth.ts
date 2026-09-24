@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import { DEV_CREDENTIAL_ISSUER, MATCH_CREDENTIAL_AUDIENCE, MATCH_CREDENTIAL_MAX_TTL_SECONDS, type MatchCredentialClaims } from '@borrifo/game-contracts';
+import { DEV_CREDENTIAL_ISSUER, MATCH_CREDENTIAL_AUDIENCE, MATCH_CREDENTIAL_MAX_TTL_SECONDS, cleanName, resolveDisplayName, sanitizeAvatarUrl, type MatchCredentialClaims } from '@borrifo/game-contracts';
 import type { ServerConfig } from './config';
 
 export class AuthError extends Error {
@@ -13,7 +13,9 @@ export class AuthError extends Error {
 
 export interface VerifiedIdentity {
   userId: string;
+  /** Apelido da comunidade → nome de exibição → nome de usuário, já saneado. */
   displayName: string;
+  avatarUrl: string | null;
   activitySessionId: string;
   jti: string;
   expiresAt: number;
@@ -76,7 +78,8 @@ export class CredentialVerifier {
     if (!this.jtis.consume(payload.jti, payload.exp)) throw new AuthError('replayed', 'credencial já utilizada');
     return {
       userId: payload.sub,
-      displayName: sanitizeDisplayName(typeof payload.name === 'string' ? payload.name : 'Jogador'),
+      displayName: resolveDisplayName({ nickname: payload.nick, displayName: payload.name, username: payload.uname }),
+      avatarUrl: sanitizeAvatarUrl(payload.avatar, this.cfg.avatarAllowedHosts),
       activitySessionId: payload.sid,
       jti: payload.jti,
       expiresAt: payload.exp,
@@ -86,14 +89,6 @@ export class CredentialVerifier {
 }
 
 /** Nome exibível: sem controle, sem marcação, tamanho limitado. O cliente também escapa ao exibir. */
-const CONTROL_CHARS = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069]', 'g');
-
 export function sanitizeDisplayName(raw: string): string {
-  const cleaned = raw
-    .normalize('NFC')
-    .replace(CONTROL_CHARS, '')
-    .replace(/[<>]/g, '')
-    .trim()
-    .slice(0, 24);
-  return cleaned.length ? cleaned : 'Jogador';
+  return cleanName(raw) || 'Jogador';
 }

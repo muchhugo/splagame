@@ -66,6 +66,8 @@ export class LabVoiceController {
       const all: Participant[] = [room.localParticipant, ...room.remoteParticipants.values()];
       const participants: VoiceParticipant[] = all.slice(0, 64).map((p) => ({
         id: p.identity.slice(0, 128),
+        // no laboratório a identidade LiveKit é o próprio userId (o mesmo `sub` da credencial de partida)
+        userId: p.identity.slice(0, 128),
         displayName: (p.name || p.identity).slice(0, 64),
         speaking: p.isSpeaking,
         muted: !p.isMicrophoneEnabled,

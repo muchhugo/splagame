@@ -176,3 +176,38 @@ describe('preferências versionadas', () => {
     expect(new Set(Object.values(b)).size).toBe(Object.values(b).length);
   });
 });
+
+import { nameplateVisible } from '../src/game/nameplates';
+import { voiceByUser, initials, avatarHue } from '../src/app/profiles';
+
+describe('nomes sobre os personagens e indicador de fala', () => {
+  it('adversário atrás de parede ou submerso não mostra nome (nem se está falando)', () => {
+    const base = { ally: false, alive: true, submerged: false, dist: 10, los: true };
+    expect(nameplateVisible(base)).toBe(true);
+    expect(nameplateVisible({ ...base, los: false })).toBe(false);
+    expect(nameplateVisible({ ...base, submerged: true })).toBe(false);
+    expect(nameplateVisible({ ...base, dist: 60 })).toBe(false);
+    // aliado: a posição já é pública no mapa tático
+    expect(nameplateVisible({ ...base, ally: true, los: false, submerged: true })).toBe(true);
+    expect(nameplateVisible({ ...base, ally: true, alive: false })).toBe(false);
+  });
+  it('liga participante da chamada ao jogador por userId (ou id), só com a chamada conectada', () => {
+    const voice = { available: true, reason: 'ok' as const, connected: true, muted: false, scope: 'shared_call' as const, participants: [
+      { id: 'lk-1', userId: 'ana', displayName: 'Aninha', speaking: true, muted: false, isLocal: true },
+      { id: 'bruno', displayName: 'Bruno', speaking: true, muted: true, isLocal: false },
+    ] };
+    const m = voiceByUser(voice);
+    expect(m.get('ana')).toEqual({ speaking: true, muted: false });
+    expect(m.get('bruno')).toEqual({ speaking: false, muted: true }); // mudo nunca aparece "falando"
+    expect(voiceByUser({ ...voice, connected: false }).size).toBe(0);
+  });
+  it('iniciais e cor neutra estável, fora das cores das turmas', () => {
+    expect(initials('Aninha')).toBe('AN');
+    expect(initials('Davi, o Destruidor')).toBe('DD');
+    expect(initials('🎨')).toBe('?');
+    for (const k of ['ana', 'bruno', 'carla', 'x', 'y', 'z']) {
+      const h = avatarHue(k);
+      expect((h >= 80 && h < 170) || (h >= 290 && h < 340)).toBe(true);
+    }
+  });
+});

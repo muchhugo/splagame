@@ -17,8 +17,11 @@ export const ActivityContextSchema = z
     viewer: z
       .object({
         id: z.string().min(1).max(128),
+        /** Nome já resolvido pelo host (apelido da comunidade → nome de exibição → usuário). */
         displayName: z.string().min(1).max(64),
         avatarUrl: z.string().max(512).optional(),
+        username: z.string().max(64).optional(),
+        communityNickname: z.string().max(64).optional(),
       })
       .strict(),
     capabilities: z
@@ -38,8 +41,18 @@ export const ActivityContextSchema = z
 export type ActivityContext = z.infer<typeof ActivityContextSchema>;
 
 export const VoiceParticipantSchema = z
-  .object({ id: z.string().max(128), displayName: z.string().max(64), speaking: z.boolean(), muted: z.boolean(), isLocal: z.boolean() })
+  .object({
+    /** Identidade na chamada (ex.: LiveKit identity). */
+    id: z.string().max(128),
+    /** userId do Trivo, o mesmo `sub` da credencial de partida: liga o participante ao jogador. Se ausente, usa-se `id`. */
+    userId: z.string().max(128).optional(),
+    displayName: z.string().max(64),
+    speaking: z.boolean(),
+    muted: z.boolean(),
+    isLocal: z.boolean(),
+  })
   .strict();
+export type VoiceParticipant = z.infer<typeof VoiceParticipantSchema>;
 
 export const VoiceStateSchema = z
   .object({

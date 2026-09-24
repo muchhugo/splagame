@@ -3,6 +3,8 @@ import { WEAPONS, MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
 import { useHints, type HintAction } from '../app/hints';
+import { useVoiceByUser, type VoiceInfo } from '../app/profiles';
+import { Avatar, VoiceBadge } from './Avatar';
 import { getController } from './App';
 import { Logo } from './Logo';
 import { VoiceChip } from './VoiceChip';
@@ -109,6 +111,8 @@ export function Lobby() {
 
 function TeamColumn(props: { team: TeamId; players: LobbyPlayer[]; myId: number; hostId: number | null; fill: boolean; max: number; onJoin: () => void; canJoin: boolean }) {
   const { team, players, myId, hostId, fill, max } = props;
+  const voices = useVoiceByUser();
+  const voiceOf = (p: LobbyPlayer): VoiceInfo | undefined => (p.userId ? voices.get(p.userId) : undefined);
   const info = TEAMS[team];
   const slots = Array.from({ length: max }, (_, i) => players[i] ?? null);
   return (
@@ -127,10 +131,12 @@ function TeamColumn(props: { team: TeamId; players: LobbyPlayer[]; myId: number;
         p ? (
           <div key={p.playerId} className={`slot ${p.playerId === myId ? 'me' : ''}`}>
             <span aria-hidden="true">{info.symbol}</span>
+            <Avatar player={p} voice={voiceOf(p)} />
             <span className="name">
               {p.displayName}
               {p.playerId === myId ? ' (você)' : ''}
             </span>
+            <VoiceBadge voice={voiceOf(p)} />
             {p.playerId === hostId ? <span className="chip">anfitrião</span> : null}
             <span className="chip">{WEAPONS[p.weaponId].name}</span>
             {p.connection === 'reconnecting' ? <span className="chip warn">reconectando</span> : p.playerId === hostId ? null : p.ready ? <span className="chip ok">pronto</span> : <span className="chip">aguardando</span>}

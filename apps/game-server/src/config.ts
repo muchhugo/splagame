@@ -18,6 +18,8 @@ export interface ServerConfig {
   roundDurationSeconds: number;
   joinRateBurst: number;
   joinRatePerSecond: number;
+  /** Hosts de onde avatares podem vir (https). Vazio = ninguém tem avatar por URL; a interface usa iniciais. */
+  avatarAllowedHosts: string[];
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -50,5 +52,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     roundDurationSeconds: Number(env.ROUND_DURATION_SECONDS ?? 180),
     joinRateBurst: Number(env.JOIN_RATE_BURST ?? 10),
     joinRatePerSecond: Number(env.JOIN_RATE_PER_SECOND ?? 1),
+    avatarAllowedHosts: (env.AVATAR_ALLOWED_HOSTS ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
   };
 }

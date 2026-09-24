@@ -7,6 +7,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Segunda janela do teste com duas pessoas usa 127.0.0.1:3000 (cookie separado). Só afeta `next dev`.
+  allowedDevOrigins: ['127.0.0.1'],
   poweredByHeader: false,
   // Não gerar AGENTS.md/CLAUDE.md no diretório do app a cada `next dev`.
   agentRules: false,

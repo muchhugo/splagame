@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { HostRequestError, randomNonce, type ActivityContext, type MatchCredentialResponse } from '@borrifo/activity-sdk';
-import { GAME_ID, GAME_NAME } from '@borrifo/game-contracts';
+import { GAME_ID, GAME_NAME, resolveDisplayName } from '@borrifo/game-contracts';
 import { buildActivitySrc, newActivitySessionId } from '@/lib/activityUrl';
 import { getLeakCounters, getServerLeakCounters, LabActivityHost, notifyLeakCounters, subscribeLeakCounters, trackListener } from '@/lib/client/trackedHost';
 import { LabVoiceController } from '@/lib/client/voice';
-import { ACTIVITY_SESSION_ID_RE, isChannelMember, LAB_CHANNEL_ID, LAB_COMMUNITY_ID, LAB_ROSTER, type LabUser } from '@/lib/roster';
+import { accountName, ACTIVITY_SESSION_ID_RE, findLabUser, isChannelMember, LAB_CHANNEL_ID, LAB_COMMUNITY_ID, LAB_ROSTER, type LabUser } from '@/lib/roster';
 import { EventLog, type LogLevel, type LogLine } from './EventLog';
 import { VoicePanel } from './VoicePanel';
 
@@ -214,7 +214,7 @@ export default function LabHost(props: LabHostProps) {
       activitySessionId: open.sessionId,
       channelId: LAB_CHANNEL_ID,
       communityId: LAB_COMMUNITY_ID,
-      viewer: { id: viewer.id, displayName: viewer.displayName },
+      viewer: viewerProfile(viewer.id, viewer.displayName),
       capabilities: {
         canCreateMatch: true,
         canJoinMatch: isChannelMember(viewer.id),
@@ -440,7 +440,8 @@ export default function LabHost(props: LabHostProps) {
               <option value="">— escolha —</option>
               {LAB_ROSTER.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.displayName}
+                  {accountName(u)}
+                  {u.nickname ? ` — apelido “${u.nickname}”` : ''}
                   {isChannelMember(u.id) ? '' : ' (sem acesso ao canal)'}
                 </option>
               ))}
@@ -457,7 +458,7 @@ export default function LabHost(props: LabHostProps) {
             {members.map((u) => (
               <li key={u.id} className={u.id === user?.id ? 'me' : undefined}>
                 <span className={`dot${speaking.has(u.id) ? ' speaking' : inCall.has(u.id) ? ' in-call' : ''}`} aria-hidden />
-                {u.displayName}
+                {accountName(u)}
                 {u.id === user?.id && <em> (você)</em>}
                 {inCall.has(u.id) && <small className="tag">na chamada</small>}
               </li>
@@ -468,7 +469,7 @@ export default function LabHost(props: LabHostProps) {
             {outsiders.map((u) => (
               <li key={u.id} className={u.id === user?.id ? 'me' : undefined}>
                 <span className="dot" aria-hidden />
-                {u.displayName}
+                {accountName(u)}
                 {u.id === user?.id && <em> (você)</em>}
                 <small className="tag deny">403</small>
               </li>
@@ -574,4 +575,19 @@ export default function LabHost(props: LabHostProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Perfil do espectador entregue à Atividade: o nome já vem resolvido pela regra
+ * do Trivo (apelido da comunidade → nome de exibição → nome de usuário).
+ */
+function viewerProfile(id: string, fallbackName: string): ActivityContext['viewer'] {
+  const u = findLabUser(id);
+  if (!u) return { id, displayName: fallbackName || id };
+  return {
+    id,
+    displayName: resolveDisplayName({ nickname: u.nickname, displayName: u.displayName, username: u.username }),
+    username: u.username,
+    ...(u.nickname ? { communityNickname: u.nickname.slice(0, 64) } : {}),
+  };
 }

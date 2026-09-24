@@ -42,7 +42,9 @@ describe('issueDevMatchCredential', () => {
     expect(payload).toMatchObject({
       sub: 'fabio',
       sid: 'sessao-dev-1',
-      name: 'Fábio',
+      // perfil sem nome de exibição: o servidor cai no nome de usuário
+      name: '',
+      uname: 'fabio_22',
       ch: LAB_CHANNEL_ID,
       cap: { join: true, create: true },
       iss: DEV_CREDENTIAL_ISSUER,
@@ -51,7 +53,10 @@ describe('issueDevMatchCredential', () => {
       iat: NOW / 1000,
       exp: NOW / 1000 + DEV_MATCH_CREDENTIAL_TTL_SECONDS,
     });
+    expect(payload.nick).toBeUndefined();
     expect(DEV_MATCH_CREDENTIAL_TTL_SECONDS).toBe(60);
+    const ana = await issueDevMatchCredential({ ...base, userId: 'ana', activitySessionId: 'sessao-dev-1' });
+    expect(decodeJwt(ana.credential)).toMatchObject({ name: 'Ana', nick: 'Aninha', uname: 'ana.souza' });
     expect(res.expiresAt).toBe((NOW / 1000 + 60) * 1000);
   });
 
@@ -103,7 +108,7 @@ describe('sessão do laboratório', () => {
   it('assina e verifica o cookie de sessão; expira em 12 h', async () => {
     const { token, user } = await signLabSession({ userId: 'carla', secret: SECRET, nodeEnv: 'development', nowMs: NOW });
     expect(user.displayName).toBe('Carla');
-    expect(await verifyLabSession(token, SECRET, NOW + 1000)).toEqual({ id: 'carla', displayName: 'Carla' });
+    expect(await verifyLabSession(token, SECRET, NOW + 1000)).toMatchObject({ id: 'carla', displayName: 'Carla', nickname: 'Carla ✨' });
     expect(await verifyLabSession(token, SECRET, NOW + 12 * 3600 * 1000 + 1000)).toBeNull();
     expect(await verifyLabSession(token, OTHER_SECRET, NOW)).toBeNull();
     expect(await verifyLabSession('lixo', SECRET, NOW)).toBeNull();

@@ -18,6 +18,8 @@ export interface RosterEntry {
   alive: boolean;
   isMe: boolean;
   specialReady: boolean;
+  /** Falando na chamada do host agora (indicador discreto; não é posicional). */
+  speaking: boolean;
 }
 
 /** Estado do HUD (atualizado ~15 Hz pelo runtime; React só lê). */
@@ -80,7 +82,8 @@ export const hudStore = createStore<HudState>({
 });
 
 /** Elementos atualizados direto no DOM a cada frame (sem React). */
-export const hudDom: { reticle: HTMLDivElement | null; blocked: HTMLDivElement | null; hitmarker: HTMLDivElement | null; damage: HTMLDivElement | null } = {
+export const hudDom: { reticle: HTMLDivElement | null; blocked: HTMLDivElement | null; hitmarker: HTMLDivElement | null; damage: HTMLDivElement | null; nameplates: HTMLDivElement | null } = {
+  nameplates: null,
   reticle: null,
   blocked: null,
   hitmarker: null,

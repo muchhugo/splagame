@@ -7,4 +7,9 @@ export const CLIENT_CONFIG = {
     .filter(Boolean),
   labBackendUrl: import.meta.env.VITE_LAB_BACKEND_URL ?? 'http://localhost:3000',
   standaloneDevHostEnabled: __ENABLE_STANDALONE_DEV_HOST__,
+  /** Hosts https de onde o jogo aceita carregar avatares (defesa extra; o servidor já filtra). Vazio = iniciais. */
+  avatarHosts: (import.meta.env.VITE_AVATAR_HOSTS ?? '')
+    .split(',')
+    .map((s: string) => s.trim().toLowerCase())
+    .filter(Boolean) as string[],
 };

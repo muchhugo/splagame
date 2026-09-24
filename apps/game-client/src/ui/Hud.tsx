@@ -24,13 +24,15 @@ export function Hud() {
   const blocked = useRef<HTMLDivElement>(null);
   const hit = useRef<HTMLDivElement>(null);
   const dmg = useRef<HTMLDivElement>(null);
+  const plates = useRef<HTMLDivElement>(null);
   useEffect(() => {
     hudDom.reticle = reticle.current;
     hudDom.blocked = blocked.current;
+    hudDom.nameplates = plates.current;
     hudDom.hitmarker = hit.current;
     hudDom.damage = dmg.current;
     return () => {
-      hudDom.reticle = hudDom.blocked = hudDom.hitmarker = hudDom.damage = null;
+      hudDom.reticle = hudDom.blocked = hudDom.hitmarker = hudDom.damage = hudDom.nameplates = null;
     };
   }, []);
   const w = WEAPONS[h.weaponId];
@@ -46,10 +48,11 @@ export function Hud() {
   return (
     <div className="hud" aria-hidden={false}>
       <div className="damage-vignette" ref={dmg} />
+      <div className="nameplates" ref={plates} aria-hidden="true" />
       <div className="hud-top">
         <div className="roster" aria-label={`Turma ${TEAMS[0].name}`}>
           {t0.map((r) => (
-            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''}`} style={{ background: 'var(--team0)' }} title={r.name}>
+            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team0)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
               {TEAMS[0].symbol}
             </div>
           ))}
@@ -59,7 +62,7 @@ export function Hud() {
         </div>
         <div className="roster" aria-label={`Turma ${TEAMS[1].name}`}>
           {t1.map((r) => (
-            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''}`} style={{ background: 'var(--team1)' }} title={r.name}>
+            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team1)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
               {TEAMS[1].symbol}
             </div>
           ))}

@@ -62,6 +62,8 @@ export async function issueDevMatchCredential(input: IssueDevMatchCredentialInpu
     sub: user.id,
     sid: input.activitySessionId,
     name: user.displayName,
+    ...(user.nickname ? { nick: user.nickname } : {}),
+    uname: user.username,
     ch: LAB_CHANNEL_ID,
     cap: { join: true, create: true },
     iss: DEV_CREDENTIAL_ISSUER,
@@ -70,8 +72,8 @@ export async function issueDevMatchCredential(input: IssueDevMatchCredentialInpu
     exp,
     jti: input.jti ?? crypto.randomUUID(),
   };
-  const { sub, iss, aud, jti, sid, name, ch, cap } = claims;
-  const credential = await new SignJWT({ sid, name, ch, cap })
+  const { sub, iss, aud, jti, sid, name, nick, uname, ch, cap } = claims;
+  const credential = await new SignJWT({ sid, name, ...(nick ? { nick } : {}), ...(uname ? { uname } : {}), ch, cap })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(sub)
     .setIssuer(iss)

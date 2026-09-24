@@ -282,6 +282,39 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--creme);
+  box-shadow: 0 0 0 2px transparent;
+  transition: box-shadow 0.15s ease-out;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* anel discreto de fala: cor neutra, não confunde com a cor das turmas */
+.avatar.speaking {
+  box-shadow: 0 0 0 2px var(--creme), 0 0 10px rgba(255, 244, 230, 0.55);
+}
+.vbadge {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.vbadge.speaking {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar {
+    transition: none;
+  }
+}
 .slot.empty {
   color: rgba(255, 244, 230, 0.45);
   font-style: italic;
@@ -678,6 +711,15 @@ kbd {
   gap: 6px;
   align-items: center;
 }
+/* janela estreita (ex.: iframe do host ao lado do chat): as fichas descem para não cobrir o placar */
+@media (max-width: 1180px) {
+  .status-tl {
+    top: 66px;
+  }
+  .killfeed {
+    top: 106px;
+  }
+}
 .state-flags {
   position: absolute;
   left: 50%;
@@ -924,6 +966,49 @@ table.stats tr:nth-child(even) td {
   font-size: 13px;
   font-weight: 700;
   touch-action: none;
+}
+
+/* ---------------- nomes sobre os personagens ---------------- */
+.nameplates {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.nameplate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(20, 14, 12, 0.55);
+  font-size: calc(12px * var(--hud-scale, 1));
+  font-weight: 700;
+  white-space: nowrap;
+  will-change: transform;
+}
+.nameplate .np-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--creme);
+}
+.nameplate .np-voice {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* falando: anel neutro discreto em volta do ponto (sem som, sem mexer no nome) */
+.nameplate.speaking .np-voice {
+  background: var(--creme);
+  box-shadow: 0 0 0 2px currentColor, 0 0 6px rgba(255, 244, 230, 0.8);
+}
+.roster .dot.speaking {
+  box-shadow: 0 0 0 2px var(--creme), 0 0 8px rgba(255, 244, 230, 0.6);
 }
 
 /* ---------------- treino rápido (não bloqueia a partida) ---------------- */

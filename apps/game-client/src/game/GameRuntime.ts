@@ -35,6 +35,7 @@ import { AIM_ASSIST_TUNING, NO_ASSIST, aimAssist, type AimAssistResult, type Aim
 import { RUMBLE, RumbleGate, gamepadHub, type RumbleKind } from './input/gamepad';
 import { deviceStore } from './input/device';
 import { tutorialTick } from '../app/tutorial';
+import { nameplateVisible } from './nameplates';
 import { LocalPredictor } from './prediction/LocalPredictor';
 import { RemoteInterpolator } from './prediction/RemoteInterpolator';
 import { hudDom, hudStore, type KillfeedEntry } from './hud';
@@ -61,6 +62,8 @@ interface RuntimeHooks {
   onUserGesture(): void;
   playerName(id: number): string;
   requestPaintResync(roundId: number, reason: string): void;
+  /** Estado de voz (da chamada do host) de um userId, se ele estiver na chamada. */
+  voiceOf(userId: string): { speaking: boolean; muted: boolean } | undefined;
 }
 
 /**
@@ -623,6 +626,7 @@ export class GameRuntime {
     const cf = this.rig.camera.getDirection(Vector3.Forward());
     this.audio.setListener([cp.x, cp.y, cp.z], [cf.x, cf.y, cf.z]);
     this.updateDomHud(dt);
+    this.updateNameplates();
     this.hudTimer += dt;
     if (this.hudTimer >= 1 / 15) {
       this.hudTimer = 0;
@@ -981,6 +985,78 @@ export class GameRuntime {
     }
   }
 
+  private plates = new Map<number, { el: HTMLDivElement; name: HTMLSpanElement; name0: string }>();
+  private losCache = new Map<number, { at: number; ok: boolean }>();
+
+  /** Nomes sobre os personagens (DOM projetado), com indicador discreto de fala. */
+  private updateNameplates() {
+    const root = hudDom.nameplates;
+    if (!root) return;
+    const now = performance.now();
+    const seen = new Set<number>();
+    if (this.visible && (this.phase === 'running' || this.phase === 'countdown')) {
+      const c = this.rig.camera.position;
+      const cam: Vec3 = [c.x, c.y, c.z];
+      const rTick = this.interp.renderTick(now);
+      for (const id of this.interp.ids()) {
+        const lp = this.roster.get(id);
+        if (id === this.myId || !lp) continue;
+        const smp = this.interp.sample(id, rTick);
+        if (!smp) continue;
+        const ally = lp.team === this.myTeam;
+        const head: Vec3 = [smp.pos[0], smp.pos[1] + (smp.form === FORM_FLOW ? 1.0 : 2.15), smp.pos[2]];
+        const d = dist3(cam, head);
+        let los = true;
+        if (!ally) {
+          // linha de visão só para adversários, no máximo 10x por segundo cada
+          const cached = this.losCache.get(id);
+          if (!cached || now - cached.at > 100) {
+            const dir: Vec3 = [(head[0] - cam[0]) / d, (head[1] - cam[1]) / d, (head[2] - cam[2]) / d];
+            los = !this.physics.raycast(cam, dir, Math.max(0.1, d - 0.35));
+            this.losCache.set(id, { at: now, ok: los });
+          } else los = cached.ok;
+        }
+        if (!nameplateVisible({ ally, alive: (smp.flags & PFLAG_ALIVE) !== 0, submerged: (smp.flags & PFLAG_SUBMERGED) !== 0, dist: d, los })) continue;
+        const sp = this.projectToScreen(head);
+        if (!sp) continue;
+        seen.add(id);
+        let pl = this.plates.get(id);
+        if (!pl) {
+          const el = document.createElement('div');
+          el.className = 'nameplate';
+          const dot = document.createElement('span');
+          dot.className = 'np-voice';
+          dot.setAttribute('aria-hidden', 'true');
+          const name = document.createElement('span');
+          name.className = 'np-name';
+          el.append(dot, name);
+          root.appendChild(el);
+          pl = { el, name, name0: '' };
+          this.plates.set(id, pl);
+        }
+        // sempre texto: textContent nunca interpreta marcação
+        if (pl.name0 !== lp.displayName) {
+          pl.name.textContent = lp.displayName;
+          pl.name0 = lp.displayName;
+        }
+        pl.el.classList.toggle('enemy', !ally);
+        pl.el.classList.toggle('speaking', lp.userId ? !!this.hooks.voiceOf(lp.userId)?.speaking : false);
+        pl.el.style.color = `var(--team${lp.team})`;
+        pl.el.style.opacity = String(Math.max(0.35, Math.min(1, 1.25 - d / (ally ? 45 : 28))));
+        pl.el.style.transform = `translate(${sp[0].toFixed(1)}px, ${sp[1].toFixed(1)}px) translate(-50%, -100%)`;
+        pl.el.style.display = '';
+      }
+    }
+    for (const [id, pl] of this.plates) {
+      if (seen.has(id)) continue;
+      if (!this.roster.has(id)) {
+        pl.el.remove();
+        this.plates.delete(id);
+        this.losCache.delete(id);
+      } else pl.el.style.display = 'none';
+    }
+  }
+
   private projectToScreen(p: Vec3): [number, number] | null {
     const w = this.engine.getRenderWidth();
     const h = this.engine.getRenderHeight();
@@ -1034,6 +1110,7 @@ export class GameRuntime {
           alive: p.playerId === this.myId ? (s?.alive ?? true) : last ? (last.flags & PFLAG_ALIVE) !== 0 : true,
           isMe: p.playerId === this.myId,
           specialReady: last ? (last.flags & PFLAG_SPECIAL_READY) !== 0 : false,
+          speaking: p.userId ? !!this.hooks.voiceOf(p.userId)?.speaking : false,
         };
       });
     const w = s ? WEAPONS[pred!.weaponId] : null;
@@ -1090,6 +1167,8 @@ export class GameRuntime {
     this.resizeObs.disconnect();
     this.engine.stopRenderLoop();
     this.input.dispose();
+    for (const pl of this.plates.values()) pl.el.remove();
+    this.plates.clear();
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
     this.predictor?.dispose();

@@ -1,3 +1,4 @@
+import { resolveDisplayName } from '@borrifo/game-contracts';
 import type { NextRequest } from 'next/server';
 import { AccessToken, TrackSource } from 'livekit-server-sdk';
 import { z } from 'zod';
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     // A chamada é a do canal: quem não é membro não entra (mesma ACL da partida).
     if (!isChannelMember(user.id, LAB_CHANNEL_ID)) throw new LabError(403, 'forbidden', `Usuário sem acesso ao canal #${LAB_CHANNEL_ID}.`);
 
-    const at = new AccessToken(cfg.livekit.apiKey, cfg.livekit.apiSecret, { identity: user.id, name: user.displayName, ttl: '10m' });
+    const at = new AccessToken(cfg.livekit.apiKey, cfg.livekit.apiSecret, { identity: user.id, name: resolveDisplayName({ nickname: user.nickname, displayName: user.displayName, username: user.username }), ttl: '10m' });
     at.addGrant({
       roomJoin: true,
       room: LAB_CHANNEL_ID,

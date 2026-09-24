@@ -68,6 +68,7 @@ interface RoomPlayer {
   playerId: number;
   userId: string | null;
   displayName: string;
+  avatarUrl: string | null;
   isBot: boolean;
   team: TeamId;
   weaponId: WeaponId;
@@ -167,6 +168,9 @@ export class ArenaRoom extends Room {
     // Reentrada do mesmo usuário: recupera o slot existente (sem criar segundo jogador).
     const existing = [...this.players.values()].find((p) => !p.isBot && p.userId === auth.userId) ?? [...this.players.values()].find((p) => p.userId === auth.userId);
     if (existing) {
+      // a credencial nova traz o perfil atual (apelido ou avatar podem ter mudado)
+      existing.displayName = sanitizeDisplayName(auth.displayName);
+      existing.avatarUrl = auth.avatarUrl;
       this.takeOverSlot(existing, client);
       log('info', 'player.resumed', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, playerId: existing.playerId });
       this.sendWelcome(client, existing, true);
@@ -182,6 +186,7 @@ export class ArenaRoom extends Room {
       playerId: this.nextPlayerId++,
       userId: auth.userId,
       displayName: sanitizeDisplayName(auth.displayName),
+      avatarUrl: auth.avatarUrl,
       isBot: false,
       team,
       weaponId: 'esguicho',
@@ -427,7 +432,9 @@ export class ArenaRoom extends Room {
       .sort((a, b) => a.playerId - b.playerId)
       .map((p) => ({
         playerId: p.playerId,
+        userId: p.userId,
         displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
         isBot: p.isBot,
         team: p.team,
         weaponId: p.weaponId,
@@ -517,6 +524,7 @@ export class ArenaRoom extends Room {
             playerId: id,
             userId: null,
             displayName: BOT_NAMES[(id + team) % BOT_NAMES.length],
+            avatarUrl: null,
             isBot: true,
             team,
             weaponId: (['esguicho', 'rodo', 'estilingue', 'esguicho'] as const)[count % 4],
