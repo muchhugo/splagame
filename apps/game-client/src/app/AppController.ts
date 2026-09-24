@@ -139,6 +139,7 @@ export class AppController {
       onRoundResult: (r: import('@borrifo/game-contracts').RoundResult) => {
         uiStore.set({ result: r });
         rt().setPhase('finishing', null);
+        rt().playRoundResult(r.roundId, r.winner);
         this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'results', matchId: r.matchId });
       },
       onSnapshot: (m: import('@borrifo/game-contracts').SnapshotMessage, at: number) => rt().onSnapshot(m, at),
@@ -187,11 +188,23 @@ export class AppController {
     }
   }
 
+  get audioRunning(): boolean {
+    return this.runtime?.audio.state === 'running';
+  }
+
   async unlockAudio() {
     if (!this.runtime) return;
     const ok = await this.runtime.audio.unlock();
     uiStore.set({ audioState: this.runtime.audio.state });
     if (!ok) pushNotice('Áudio bloqueado pelo navegador. Clique no jogo para ativar.', 'warn');
+  }
+
+  /** Som de interface (não posicional, independe da câmera). O clique também destrava o áudio. */
+  async uiSound(kind: 'confirm' | 'back') {
+    const audio = this.runtime?.audio;
+    if (!audio) return;
+    if (audio.state !== 'running') await this.unlockAudio();
+    audio.play(kind === 'back' ? 'ui_back' : 'ui_confirm');
   }
 
   /* ---------------------------- ações da UI ---------------------------- */

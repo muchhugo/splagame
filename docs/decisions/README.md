@@ -14,4 +14,5 @@ estão marcados.
 | [0007](0007-sem-colisao-entre-jogadores.md) | Sem colisão física entre jogadores | — |
 | [0008](0008-modos-de-autenticacao.md) | Credencial HS256 só em desenvolvimento; JWKS para host real | — |
 | [0009](0009-fisica-compartilhada-rapier.md) | Rapier compat no servidor e no cliente, com reconciliação | — |
-| [0010](0010-arte-procedural.md) | Arte e som gerados por código | — |
+| [0010](0010-arte-procedural.md) | Arte gerada por código (o som mudou, ver 0011) | — |
+| [0011](0011-efeitos-sonoros-gravados.md) | Efeitos sonoros gravados (CC0) no lugar da síntese | — |

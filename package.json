@@ -16,7 +16,9 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "build": "pnpm -r build",
     "setup:env": "node scripts/setup-env.mjs",
-    "e2e": "node e2e/shell.mjs && node e2e/gameplay.mjs"
+    "e2e": "node e2e/shell.mjs && node e2e/gameplay.mjs",
+    "e2e:audio": "node e2e/audio.mjs && node e2e/audio-cobertura.mjs",
+    "audio:build": "python3 scripts/audio/build_sfx.py"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

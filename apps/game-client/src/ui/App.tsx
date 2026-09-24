@@ -44,6 +44,29 @@ export function App() {
     document.documentElement.style.setProperty('--hud-scale', String(hudScale));
   }, [palette, hudScale]);
 
+  // sons de interface num só lugar: todo botão confirma; data-sfx="back" cancela/sai;
+  // controles de toque e o mapa tático são gameplay e ficam de fora
+  useEffect(() => {
+    const onClick = (ev: MouseEvent) => {
+      const b = (ev.target as HTMLElement | null)?.closest?.('button');
+      if (!b || b.disabled || b.closest('.touch') || b.dataset.sfx === 'none') return;
+      void getController()?.uiSound(b.dataset.sfx === 'back' ? 'back' : 'confirm');
+    };
+    // qualquer interação conta como gesto para destravar o áudio (política de autoplay)
+    const onGesture = () => {
+      const c = getController();
+      if (c && !c.audioRunning) void c.unlockAudio();
+    };
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('pointerdown', onGesture, true);
+    document.addEventListener('keydown', onGesture, true);
+    return () => {
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('pointerdown', onGesture, true);
+      document.removeEventListener('keydown', onGesture, true);
+    };
+  }, []);
+
   useEffect(() => {
     if (booted) return;
     setBooted(true);
@@ -149,7 +172,7 @@ function ErrorScreen() {
             </button>
           ) : null}
           {err.actions.includes('close') ? (
-            <button className="btn ghost" onClick={() => void getController()?.close('user')}>
+            <button className="btn ghost" data-sfx="back" onClick={() => void getController()?.close('user')}>
               Sair da Atividade
             </button>
           ) : null}

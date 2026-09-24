@@ -1,4 +1,6 @@
-// Blocos básicos de síntese: PRNG, ruído, envelopes, espacialização e a "voz" descartável.
+// Blocos básicos de áudio: a "voz" descartável (que toca as amostras gravadas dos
+// efeitos e as notas da música), espacialização, envelopes, PRNG e ruído. A síntese
+// aqui só é usada pela música generativa; os efeitos vêm de arquivos (samples.ts).
 // Nada aqui toca em window/AudioContext no import: tudo recebe o contexto por parâmetro.
 
 export type Vec3 = [number, number, number];
@@ -128,6 +130,8 @@ export class Voice {
   endAt: number;
   /** Peso de audibilidade estimado (volume × distância), usado no roubo de vozes. */
   weight = 1;
+  /** Som do próprio jogador (sem posição): tem limite de vozes separado dos sons do mundo. */
+  local = false;
   onDone: ((v: Voice) => void) | null = null;
 
   private readonly nodes: AudioNode[] = [];
@@ -218,6 +222,18 @@ export class Voice {
     s.connect(dest);
     s.start(t0, Math.random() * buf.duration);
     this.register(s);
+    return s;
+  }
+
+  /** Reprodução de uma amostra gravada (efeito ou loop), a partir de `offset` segundos. */
+  sample(dest: AudioNode, buf: AudioBuffer, t0: number, rate = 1, loop = false, offset = 0): AudioBufferSourceNode {
+    const s = this.ctx.createBufferSource();
+    s.buffer = buf;
+    s.loop = loop;
+    s.playbackRate.value = rate;
+    s.connect(dest);
+    s.start(t0, Math.max(0, Math.min(offset, buf.duration - 0.001)));
+    this.register(s, loop ? undefined : t0 + (buf.duration - offset) / rate + 0.02);
     return s;
   }
 

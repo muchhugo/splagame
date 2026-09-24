@@ -11,7 +11,7 @@ mkdirSync(OUT, { recursive: true });
 /** Sem GPU (CI/containers), E2E_SWIFTSHADER=1 usa renderização por CPU: lenta, mas funcional. */
 export async function launch() {
   const args = process.env.E2E_SWIFTSHADER === '1' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : [];
-  return chromium.launch({ args: [...args, '--enable-precise-memory-info'], executablePath: process.env.E2E_CHROMIUM_PATH || undefined });
+  return chromium.launch({ args: [...args, '--enable-precise-memory-info', '--autoplay-policy=no-user-gesture-required'], executablePath: process.env.E2E_CHROMIUM_PATH || undefined });
 }
 
 export function watchErrors(page, label) {

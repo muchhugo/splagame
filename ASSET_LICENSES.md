@@ -1,8 +1,9 @@
 # Origem e licença dos recursos
 
-O Borrifo não usa modelos, texturas, sons, músicas, ícones ou logos de terceiros. Todo recurso
-visual e sonoro é **gerado por código deste repositório**. As exceções são a fonte tipográfica e
-as bibliotecas listadas abaixo.
+O Borrifo não usa modelos, texturas, músicas, ícones ou logos de terceiros. Todo recurso
+visual é **gerado por código deste repositório**. As exceções são os **efeitos sonoros**
+(gravações CC0 baixadas; ver [AUDIO_CREDITS.md](AUDIO_CREDITS.md)), a fonte tipográfica e as
+bibliotecas listadas abaixo.
 
 ## Recursos visuais
 
@@ -18,9 +19,11 @@ as bibliotecas listadas abaixo.
 
 ## Som
 
-Todo o som é sintetizado em tempo real com WebAudio (osciladores, ruído, filtros e envelopes),
-com trilha gerativa própria. **Nenhuma amostra de áudio externa** é baixada ou empacotada.
-O código fica em `apps/game-client/src/game/audio/`.
+- **Efeitos sonoros:** 66 arquivos editados a partir de gravações e efeitos prontos
+  **CC0 1.0** de Kenney, rubberduck (OpenGameArt) e Benjamin Burnes. Autor, origem, licença e
+  alterações de cada um estão em [AUDIO_CREDITS.md](AUDIO_CREDITS.md). Os originais e os
+  arquivos de licença que vieram com eles estão em `assets/audio/source/`.
+- **Música de fundo:** trilha generativa própria (WebAudio), sem amostras externas.
 
 ## Fonte
 

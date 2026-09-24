@@ -11,6 +11,7 @@ pnpm test          # vitest: unidade + integração pelo transporte real (≈18 
 pnpm typecheck     # tsc estrito em todos os pacotes
 pnpm dev           # (outro terminal) necessário para os testes de navegador
 pnpm e2e           # Playwright: host ⇄ Atividade e partida com dois navegadores
+pnpm e2e:audio     # Playwright: efeitos sonoros numa partida real (≈5 min) e cobertura por ferramenta
 E2E_SWIFTSHADER=1 pnpm e2e   # sem GPU (containers/CI)
 pnpm --filter @borrifo/game-server load-test   # carga local, ver performance.md
 ```
@@ -40,6 +41,8 @@ inspeção) e gravam capturas em `e2e/out/`.
 | Script | Verificações |
 |---|---|
 | `e2e/shell.mjs` | sandbox do iframe; sem câmera nem microfone; nonce no fragmento; handshake, credencial e lobby (≈4,6 s com SwiftShader); voz "não configurada"; fechar libera host, iframe e ouvintes; **abrir/fechar 10×** sem vazamento; usuário sem acesso vê o erro e o host registra `forbidden`; sem erros de página |
+| `e2e/audio.mjs` | numa partida real: 66 arquivos decodificados sem falha; menus tocam confirmar e voltar; "Silenciar o jogo" zera a saída; contagem soa 3 vezes e o início 1 vez; passos acompanham a animação; cada tiro previsto soa, sem passar da cadência do Esguicho; vozes simultâneas ≤ 24 (medido: 12); loop de nado liga sobre a tinta própria e para ao sair do fluxo; nenhum loop na tela de resultado; sino e jingle de resultado tocam uma vez; revanche segue tocando; ao sair, contexto fechado com 0 loops e 0 vozes; saída mixada **sem clipping** (pico de -2,8 dBFS), gravada em `e2e/out/audio-partida.wav` |
+| `e2e/audio-cobertura.mjs` | todos os 35 efeitos e 5 loops do manifesto tocam a partir dos arquivos; acerto e eliminação próprios (eventos injetados no runtime) tocam o som certo uma vez; vitória, derrota e empate sem repetir; tanque baixo e tanque vazio; Pião-Guia (lançamento e pouso); carga do Estilingue soa e para ao soltar; balanço e arrasto do Rodo |
 | `e2e/gameplay.mjs` | dois contextos de navegador (Ana e Bruno) no mesmo lobby; partida iniciada pela anfitriã; **hash de tinta idêntico** nas duas réplicas na mesma sequência (última execução: seq 91, unidades 33.933 e 38.148 nos dois); materiais limitados (154 → 164) e texturas estáveis (4 → 4) após ~30 s de jogo; aba oculta não renderiza e retoma ao voltar; sem erros de página |
 
 ### Verificação visual
@@ -62,6 +65,9 @@ spawn virado para a parede.
 - **Muitas salas simultâneas e processos múltiplos:** só uma sala por teste de carga.
 - **Pessoas jogando:** o balanceamento foi ajustado só com bots.
 - **Postgres/Drizzle:** não implementado (resultado em JSONL, ver ADR 0006).
+- **Escuta dos efeitos sonoros:** o ambiente não tem saída de áudio. A escolha e o equilíbrio
+  foram feitos por espectrograma, forma de onda, análise melódica e medição de nível; a
+  gravação da mixagem precisa ser ouvida por uma pessoa.
 
 Compilar sem erros de TypeScript não é tratado como prova de gameplay, integração, desempenho
 ou segurança. Cada item acima só é dado como verificado quando foi exercitado.

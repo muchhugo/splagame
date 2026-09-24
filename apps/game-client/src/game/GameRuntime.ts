@@ -1,6 +1,7 @@
 import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
 import type { GameEvent, LobbyPlayer, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
 import {
+  Buttons,
   FORM_FLOW,
   PFLAG_ALIVE,
   PFLAG_CHARGING,
@@ -73,7 +74,7 @@ export class GameRuntime {
   effects!: Effects;
   rig!: CameraRig;
   input: InputManager;
-  audio = new AudioEngine();
+  audio = new AudioEngine({ baseUrl: import.meta.env.BASE_URL });
   replica: PaintReplica;
   private pipeline: DefaultRenderingPipeline | null = null;
   private interp = new RemoteInterpolator();
@@ -258,7 +259,10 @@ export class GameRuntime {
   endRound() {
     this.input.releaseAll();
     this.input.releaseLock();
-    for (const k of ['swim', 'charge', 'enemy_ink']) this.audio.setLoop(k, k as 'swim', false);
+    this.audio.stopAllLoops();
+    this.wheelLoops.clear();
+    this.remoteLoops.clear();
+    this.chargeLoopOn = this.swimLoopOn = this.enemyLoopOn = this.dragLoopOn = false;
   }
 
   onPaintSnapshot(s: PaintSnapshotWire) {
@@ -282,6 +286,7 @@ export class GameRuntime {
     }
     if (phase === 'finishing' && prev !== 'finishing') {
       this.play('round_end');
+      this.roundEndAt = performance.now();
       this.audio.stopMusic(2);
       this.endRound();
     }
@@ -315,20 +320,39 @@ export class GameRuntime {
       }
     }
     this.effects.syncObjects(m.ob);
+    this.syncWheelAudio(m.ob);
     for (const e of m.ev) this.handleEvent(e);
   }
 
   private handleEvent(e: GameEvent) {
     const teamOf = (pid: number): TeamId => this.roster.get(pid)?.team ?? 0;
     switch (e.k) {
-      case 'shot':
-        if (e.pid === this.myId) return;
+      case 'shot': {
+        const kind = e.w === 'flick' ? 'shot_flick' : 'shot_esguicho';
+        if (e.pid === this.myId) {
+          // normalmente a previsão já soou; só um disparo que ela perdeu (quadro travado) soa aqui
+          const gap = kind === 'shot_flick' ? 0.6 : 0.25;
+          if (performance.now() - (this.lastLocalShotAt.get(kind) ?? -1e9) < gap * 1000) return;
+          this.effects.shot(e.p, e.v, e.gd, e.g, e.life, teamOf(e.pid));
+          this.play(kind, undefined, teamOf(e.pid), kind === 'shot_flick' ? 1 : 0.7);
+          this.lastLocalShotAt.set(kind, performance.now());
+          return;
+        }
         this.effects.shot(e.p, e.v, e.gd, e.g, e.life, teamOf(e.pid));
-        this.play(e.w === 'flick' ? 'shot_flick' : 'shot_esguicho', e.p, teamOf(e.pid), 0.8);
+        this.play(kind, e.p, teamOf(e.pid), 0.8);
         return;
+      }
       case 'beam':
-        if (e.pid !== this.myId) this.effects.beam(e.from, e.to, e.team, e.charge);
-        if (e.pid !== this.myId) this.play('charge_release', e.from, e.team);
+        if (e.pid !== this.myId) {
+          this.effects.beam(e.from, e.to, e.team, e.charge);
+          this.play('charge_release', e.from, e.team);
+        } else if (performance.now() - this.lastLocalReleaseAt > 400) {
+          // disparo próprio que a previsão não tocou (ex.: quadro travado e o servidor
+          // soltou a carga): feixe e som vêm do evento autoritativo, uma única vez
+          this.effects.beam(e.from, e.to, e.team, e.charge);
+          this.play('charge_release', undefined, e.team);
+          this.lastLocalReleaseAt = performance.now();
+        }
         return;
       case 'impact':
         this.effects.impact(e.p, e.n, e.team, e.s);
@@ -382,6 +406,8 @@ export class GameRuntime {
         return;
       }
       case 'throw':
+        // o próprio arremesso já soou na hora (intenção local / evento 'special')
+        if (e.pid === this.myId) return;
         this.play(e.kind === 'wheel' ? 'special_activate' : 'throw', e.p, e.team);
         return;
       case 'burst':
@@ -433,9 +459,11 @@ export class GameRuntime {
     this.play('denied');
   }
 
-  private play(id: SfxId, pos?: Vec3, team?: TeamId, volume?: number) {
-    this.audio.play(id, { ...(pos ? { pos } : {}), ...(team !== undefined ? { team } : {}), ...(volume !== undefined ? { volume } : {}) });
+  private play(id: SfxId, pos?: Vec3, team?: TeamId, volume?: number, delay = 0) {
+    this.audio.play(id, { ...(pos ? { pos } : {}), ...(team !== undefined ? { team } : {}), ...(volume !== undefined ? { volume } : {}), delay });
   }
+  /** Deslocamento do passo de previsão atual dentro do quadro (s). */
+  private stepDelay = 0;
 
   /* ------------------------------ frame ------------------------------ */
 
@@ -491,8 +519,11 @@ export class GameRuntime {
         const move = this.input.moveAxes();
         const res = pred.step(move, aim.yaw, aim.pitch, this.input.buttons(), actions, travel);
         this.hooks.sendInput(encodeInput(res.input));
+        // passos atrasados de um quadro lento soam espaçados pela cadência real
+        this.stepDelay = (steps - 1) * TICK_DT;
         this.localCosmetics(pred, res.intents, aim.dir);
       }
+      this.stepDelay = 0;
       if (steps === 4) this.acc = 0;
     }
 
@@ -528,6 +559,7 @@ export class GameRuntime {
         travel: s.travelPhase,
       }, dt);
       this.localAudio(pred);
+      this.emptyTankAudio(pred, dt);
     } else {
       // órbita lenta de apresentação antes da rodada
       const t = now * 0.00005;
@@ -624,7 +656,8 @@ export class GameRuntime {
       const sp = ((w.spreadDeg * Math.PI) / 180) * 0.5;
       const d = aimDirection(yawFromDir(dir) + (Math.random() - 0.5) * sp, pitchFromDir(dir) + (Math.random() - 0.5) * sp * 0.5);
       this.effects.shot(muzzle, [d[0] * w.projectileSpeed, d[1] * w.projectileSpeed, d[2] * w.projectileSpeed], w.straightTime, w.gravity, w.maxLife, team);
-      this.play('shot_esguicho', undefined, team, 0.7);
+      this.play('shot_esguicho', undefined, team, 0.7, this.stepDelay + i * w.fireInterval);
+      this.lastLocalShotAt.set('shot_esguicho', performance.now());
     }
     if (intents.flick && w.kind === 'contact') {
       for (let i = 0; i < w.flickCount; i++) {
@@ -632,27 +665,109 @@ export class GameRuntime {
         const d = aimDirection(s.yaw + (t * w.flickSpreadDeg * 2 * Math.PI) / 180, Math.min(s.pitch, 0.25) - 0.12);
         this.effects.shot(muzzle, [d[0] * w.flickSpeed, d[1] * w.flickSpeed + w.flickUp, d[2] * w.flickSpeed], 0, w.flickGravity, w.flickLife, team);
       }
-      this.play('shot_flick', undefined, team);
+      this.play('shot_flick', undefined, team, undefined, this.stepDelay);
+      this.lastLocalShotAt.set('shot_flick', performance.now());
     }
     if (intents.chargeRelease > 0) {
       const range = lerp(ESTILINGUE.minRange, ESTILINGUE.maxRange, intents.chargeRelease);
       const hit = this.physics.raycast(muzzle, dir, range);
       const end: Vec3 = hit ? hit.point : [muzzle[0] + dir[0] * range, muzzle[1] + dir[1] * range, muzzle[2] + dir[2] * range];
       this.effects.beam(muzzle, end, team, intents.chargeRelease);
-      this.play('charge_release', undefined, team);
+      this.play('charge_release', undefined, team, undefined, this.stepDelay);
+      this.lastLocalReleaseAt = performance.now();
       this.rig.shake(0.03);
     }
     if (intents.throwSecondary) this.play('throw');
-    if (intents.jumped) this.play('jump', undefined, team, 0.6);
+    if (intents.jumped) this.play('jump', undefined, team, 0.8, this.stepDelay);
+  }
+
+  /** Tanque vazio: ao apertar o disparo sem pigmento (e, segurando, a cada 1,2 s). */
+  private emptyTankAudio(pred: LocalPredictor, dt: number) {
+    const s = pred.state;
+    const w = WEAPONS[pred.weaponId];
+    const cost = w.kind === 'automatic' ? w.inkCost : w.kind === 'contact' ? w.flickCost : w.minCost;
+    const trying = (this.input.buttons() & Buttons.FIRE) !== 0 && s.alive && s.form === 0 && s.ink < cost;
+    if (!trying) {
+      this.emptyTimer = 0;
+      return;
+    }
+    this.emptyTimer -= dt;
+    if (this.emptyTimer <= 0) {
+      this.play('ink_empty');
+      this.emptyTimer = 1.2;
+    }
+  }
+  private emptyTimer = 0;
+
+  /** Passos e aterrissagens pela animação (o som cai quando o pé apoia). */
+  private footAudio(id: number, view: CharacterView, v: CharacterVisual) {
+    const { step, landed } = view.foot;
+    if (!step && landed < 0.25) return;
+    const me = id === this.myId;
+    const cp = this.rig.camera.position;
+    // passos de outros só por perto: informam aproximação sem competir com o combate
+    if (!me && Math.hypot(v.pos[0] - cp.x, v.pos[1] - cp.y, v.pos[2] - cp.z) > 15) return;
+    const kind = this.surfaceStep(v.pos);
+    const pos = me ? undefined : v.pos;
+    if (landed >= 0.25) {
+      const hard = Math.min(1.2, 0.6 + landed * 0.8);
+      if (kind === 'step_ink') this.play('step_ink', pos, undefined, hard * 1.3);
+      else this.play('land', pos, undefined, hard);
+    } else this.play(kind, pos, undefined, me ? 0.8 : 0.65);
+  }
+
+  private surfaceStep(p: Vec3): 'step_stone' | 'step_wood' | 'step_ink' {
+    const hit = this.layout.floorAt([p[0], p[1] + 0.05, p[2]], 0.35, 0.2);
+    if (!hit) return 'step_stone';
+    if (this.replica.state.owner[hit.cell] >= 0) return 'step_ink';
+    return this.blockMaterial.get(hit.surface.blockId) === 'madeira' ? 'step_wood' : 'step_stone';
+  }
+  private blockMaterialCache: Map<string, string> | null = null;
+  private get blockMaterial(): Map<string, string> {
+    if (!this.blockMaterialCache) this.blockMaterialCache = new Map(this.map.blocks.map((b) => [b.id, b.material]));
+    return this.blockMaterialCache;
+  }
+
+  /** Zumbido posicional da Roda de Oleiro enquanto ela gira no chão. */
+  private wheelLoops = new Set<number>();
+  private syncWheelAudio(list: SnapshotMessage['ob']) {
+    const seen = new Set<number>();
+    const inRound = this.phase === 'countdown' || this.phase === 'running';
+    for (const o of list) {
+      if (o.kind !== 'wheel' || !inRound) continue;
+      seen.add(o.id);
+      this.wheelLoops.add(o.id);
+      this.audio.setLoop(`roda-${o.id}`, 'wheel_hum', true, { pos: o.p });
+    }
+    for (const id of this.wheelLoops)
+      if (!seen.has(id)) {
+        this.audio.setLoop(`roda-${id}`, 'wheel_hum', false);
+        this.wheelLoops.delete(id);
+      }
   }
 
   private chargeLoopOn = false;
+  private lastLocalReleaseAt = -1e9;
+  private lastLocalShotAt = new Map<string, number>();
+  private dragLoopOn = false;
+  private remoteLoops = new Set<string>();
   private swimLoopOn = false;
   private enemyLoopOn = false;
   private lastForm = 0;
 
   private localAudio(pred: LocalPredictor) {
     const s = pred.state;
+    // só durante a rodada: no resultado/lobby nenhum loop ou aviso local volta a tocar
+    if (this.phase !== 'countdown' && this.phase !== 'running') {
+      if (this.swimLoopOn || this.chargeLoopOn || this.enemyLoopOn || this.dragLoopOn) {
+        for (const k of ['swim', 'charge', 'enemy_ink', 'rodo']) this.audio.setLoop(k, 'swim', false);
+        this.swimLoopOn = this.chargeLoopOn = this.enemyLoopOn = this.dragLoopOn = false;
+      }
+      this.lastForm = s.form;
+      this.prevInk = s.ink;
+      this.prevSpecial = s.special;
+      return;
+    }
     if (s.form !== this.lastForm) {
       this.play(s.form === FORM_FLOW ? 'transform_in' : 'transform_out');
       this.lastForm = s.form;
@@ -662,6 +777,9 @@ export class GameRuntime {
     this.swimLoopOn = swim;
     if (s.charging !== this.chargeLoopOn || s.charging) this.audio.setLoop('charge', 'charge', s.charging, { param: s.charge });
     this.chargeLoopOn = s.charging;
+    const drag = s.dragging && Math.hypot(s.vel[0], s.vel[2]) > 1;
+    if (drag !== this.dragLoopOn || drag) this.audio.setLoop('rodo', 'rodo_drag', drag, { param: Math.min(1, Math.hypot(s.vel[0], s.vel[2]) / 4.4) });
+    this.dragLoopOn = drag;
     const enemy = s.groundState === GROUND_ENEMY && s.grounded;
     if (enemy !== this.enemyLoopOn) this.audio.setLoop('enemy_ink', 'enemy_ink', enemy);
     this.enemyLoopOn = enemy;
@@ -680,9 +798,38 @@ export class GameRuntime {
     if (s.submerged && Math.hypot(s.vel[0], s.vel[2]) > 1) this.maybeRipple(this.myId, s.pos, this.myTeam, 0.18);
   }
 
+  /** Loop posicional de outro jogador (liga/desliga sem repetir nem vazar). */
+  private remoteLoop(key: string, id: 'charge' | 'rodo_drag', want: boolean, pos: Vec3, param = 0) {
+    // fora da rodada (resultado, lobby) nenhum loop do mundo volta a tocar
+    const on = want && (this.phase === 'countdown' || this.phase === 'running');
+    if (!on && !this.remoteLoops.has(key)) return;
+    this.audio.setLoop(key, id, on, { pos: [pos[0], pos[1] + 1, pos[2]], param });
+    if (on) this.remoteLoops.add(key);
+    else this.remoteLoops.delete(key);
+  }
+
+  /** Fim da rodada: vitória, derrota ou empate do ponto de vista da turma local, depois do sino. */
+  playRoundResult(roundId: number, winner: TeamId | 'draw') {
+    if (roundId === this.resultSoundRound) return;
+    this.resultSoundRound = roundId;
+    const wait = Math.max(0, 1100 - (performance.now() - this.roundEndAt));
+    const id: SfxId = winner === 'draw' ? 'draw' : winner === this.myTeam ? 'victory' : 'defeat';
+    this.resultTimer = setTimeout(() => {
+      this.resultTimer = null;
+      if (!this.disposed) this.play(id);
+    }, wait);
+  }
+  private resultSoundRound = -1;
+  private roundEndAt = 0;
+  private resultTimer: ReturnType<typeof setTimeout> | null = null;
+
   private remoteCosmetics(id: number, v: CharacterVisual, dt: number) {
     const team = this.roster.get(id)?.team ?? 0;
-    if (!v.alive) return;
+    if (!v.alive) {
+      this.remoteLoop(`carga-${id}`, 'charge', false, v.pos);
+      this.remoteLoop(`rodo-${id}`, 'rodo_drag', false, v.pos);
+      return;
+    }
     if (v.charging) {
       const probe = { pos: v.pos, yaw: v.yaw } as unknown as Parameters<typeof muzzlePosition>[0];
       const m = muzzlePosition(probe);
@@ -690,6 +837,8 @@ export class GameRuntime {
       this.effects.laser(id, new Vector3(...m), new Vector3(...d), lerp(ESTILINGUE.minRange, ESTILINGUE.maxRange, v.charge), team, v.charge);
     }
     if (v.dragging && v.speed > 1) this.dragSpray(v.pos, v.yaw, team);
+    this.remoteLoop(`carga-${id}`, 'charge', v.charging, v.pos);
+    this.remoteLoop(`rodo-${id}`, 'rodo_drag', v.dragging && v.speed > 1, v.pos, Math.min(1, v.speed / 4.4));
     // imersos em movimento deixam ondulações sutis (inclusive inimigos)
     if (v.submerged && v.speed > 1.5) this.maybeRipple(id, v.pos, team, 0.3);
     void dt;
@@ -725,6 +874,7 @@ export class GameRuntime {
     const camDist = Math.hypot(v.pos[0] - cp.x, v.pos[1] + 0.8 - cp.y, v.pos[2] - cp.z);
     view.nearFade = Math.min(1, Math.max(0.2, (camDist - 0.9) / 0.9));
     view.update(dt, v, ground ? ground.point[1] : null, this.sunAt(v.pos));
+    this.footAudio(id, view, v);
   }
 
   /** Luz do sol pré-calculada no chão sob o personagem (personagem escurece na sombra do cenário). */
@@ -845,6 +995,7 @@ export class GameRuntime {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.resultTimer) clearTimeout(this.resultTimer);
     this.settingsUnsub();
     this.resizeObs.disconnect();
     this.engine.stopRenderLoop();

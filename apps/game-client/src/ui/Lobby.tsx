@@ -109,7 +109,7 @@ export function Lobby() {
               </label>
             ) : null}
             {!isHost ? (
-              <button className={`btn ${me?.ready ? 'ghost' : 'secondary'}`} onClick={() => c?.setReady(!me?.ready)}>
+              <button className={`btn ${me?.ready ? 'ghost' : 'secondary'}`} data-sfx={me?.ready ? 'back' : undefined} onClick={() => c?.setReady(!me?.ready)}>
                 {me?.ready ? 'Cancelar pronto' : 'Estou pronto'}
               </button>
             ) : (

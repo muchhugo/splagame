@@ -82,6 +82,7 @@ export function TacticalMap() {
           <canvas ref={canvas} width={W} height={H} style={{ width: W, height: H }} />
           {allies.map((a) => (
             <button
+              data-sfx="none"
               key={a.playerId}
               className={`ally-pin ${a.isMe ? 'me' : ''}`}
               style={{ left: a.x, top: a.y, background: `var(--team${myTeam})` }}

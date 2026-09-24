@@ -51,7 +51,8 @@ Legenda:
 | Mensagem clara sem WebGL2 | Parcial | Implementada; não exercitada num navegador sem WebGL2 |
 | Direção de arte cartoon (toon, luz, materiais, letreiros, estátua, respingos orgânicos) | Testado | Iterada por capturas; ver [game-design.md](game-design.md#direção-de-arte) |
 | HUD, menus, mapa tático, resultados em pt-BR | Testado | Usados nos E2E e nas capturas |
-| Áudio procedural (efeitos e trilha gerativa) | Parcial | Inicializa e roda sem erros; **não foi ouvido** (ambiente sem saída de áudio) |
+| Efeitos sonoros gravados (CC0), ligados aos eventos reais | Testado (sem escuta) | 66 arquivos ([AUDIO_CREDITS.md](../AUDIO_CREDITS.md)); `e2e/audio.mjs` e `e2e/audio-cobertura.mjs` verificam carga, disparo por evento, cadência, limite de vozes, loops que param, silenciar, sem clipping e revanche. **Ninguém ouviu ainda**: o ambiente não tem saída de som. A mixagem gravada está em `e2e/out/audio-partida.wav` |
+| Música de fundo | Parcial | Trilha generativa própria (fora do escopo da troca por arquivos); não foi ouvida |
 | Acessibilidade (paletas, padrões, redução de tremor e flashes, escala do HUD, remapeamento, reduced-motion) | Parcial | Implementada; não revisada com usuários nem com leitor de tela |
 | Pausa ao ocultar ou suspender | Testado | `e2e/gameplay.mjs` (0 quadros oculta) |
 | Controles de toque e mobile | Não verificado | `TouchControls.tsx` existe; nenhum dispositivo real |

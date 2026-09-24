@@ -94,9 +94,19 @@ própria: as referências externas serviram só para cor, luz e atmosfera.
 
 ### Som
 
-Todo o som é sintetizado em tempo real com WebAudio a partir de parâmetros originais,
-sem nenhuma amostra externa. A trilha é gerativa, com percussão inspirada em ritmos
-brasileiros em compasso próprio. Nada imita melodias ou sons de outros jogos.
+- **Efeitos:** gravações reais baixadas, todas CC0 (ver `AUDIO_CREDITS.md`), escolhidas para
+  combinar com o visual cartoon:
+  - respingos, slime, lama e bolhas para a tinta;
+  - tapas úmidas para dano;
+  - barro e louça para a Moringa;
+  - woosh giratório para a Roda de Oleiro;
+  - apito de êmbolo para o Pião-Guia e a carga do Estilingue;
+  - passos de pedra e madeira;
+  - sino de verdade para "quando o sino tocar".
+  Jingles curtos de pizzicato e steel drum marcam início, vitória, derrota e empate. Nada soa
+  como tiro realista ou explosão militar.
+- **Música:** trilha generativa própria, com percussão inspirada em ritmos brasileiros em
+  compasso próprio. Nada imita melodias ou sons de outros jogos.
 
 ## O que evitar
 

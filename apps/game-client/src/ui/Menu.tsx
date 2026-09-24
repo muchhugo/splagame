@@ -31,7 +31,7 @@ export function Menu() {
         <div className="row">
           <VoiceChip />
         </div>
-        <button className="btn ghost" onClick={() => void c?.close('user')}>
+        <button className="btn ghost" data-sfx="back" onClick={() => void c?.close('user')}>
           Sair da Atividade
         </button>
       </div>
@@ -61,7 +61,10 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     </label>
   );
   const bindKey = (e: React.KeyboardEvent) => {
-    if (!listening) return;
+    if (!listening) {
+      if (e.code === 'Escape') onClose();
+      return;
+    }
     e.preventDefault();
     if (e.code !== 'Escape') set({ keybinds: { ...s.keybinds, [listening]: e.code } });
     setListening(null);
@@ -73,7 +76,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           <h2 id="set-title" style={{ margin: 0 }}>
             Configurações
           </h2>
-          <button className="btn small ghost" onClick={onClose}>
+          <button className="btn small ghost" data-sfx="back" onClick={onClose}>
             Fechar
           </button>
         </div>

@@ -457,6 +457,10 @@ export class CharacterView {
 
   /** 0–1: esmaece o personagem colado na câmera para não tapar a mira. */
   nearFade = 1;
+  /** Eventos de pé do último update (para o som): passo no apoio e aterrissagem (s no ar). */
+  readonly foot = { step: false, landed: 0 };
+  private stepSign = 0;
+  private airTime = 0;
 
   /** Reação a dano (pequeno tranco e lampejo claro). */
   hitReaction() {
@@ -501,6 +505,12 @@ export class CharacterView {
     // locomoção expressiva: passos largos, balanço e inclinação
     const walk = v.grounded && !v.climbing ? Math.min(1, v.speed / 5.5) : 0;
     this.phase += dt * (4 + v.speed * 2.0);
+    // som de passo quando o pé apoia (troca de sinal do balanço), só andando na forma de combate
+    const sign = Math.sin(this.phase) >= 0 ? 1 : -1;
+    this.foot.step = sign !== this.stepSign && walk > 0.3 && v.form === 0 && !v.submerged;
+    this.stepSign = sign;
+    this.foot.landed = !this.wasGrounded && v.grounded && !v.climbing ? this.airTime : 0;
+    this.airTime = v.grounded ? 0 : this.airTime + dt;
     const swing = Math.sin(this.phase) * 0.85 * walk;
     this.legL.rotation.x = v.grounded ? swing : -0.7;
     this.legR.rotation.x = v.grounded ? -swing : 0.35;

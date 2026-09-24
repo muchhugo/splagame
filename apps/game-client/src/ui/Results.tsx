@@ -75,11 +75,11 @@ export function Results() {
             {votes.has(myId) ? `Aguardando revanche (${[...votes].filter((v) => humans.some((h) => h.playerId === v)).length}/${humans.length})` : 'Revanche'}
           </button>
           {isHost ? (
-            <button className="btn ghost" onClick={() => c?.vote('lobby')}>
+            <button className="btn ghost" data-sfx="back" onClick={() => c?.vote('lobby')}>
               Voltar ao lobby
             </button>
           ) : null}
-          <button className="btn ghost" onClick={() => void c?.close('user')}>
+          <button className="btn ghost" data-sfx="back" onClick={() => void c?.close('user')}>
             Sair da Atividade
           </button>
         </div>

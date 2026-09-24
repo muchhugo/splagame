@@ -60,6 +60,7 @@ A banda de voz do LiveKit é separada e **não foi medida**.
 | CSS | 15 KB | 4 KB |
 | Fontes Fredoka (3 pesos, woff2) | 49 KB | — |
 | **Total do carregamento inicial** | ≈ 10,7 MB | **≈ 2,9 MB** |
+| Efeitos sonoros (`public/audio/sfx`, baixados depois da abertura) | ≈ 1,3 MB (62 MP3 + 4 WAV de loop) | — (MP3 já é comprimido) |
 
 O pacote do Babylon é importado pela raiz `@babylonjs/core` e leva a engine inteira. Importar
 por subcaminhos reduziria bastante esse arquivo; isso fica como próximo passo.
@@ -84,6 +85,15 @@ Correções feitas a partir destas medições:
 - **Fumaça:** buffers pré-alocados, sem alocação por quadro, e uma coluna por chaminé.
 - **Aba oculta ou Atividade suspensa:** a cena deixa de ser desenhada, e rede e estado seguem a
   ~4 Hz.
+
+### Áudio
+
+- Efeitos decodificados uma vez em `AudioBuffer`; cada disparo cria só uma fonte e um ganho,
+  mais um panner se for posicional.
+- Até 24 vozes simultâneas, com limite por efeito (separado entre som do próprio jogador e som
+  do mundo), roubo da voz menos audível e intervalo mínimo contra disparos duplicados. Numa
+  partida com 7 bots, o máximo medido foi 12 vozes e 5 loops.
+- Passos de outros jogadores só até 15 m. Impactos passam por um orçamento por segundo.
 
 ### Orçamentos aplicados no código
 

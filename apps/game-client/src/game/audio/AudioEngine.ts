@@ -1,10 +1,11 @@
-// Motor de áudio procedural do Borrifo: barramentos, limite de vozes, loops
-// com chave, espacialização e música generativa. Todo som é sintetizado.
+// Motor de áudio do Borrifo: barramentos, limite de vozes, loops com chave,
+// espacialização e música. Os EFEITOS são arquivos de áudio gravados/baixados
+// (samples.ts, AUDIO_CREDITS.md); só a música de fundo continua generativa.
 // Nada é criado no import; o AudioContext só nasce em unlock().
 
-import { LOOP_CAPS, LoopInstance, MAX_LOOPS, type LoopId } from './loops';
 import { MusicPlayer } from './music';
-import { SFX_META, SFX_RECIPES, type SfxId, type SfxMeta } from './sfx';
+import { SampleBank, type BankStatus } from './SampleBank';
+import { LOOPS, SFX, sampleFiles, type LoopDef, type LoopId, type SfxDef, type SfxId } from './samples';
 import {
   SPATIAL,
   Voice,
@@ -13,6 +14,8 @@ import {
   createPanner,
   distanceGain,
   finite,
+  setPannerPosition,
+  setParam,
   validVec3,
   type Vec3,
 } from './synth';
@@ -32,6 +35,8 @@ export interface PlayOptions {
   volume?: number;
   pitch?: number;
   team?: 0 | 1;
+  /** Atraso de início (s, até 0,25): espaça eventos distintos que chegaram no mesmo quadro. */
+  delay?: number;
 }
 
 export interface LoopOptions {
@@ -48,10 +53,16 @@ const SOUNDING_CAP = MAX_VOICES - MAX_RELEASING;
 /** Voz mais nova que isso não é roubada (evita churn numa rajada no mesmo frame). */
 const MIN_STEAL_AGE = 0.03;
 const STEAL_FADE = 0.02;
-const LOOP_FADE = 0.15;
+const LOOP_FADE = 0.12;
+/** Teto de loops simultâneos (todos os tipos). */
+const MAX_LOOPS = 12;
+/** Constante de tempo das atualizações de loop (s). */
+const LOOP_SMOOTH = 0.06;
 const START_OFFSET = 0.005;
 // Música fica abaixo dos efeitos por padrão.
 const MUSIC_TRIM = 0.8;
+// Ganho extra dos efeitos gravados (+3,5 dB); o compressor final segura os picos.
+const SFX_TRIM = 1.5;
 
 type Ctor = new (opts?: AudioContextOptions) => AudioContext;
 
@@ -107,15 +118,29 @@ export class AudioEngine {
 
   private readonly voices: Voice[] = []; // soando, em ordem de criação
   private readonly releasing = new Set<Voice>(); // roubadas, em fade
-  private readonly loops = new Map<string, LoopInstance>();
-  private readonly fadingLoops = new Set<LoopInstance>();
+  private readonly loops = new Map<string, SampleLoop>();
+  private readonly fadingLoops = new Set<SampleLoop>();
+  private readonly bank: SampleBank;
+  /** Último disparo por efeito, separado entre som local (sem posição) e do mundo. */
+  private readonly lastPlayed = new Map<string, number>();
+  private readonly lastVariant = new Map<SfxId, number>();
+  /** Diagnóstico: disparos aceitos por efeito e descartados (limite/roubo/intervalo). */
+  readonly stats = { plays: new Map<string, number>(), local: new Map<string, number>(), dropped: 0 };
 
   private music: MusicPlayer | null = null;
   private musicWanted = false;
   private musicIntensity = 0;
 
-  constructor() {
+  constructor(opts: { baseUrl?: string } = {}) {
     this._state = audioCtor() ? 'locked' : 'unsupported';
+    this.bank = new SampleBank(sampleFiles(), opts.baseUrl ?? '/');
+    // download antecipado: quando o jogador destravar o áudio, os arquivos já chegaram
+    if (this._state !== 'unsupported') this.bank.prefetch();
+  }
+
+  /** Diagnóstico: arquivos decodificados e falhas de carga. */
+  get samples(): BankStatus {
+    return this.bank.status;
   }
 
   // ---------- estado ----------
@@ -248,30 +273,38 @@ export class AudioEngine {
 
   // ---------- efeitos ----------
 
-  play(id: SfxId, opts: PlayOptions = {}): void {
+  /** Toca um efeito. Retorna se foi aceito (limites de voz, intervalo mínimo, arquivo carregado). */
+  play(id: SfxId, opts: PlayOptions = {}): boolean {
     const ctx = this.ctx;
-    if (this.disposed || !ctx || ctx.state !== 'running' || !this.sfxBus || !this.noise) return;
-    const meta: SfxMeta | undefined = SFX_META[id];
-    const recipe = SFX_RECIPES[id];
-    if (!meta || !recipe) return;
+    if (this.disposed || !ctx || ctx.state !== 'running' || !this.sfxBus || !this.noise) return false;
+    const def: SfxDef | undefined = SFX[id];
+    if (!def) return false;
     const volume = clamp(finite(opts.volume, 1), 0, 2);
-    if (volume < 0.001) return;
+    if (volume < 0.001) return false;
+    const now = ctx.currentTime + clamp(finite(opts.delay, 0), 0, 0.25);
     const pos = validVec3(opts.pos);
-    let weight = volume * meta.level;
+    // o intervalo mínimo evita o mesmo evento soar duas vezes; o som do próprio
+    // jogador nunca é engolido por um som igual vindo do mundo
+    const gapKey = pos ? `${id}|w` : id;
+    const last = this.lastPlayed.get(gapKey);
+    if (last !== undefined && now - last < def.minGap) return this.drop();
+    const buf = this.pickBuffer(id, def);
+    if (!buf) return false;
+    let weight = volume * def.level;
     if (pos) {
       const d = Math.hypot(pos[0] - this.lis.pos[0], pos[1] - this.lis.pos[1], pos[2] - this.lis.pos[2]);
       // além do alcance: descarta sons comuns (os importantes seguem no mínimo do modelo)
-      if (d > SPATIAL.maxDistance && meta.priority < 3) return;
+      if (d > SPATIAL.maxDistance && def.priority < 3) return this.drop();
       weight *= distanceGain(d);
     }
-    const now = ctx.currentTime;
     this.sweep(now);
-    if (!this.admit(id, meta, weight, now)) return;
+    if (!this.admit(id, def, weight, now, !pos)) return this.drop();
 
     let pitch = clamp(finite(opts.pitch, 1), 0.25, 4);
-    if (opts.team === 0) pitch *= 0.97;
-    else if (opts.team === 1) pitch *= 1.03;
-    pitch *= 1 + (Math.random() * 2 - 1) * meta.detune;
+    if (opts.team === 0) pitch *= 0.98;
+    else if (opts.team === 1) pitch *= 1.02;
+    pitch *= 1 + (Math.random() * 2 - 1) * def.detune;
+    const gain = def.level * volume * (1 - Math.random() * def.volVar);
 
     let dest: AudioNode = this.sfxBus;
     let panner: PannerNode | null = null;
@@ -280,22 +313,45 @@ export class AudioEngine {
       panner.connect(this.sfxBus);
       dest = panner;
     }
-    const v = new Voice(ctx, this.noise, dest, id, meta.priority, meta.level * volume);
+    const v = new Voice(ctx, this.noise, dest, id, def.priority, gain);
     if (panner) v.adopt(panner);
     v.weight = weight;
+    v.local = !pos;
     try {
-      recipe(v, now + START_OFFSET, pitch);
+      v.sample(v.out, buf, now + START_OFFSET, pitch);
     } catch (e) {
       this.fail(`sfx ${id}`, e);
       v.kill();
-      return;
-    }
-    if (v.sourceCount === 0) {
-      v.kill();
-      return;
+      return false;
     }
     v.onDone = (x) => this.forget(x);
     this.voices.push(v);
+    this.lastPlayed.set(gapKey, now);
+    this.stats.plays.set(id, (this.stats.plays.get(id) ?? 0) + 1);
+    if (!pos) this.stats.local.set(id, (this.stats.local.get(id) ?? 0) + 1);
+    return true;
+  }
+
+  /** Sorteia uma variação carregada, evitando repetir a última. */
+  private pickBuffer(id: SfxId, def: SfxDef): AudioBuffer | undefined {
+    const n = def.files.length;
+    const prev = this.lastVariant.get(id) ?? -1;
+    let i = n > 1 ? Math.floor(Math.random() * (n - 1)) : 0;
+    if (n > 1 && i >= prev && prev >= 0) i++;
+    for (let k = 0; k < n; k++) {
+      const j = (i + k) % n;
+      const b = this.bank.get(def.files[j]);
+      if (b) {
+        this.lastVariant.set(id, j);
+        return b;
+      }
+    }
+    return undefined;
+  }
+
+  private drop(): false {
+    this.stats.dropped++;
+    return false;
   }
 
   // ---------- loops ----------
@@ -308,23 +364,32 @@ export class AudioEngine {
       return;
     }
     const ctx = this.ctx;
-    if (!ctx || ctx.state !== 'running' || !this.sfxBus || !this.noise || !(id in LOOP_CAPS)) return;
+    const def: LoopDef | undefined = LOOPS[id];
+    if (!ctx || ctx.state !== 'running' || !this.sfxBus || !this.noise || !def) return;
     const param = clamp(finite(opts.param, 0), 0, 1);
     const volume = clamp(finite(opts.volume, 1), 0, 2);
     const pos = validVec3(opts.pos);
     if (cur && cur.id === id && cur.spatial === (pos !== null)) {
-      cur.update(param, volume, pos);
+      // um efeito não repetido (ex.: elástico) que já terminou fica quieto até ser desligado
+      if (!cur.voice.done) cur.update(param, volume, pos);
       return;
     }
-    if (cur) this.releaseLoop(key, cur, 0.06);
+    if (cur) this.releaseLoop(key, cur, 0.05);
     let same = 0;
     for (const l of this.loops.values()) if (l.id === id) same++;
-    if (same >= LOOP_CAPS[id] || this.loops.size >= MAX_LOOPS) return;
+    if (same >= def.cap || this.loops.size >= MAX_LOOPS) return;
+    const buf = this.bank.get(def.file);
+    if (!buf) return;
     try {
-      this.loops.set(key, LoopInstance.create(ctx, this.noise, this.sfxBus, id, pos, param, volume));
+      this.loops.set(key, new SampleLoop(ctx, this.noise, this.sfxBus, id, def, buf, pos, param, volume));
     } catch (e) {
       this.fail(`loop ${id}`, e);
     }
+  }
+
+  /** Desliga todos os loops (fim de rodada, saída da tela). */
+  stopAllLoops(fade = LOOP_FADE): void {
+    for (const [key, l] of [...this.loops]) this.releaseLoop(key, l, fade);
   }
 
   // ---------- música ----------
@@ -365,6 +430,7 @@ export class AudioEngine {
         }
         this.ctx = ctx;
         this.buildGraph(ctx);
+        void this.bank.decodeAll(ctx);
         ctx.onstatechange = () => {
           this.syncState();
           if (ctx.state === 'running') this.markRunning();
@@ -442,7 +508,7 @@ export class AudioEngine {
       else g.gain.setTargetAtTime(v, t, 0.02);
     };
     set(this.master, this._muted ? 0 : curve(this.vol.master));
-    set(this.sfxBus, curve(this.vol.sfx));
+    set(this.sfxBus, curve(this.vol.sfx) * SFX_TRIM);
     set(this.musicBus, curve(this.vol.music) * MUSIC_TRIM);
   }
 
@@ -510,12 +576,13 @@ export class AudioEngine {
    * Admissão com limite por id e global. Quando cheio, rouba a voz menos audível
    * (e de prioridade <= à nova); se não houver candidata, descarta o som novo.
    */
-  private admit(id: SfxId, meta: SfxMeta, weight: number, now: number): boolean {
+  private admit(id: SfxId, meta: SfxDef, weight: number, now: number, local: boolean): boolean {
     let same = 0;
     let victim: Voice | null = null;
     let vs = Infinity;
     for (const v of this.voices) {
-      if (v.id !== id) continue;
+      // o limite por efeito vale separadamente para o som do próprio jogador e o do mundo
+      if (v.id !== id || v.local !== local) continue;
       same++;
       if (now - v.born < MIN_STEAL_AGE) continue;
       const s = this.score(v, now);
@@ -532,8 +599,9 @@ export class AudioEngine {
       victim = null;
       let vp = Infinity;
       vs = Infinity;
+      const prio = meta.priority + (local ? 1 : 0);
       for (const v of this.voices) {
-        if (v.priority > meta.priority || now - v.born < MIN_STEAL_AGE) continue;
+        if (v.priority + (v.local ? 1 : 0) > prio || now - v.born < MIN_STEAL_AGE) continue;
         const s = this.score(v, now);
         if (v.priority < vp || (v.priority === vp && s < vs)) {
           vp = v.priority;
@@ -560,8 +628,9 @@ export class AudioEngine {
     this.releasing.delete(v);
   }
 
-  private releaseLoop(key: string, l: LoopInstance, fade: number): void {
+  private releaseLoop(key: string, l: SampleLoop, fade: number): void {
     if (this.loops.get(key) === l) this.loops.delete(key);
+    if (l.voice.done) return;
     this.fadingLoops.add(l);
     l.voice.onDone = () => this.fadingLoops.delete(l);
     l.voice.release(fade);
@@ -572,13 +641,71 @@ export class AudioEngine {
     const stale: Voice[] = [];
     for (const v of this.voices) if (now > v.endAt + 0.5) stale.push(v);
     for (const v of this.releasing) if (now > v.endAt + 0.5) stale.push(v);
-    for (const l of this.fadingLoops) if (now > l.voice.endAt + 0.5) stale.push(l.voice);
+    for (const l of this.fadingLoops) if (l.voice.done || now > l.voice.endAt + 0.5) stale.push(l.voice);
     for (const v of stale) v.kill();
+    for (const l of this.fadingLoops) if (l.voice.done) this.fadingLoops.delete(l);
   }
 
   private fail(where: string, e: unknown): void {
     const msg = e instanceof Error ? e.message : String(e);
     this._lastError = `${where}: ${msg}`;
     console.warn(`[audio] ${where}:`, e);
+  }
+}
+
+/** Loop (ou efeito interrompível) de uma amostra, com ganho/velocidade conforme o jogo. */
+class SampleLoop {
+  readonly voice: Voice;
+  private readonly src: AudioBufferSourceNode;
+  private readonly panner: PannerNode | null;
+
+  constructor(
+    ctx: AudioContext,
+    noise: AudioBuffer,
+    bus: AudioNode,
+    readonly id: LoopId,
+    private readonly def: LoopDef,
+    buf: AudioBuffer,
+    pos: Vec3 | null,
+    param: number,
+    volume: number,
+  ) {
+    let dest: AudioNode = bus;
+    this.panner = null;
+    if (pos) {
+      this.panner = createPanner(ctx, pos);
+      this.panner.connect(bus);
+      dest = this.panner;
+    }
+    this.voice = new Voice(ctx, noise, dest, `loop:${id}`, 2, 0);
+    if (this.panner) this.voice.adopt(this.panner);
+    const t = ctx.currentTime + START_OFFSET;
+    // loops começam em ponto aleatório: duas instâncias não soam em fase
+    const offset = def.loop ? Math.random() * buf.duration : 0;
+    this.src = this.voice.sample(this.voice.out, buf, t, this.rate(param), def.loop, offset);
+    const g = this.voice.out.gain;
+    g.setValueAtTime(0, t);
+    g.linearRampToValueAtTime(this.gain(param, volume), t + (def.loop ? 0.08 : 0.01));
+  }
+
+  get spatial(): boolean {
+    return this.panner !== null;
+  }
+
+  update(param: number, volume: number, pos: Vec3 | null): void {
+    const now = this.voice.ctx.currentTime;
+    setParam(this.voice.out.gain, this.gain(param, volume), now, LOOP_SMOOTH);
+    setParam(this.src.playbackRate, this.rate(param), now, LOOP_SMOOTH);
+    if (pos && this.panner) setPannerPosition(this.panner, pos, now, 0.05);
+  }
+
+  private gain(param: number, volume: number): number {
+    const [a, b] = this.def.gain;
+    return this.def.level * volume * (a + (b - a) * param);
+  }
+
+  private rate(param: number): number {
+    const [a, b] = this.def.rate;
+    return a + (b - a) * param;
   }
 }

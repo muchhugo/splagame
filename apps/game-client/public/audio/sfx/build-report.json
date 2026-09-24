@@ -1,0 +1,464 @@
+{
+ "esguicho-1.mp3": {
+  "seconds": 0.15,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -19.0,
+  "momentary_dbfs": -16.1,
+  "bytes": 2713
+ },
+ "esguicho-2.mp3": {
+  "seconds": 0.15,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -21.3,
+  "momentary_dbfs": -18.4,
+  "bytes": 3051
+ },
+ "esguicho-3.mp3": {
+  "seconds": 0.15,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -21.6,
+  "momentary_dbfs": -17.9,
+  "bytes": 3077
+ },
+ "esguicho-4.mp3": {
+  "seconds": 0.13,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -17.2,
+  "momentary_dbfs": -14.8,
+  "bytes": 2478
+ },
+ "rodo-1.mp3": {
+  "seconds": 0.39,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -20.9,
+  "momentary_dbfs": -14.3,
+  "bytes": 6312
+ },
+ "rodo-2.mp3": {
+  "seconds": 0.39,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -18.4,
+  "momentary_dbfs": -12.6,
+  "bytes": 6572
+ },
+ "estilingue-1.mp3": {
+  "seconds": 0.29,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -20.4,
+  "momentary_dbfs": -13.8,
+  "bytes": 4773
+ },
+ "estilingue-2.mp3": {
+  "seconds": 0.29,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -17.8,
+  "momentary_dbfs": -13.3,
+  "bytes": 4695
+ },
+ "impacto-1.mp3": {
+  "seconds": 0.3,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -22.1,
+  "momentary_dbfs": -17.9,
+  "bytes": 5060
+ },
+ "impacto-2.mp3": {
+  "seconds": 0.3,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -22.2,
+  "momentary_dbfs": -17.4,
+  "bytes": 4850
+ },
+ "impacto-3.mp3": {
+  "seconds": 0.3,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -20.2,
+  "momentary_dbfs": -14.3,
+  "bytes": 5008
+ },
+ "impacto-4.mp3": {
+  "seconds": 0.3,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -18.6,
+  "momentary_dbfs": -13.5,
+  "bytes": 4903
+ },
+ "impacto-5.mp3": {
+  "seconds": 0.3,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -21.0,
+  "momentary_dbfs": -16.5,
+  "bytes": 4799
+ },
+ "acerto.mp3": {
+  "seconds": 0.11,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -14.2,
+  "momentary_dbfs": -14.6,
+  "bytes": 2242
+ },
+ "dano-1.mp3": {
+  "seconds": 0.312,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -24.2,
+  "momentary_dbfs": -19.2,
+  "bytes": 5087
+ },
+ "dano-2.mp3": {
+  "seconds": 0.312,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -24.9,
+  "momentary_dbfs": -20.2,
+  "bytes": 5529
+ },
+ "eliminou.mp3": {
+  "seconds": 0.322,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -18.6,
+  "momentary_dbfs": -15.1,
+  "bytes": 3284
+ },
+ "splat-1.mp3": {
+  "seconds": 0.75,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -18.5,
+  "momentary_dbfs": -11.9,
+  "bytes": 9963
+ },
+ "splat-2.mp3": {
+  "seconds": 0.62,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -17.6,
+  "momentary_dbfs": -13.1,
+  "bytes": 8996
+ },
+ "passo-pedra-1.mp3": {
+  "seconds": 0.106,
+  "peak_dbfs": -9.3,
+  "rms_dbfs": -23.7,
+  "momentary_dbfs": -25.0,
+  "bytes": 1982
+ },
+ "passo-pedra-2.mp3": {
+  "seconds": 0.108,
+  "peak_dbfs": -8.6,
+  "rms_dbfs": -25.1,
+  "momentary_dbfs": -25.0,
+  "bytes": 2086
+ },
+ "passo-pedra-3.mp3": {
+  "seconds": 0.113,
+  "peak_dbfs": -9.5,
+  "rms_dbfs": -25.1,
+  "momentary_dbfs": -25.0,
+  "bytes": 2086
+ },
+ "passo-pedra-4.mp3": {
+  "seconds": 0.11,
+  "peak_dbfs": -9.3,
+  "rms_dbfs": -24.0,
+  "momentary_dbfs": -25.0,
+  "bytes": 2034
+ },
+ "passo-pedra-5.mp3": {
+  "seconds": 0.114,
+  "peak_dbfs": -9.0,
+  "rms_dbfs": -24.2,
+  "momentary_dbfs": -25.0,
+  "bytes": 1982
+ },
+ "passo-madeira-1.mp3": {
+  "seconds": 0.2,
+  "peak_dbfs": -12.7,
+  "rms_dbfs": -24.6,
+  "momentary_dbfs": -25.0,
+  "bytes": 1953
+ },
+ "passo-madeira-2.mp3": {
+  "seconds": 0.2,
+  "peak_dbfs": -12.6,
+  "rms_dbfs": -24.4,
+  "momentary_dbfs": -25.0,
+  "bytes": 1927
+ },
+ "passo-madeira-3.mp3": {
+  "seconds": 0.2,
+  "peak_dbfs": -13.3,
+  "rms_dbfs": -24.5,
+  "momentary_dbfs": -25.0,
+  "bytes": 1927
+ },
+ "passo-madeira-4.mp3": {
+  "seconds": 0.2,
+  "peak_dbfs": -12.6,
+  "rms_dbfs": -24.1,
+  "momentary_dbfs": -25.0,
+  "bytes": 1979
+ },
+ "passo-madeira-5.mp3": {
+  "seconds": 0.2,
+  "peak_dbfs": -13.3,
+  "rms_dbfs": -24.6,
+  "momentary_dbfs": -25.0,
+  "bytes": 1927
+ },
+ "passo-tinta-1.mp3": {
+  "seconds": 0.12,
+  "peak_dbfs": -3.3,
+  "rms_dbfs": -20.2,
+  "momentary_dbfs": -18.0,
+  "bytes": 2400
+ },
+ "passo-tinta-2.mp3": {
+  "seconds": 0.12,
+  "peak_dbfs": -9.2,
+  "rms_dbfs": -19.7,
+  "momentary_dbfs": -18.0,
+  "bytes": 2451
+ },
+ "passo-tinta-3.mp3": {
+  "seconds": 0.14,
+  "peak_dbfs": -1.3,
+  "rms_dbfs": -21.4,
+  "momentary_dbfs": -18.0,
+  "bytes": 3077
+ },
+ "passo-tinta-4.mp3": {
+  "seconds": 0.14,
+  "peak_dbfs": -3.3,
+  "rms_dbfs": -20.1,
+  "momentary_dbfs": -18.0,
+  "bytes": 3026
+ },
+ "pulo-1.mp3": {
+  "seconds": 0.198,
+  "peak_dbfs": -4.9,
+  "rms_dbfs": -20.7,
+  "momentary_dbfs": -17.0,
+  "bytes": 3235
+ },
+ "pulo-2.mp3": {
+  "seconds": 0.25,
+  "peak_dbfs": -3.8,
+  "rms_dbfs": -19.3,
+  "momentary_dbfs": -17.0,
+  "bytes": 3809
+ },
+ "aterrissa-1.mp3": {
+  "seconds": 0.118,
+  "peak_dbfs": -10.7,
+  "rms_dbfs": -22.2,
+  "momentary_dbfs": -21.0,
+  "bytes": 1667
+ },
+ "aterrissa-2.mp3": {
+  "seconds": 0.183,
+  "peak_dbfs": -12.9,
+  "rms_dbfs": -24.6,
+  "momentary_dbfs": -21.0,
+  "bytes": 1927
+ },
+ "aterrissa-3.mp3": {
+  "seconds": 0.135,
+  "peak_dbfs": -11.9,
+  "rms_dbfs": -22.4,
+  "momentary_dbfs": -21.0,
+  "bytes": 1719
+ },
+ "mergulho.mp3": {
+  "seconds": 0.32,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -22.8,
+  "momentary_dbfs": -17.6,
+  "bytes": 5137
+ },
+ "emerge.mp3": {
+  "seconds": 0.18,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -23.0,
+  "momentary_dbfs": -21.0,
+  "bytes": 2815
+ },
+ "tanque-baixo.mp3": {
+  "seconds": 0.45,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -17.3,
+  "momentary_dbfs": -14.1,
+  "bytes": 8241
+ },
+ "tanque-vazio.mp3": {
+  "seconds": 0.42,
+  "peak_dbfs": -2.5,
+  "rms_dbfs": -21.4,
+  "momentary_dbfs": -16.0,
+  "bytes": 5661
+ },
+ "recarga-cheia.mp3": {
+  "seconds": 0.55,
+  "peak_dbfs": -2.4,
+  "rms_dbfs": -18.3,
+  "momentary_dbfs": -13.0,
+  "bytes": 7641
+ },
+ "moringa-lanca.mp3": {
+  "seconds": 0.4,
+  "peak_dbfs": -3.1,
+  "rms_dbfs": -16.9,
+  "momentary_dbfs": -14.0,
+  "bytes": 5479
+ },
+ "moringa-estoura.mp3": {
+  "seconds": 0.52,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -15.9,
+  "momentary_dbfs": -10.1,
+  "bytes": 8711
+ },
+ "roda-lanca.mp3": {
+  "seconds": 1.0,
+  "peak_dbfs": -3.3,
+  "rms_dbfs": -19.9,
+  "momentary_dbfs": -13.0,
+  "bytes": 11610
+ },
+ "roda-onda-1.mp3": {
+  "seconds": 0.8,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -21.7,
+  "momentary_dbfs": -15.0,
+  "bytes": 10903
+ },
+ "roda-onda-2.mp3": {
+  "seconds": 0.8,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -20.4,
+  "momentary_dbfs": -14.9,
+  "bytes": 12570
+ },
+ "piao-lanca.mp3": {
+  "seconds": 0.852,
+  "peak_dbfs": -8.5,
+  "rms_dbfs": -18.2,
+  "momentary_dbfs": -13.0,
+  "bytes": 10537
+ },
+ "piao-pousa.mp3": {
+  "seconds": 0.4,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -17.7,
+  "momentary_dbfs": -11.5,
+  "bytes": 5345
+ },
+ "reaparece.mp3": {
+  "seconds": 0.316,
+  "peak_dbfs": -4.2,
+  "rms_dbfs": -17.2,
+  "momentary_dbfs": -13.0,
+  "bytes": 3885
+ },
+ "carga.mp3": {
+  "seconds": 0.852,
+  "peak_dbfs": -9.8,
+  "rms_dbfs": -22.3,
+  "momentary_dbfs": -16.0,
+  "bytes": 9701
+ },
+ "ui-confirma.mp3": {
+  "seconds": 0.29,
+  "peak_dbfs": -9.3,
+  "rms_dbfs": -19.7,
+  "momentary_dbfs": -15.0,
+  "bytes": 2733
+ },
+ "ui-volta.mp3": {
+  "seconds": 0.07,
+  "peak_dbfs": -4.6,
+  "rms_dbfs": -18.1,
+  "momentary_dbfs": -17.0,
+  "bytes": 2400
+ },
+ "negado.mp3": {
+  "seconds": 0.103,
+  "peak_dbfs": -2.8,
+  "rms_dbfs": -15.8,
+  "momentary_dbfs": -15.0,
+  "bytes": 2452
+ },
+ "contagem.mp3": {
+  "seconds": 0.5,
+  "peak_dbfs": -1.6,
+  "rms_dbfs": -22.1,
+  "momentary_dbfs": -15.0,
+  "bytes": 5679
+ },
+ "inicio.mp3": {
+  "seconds": 0.557,
+  "peak_dbfs": -3.0,
+  "rms_dbfs": -15.1,
+  "momentary_dbfs": -11.0,
+  "bytes": 5522
+ },
+ "fim-sino.mp3": {
+  "seconds": 1.292,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -22.6,
+  "momentary_dbfs": -12.6,
+  "bytes": 12659
+ },
+ "vitoria.mp3": {
+  "seconds": 0.891,
+  "peak_dbfs": -1.0,
+  "rms_dbfs": -14.3,
+  "momentary_dbfs": -10.0,
+  "bytes": 10587
+ },
+ "derrota.mp3": {
+  "seconds": 1.324,
+  "peak_dbfs": -3.5,
+  "rms_dbfs": -14.8,
+  "momentary_dbfs": -10.0,
+  "bytes": 12296
+ },
+ "empate.mp3": {
+  "seconds": 1.141,
+  "peak_dbfs": -3.9,
+  "rms_dbfs": -14.1,
+  "momentary_dbfs": -11.0,
+  "bytes": 10418
+ },
+ "especial-pronto.mp3": {
+  "seconds": 0.459,
+  "peak_dbfs": -5.1,
+  "rms_dbfs": -15.9,
+  "momentary_dbfs": -12.0,
+  "bytes": 5161
+ },
+ "loop-nado.wav": {
+  "seconds": 3.23,
+  "peak_dbfs": -2.7,
+  "rms_dbfs": -24.0,
+  "momentary_dbfs": -15.0,
+  "bytes": 284974
+ },
+ "loop-tinta-inimiga.wav": {
+  "seconds": 3.45,
+  "peak_dbfs": -4.0,
+  "rms_dbfs": -25.9,
+  "momentary_dbfs": -17.1,
+  "bytes": 304334
+ },
+ "loop-rodo.wav": {
+  "seconds": 3.05,
+  "peak_dbfs": -12.0,
+  "rms_dbfs": -26.0,
+  "momentary_dbfs": -19.6,
+  "bytes": 269054
+ },
+ "loop-roda.wav": {
+  "seconds": 1.38,
+  "peak_dbfs": -2.4,
+  "rms_dbfs": -22.0,
+  "momentary_dbfs": -15.1,
+  "bytes": 121760
+ }
+}

@@ -91,6 +91,7 @@ pnpm test                                        # 80 testes (vitest): simulaç�
 pnpm typecheck                                   # TypeScript estrito em todos os pacotes
 pnpm e2e                                         # Playwright (com `pnpm dev` rodando): host ⇄ Atividade e 2 navegadores
 E2E_SWIFTSHADER=1 pnpm e2e                       # o mesmo, sem GPU (containers/CI)
+pnpm e2e:audio                                   # efeitos sonoros numa partida real + cobertura (≈8 min)
 pnpm --filter @borrifo/game-server load-test     # carga local: servidor real + 8 clientes WebSocket
 CLIENTS=1 pnpm --filter @borrifo/game-server load-test   # 1 humano + 7 bots
 pnpm build                                       # builds de produção
@@ -141,9 +142,13 @@ docs/               arquitetura, integração, rede, tinta, design, testes, dese
 - [docs/testing.md](docs/testing.md) e [docs/performance.md](docs/performance.md).
 - [docs/decisions/](docs/decisions/): ADRs curtos das decisões e dos desvios da stack proposta.
 - [ASSET_LICENSES.md](ASSET_LICENSES.md): origem e licença de cada recurso.
+- [AUDIO_CREDITS.md](AUDIO_CREDITS.md): cada efeito sonoro, com autor, link, licença (CC0) e alterações.
 
 ## Limitações principais
 
+- Efeitos sonoros: gravações CC0 reais, ligadas aos eventos e testadas por instrumentação, mas
+  **ainda não ouvidas por uma pessoa** (o ambiente não tem saída de som). Ouça
+  `e2e/out/audio-partida.wav` depois de rodar `pnpm e2e:audio`.
 - LiveKit: implementado no host e no adaptador, **não testado com servidor real**.
 - Integração com o Trivo real: não feita. Este repositório não tem acesso ao Trivo, e o host
   aqui é fictício.

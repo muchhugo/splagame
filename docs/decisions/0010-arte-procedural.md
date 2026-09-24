@@ -1,5 +1,8 @@
 # 0010 — Arte e som gerados por código
 
+> **Atualização:** os efeitos sonoros passaram a ser gravações CC0 baixadas
+> ([ADR 0011](0011-efeitos-sonoros-gravados.md)). A arte segue gerada por código.
+
 **Contexto.** O briefing exige identidade própria, assets com origem documentada e nada copiado
 de outros jogos. O pedido de direção de arte pede modelos simples com acabamento intencional,
 sem dependências pesadas.
