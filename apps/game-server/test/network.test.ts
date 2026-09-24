@@ -223,14 +223,12 @@ describe('reconexão e identidade', () => {
 
 describe('janela de reconexão expirada', () => {
   it('durante a rodada, o slot vira bot da mesma turma; ao voltar, a pessoa retoma o slot', async () => {
-    const local = await startTestServer({ ROUND_DURATION_SECONDS: '30', RECONNECT_WINDOW_SECONDS: '1', JOIN_RATE_BURST: '100', JOIN_RATE_PER_SECOND: '50' });
+    // o matchmaker do Colyseus é global no processo: ajusta a sala do servidor da suíte
+    // (janela de 1 s e rodada longa) em vez de subir outro servidor
+    const saved = { ...ArenaRoom.deps };
+    ArenaRoom.deps = { ...ArenaRoom.deps, reconnectWindowSeconds: 1, roundDurationSeconds: 30 };
     const sid = newSid();
-    const joinL = async (u: string) => {
-      const c = new HeadlessClient(local.url);
-      await c.join({ activitySessionId: sid, credential: await cred(u, sid), mapHash: MAP_HASH });
-      await c.waitFor(() => c.welcome && c.lobby, 5000, `welcome ${u}`);
-      return c;
-    };
+    const joinL = (u: string) => join(u, sid);
     try {
       const a = await joinL('exp1');
       const b = await joinL('exp2');
@@ -263,7 +261,7 @@ describe('janela de reconexão expirada', () => {
       expect(host.lobby!.players.find((p) => p.playerId === gid)!.team).toBe(team);
       await Promise.all([host.leave(), back.leave()]);
     } finally {
-      await local.s.shutdown();
+      ArenaRoom.deps = saved;
     }
   }, 60000);
 });
