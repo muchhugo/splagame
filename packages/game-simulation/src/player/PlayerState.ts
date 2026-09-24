@@ -40,6 +40,12 @@ export interface PlayerSimState {
   spawnProtect: number;
   travelPhase: number;
   travelTimer: number;
+  /**
+   * Modificadores definidos pelo SERVIDOR (buff Embalo; Fôlego/Mutirão) e replicados
+   * para a previsão local: multiplicam só a velocidade horizontal e a recarga de pigmento.
+   */
+  speedMul: number;
+  inkRegenMul: number;
   // derivados por tick
   submerged: boolean;
   firingTimer: number;
@@ -78,6 +84,8 @@ export function createPlayerState(pos: Vec3, yaw: number): PlayerSimState {
     spawnProtect: 0,
     travelPhase: 0,
     travelTimer: 0,
+    speedMul: 1,
+    inkRegenMul: 1,
     submerged: false,
     firingTimer: 0,
   };
@@ -112,6 +120,8 @@ export function toSelfSnapshot(s: PlayerSimState): SelfSnapshot {
     pr: r3(s.spawnProtect),
     tt: s.travelPhase,
     ttt: r3(s.travelTimer),
+    sm: r3(s.speedMul),
+    im: r3(s.inkRegenMul),
   };
 }
 
@@ -144,6 +154,8 @@ export function applySelfSnapshot(s: PlayerSimState, snap: SelfSnapshot, prevFir
   s.travelPhase = snap.tt;
   s.travelTimer = snap.ttt;
   s.prevFire = prevFireHeld;
+  s.speedMul = snap.sm ?? 1;
+  s.inkRegenMul = snap.im ?? 1;
 }
 
 export interface PlayerIdentity {

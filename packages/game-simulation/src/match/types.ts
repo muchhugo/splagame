@@ -1,5 +1,6 @@
 import type { GameEvent, PlayerInput, TeamId, Vec3, WeaponId } from '@borrifo/game-contracts';
 import type { CharacterBody } from '../physics/PhysicsWorld';
+import type { PlayerModeState } from './modes';
 import type { PlayerSimState } from '../player/PlayerState';
 
 export interface PlayerStats {
@@ -32,6 +33,8 @@ export interface SimPlayer {
   /** Posições recentes (tick → pés) para testes e diagnóstico. */
   lastDamagedBy: number | null;
   travel: TravelState | null;
+  /** Buffs, Mutirão e entregas (autoridade do servidor). */
+  mode: PlayerModeState;
 }
 
 export interface TravelState {

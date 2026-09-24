@@ -183,6 +183,8 @@ export function stepPlayer(s: PlayerSimState, input: PlayerInput, dt: number, ct
         }
       }
     }
+    // Embalo: só a velocidade horizontal (não muda hitbox, projéteis, viagem tática nem colisão)
+    speed *= s.speedMul;
     if (!s.grounded) speed = Math.max(speed, s.airSpeedCap);
     else s.airSpeedCap = speed;
 
@@ -257,8 +259,9 @@ export function stepPlayer(s: PlayerSimState, input: PlayerInput, dt: number, ct
   s.submerged = s.form === FORM_FLOW && s.formTimer <= 0 && (s.climbSurface >= 0 || (s.grounded && s.groundState === GROUND_OWN));
 
   s.inkRegenDelay = Math.max(0, s.inkRegenDelay - dt);
-  if (s.submerged) s.ink = Math.min(INK.capacity, s.ink + INK.refillSubmerged * dt);
-  else if (s.inkRegenDelay <= 0 && s.groundState !== GROUND_ENEMY) s.ink = Math.min(INK.capacity, s.ink + INK.regenIdle * dt);
+  // Fôlego/Mutirão aceleram só a RECARGA (nunca além do tanque, nem durante o atraso após atacar)
+  if (s.submerged) s.ink = Math.min(INK.capacity, s.ink + INK.refillSubmerged * s.inkRegenMul * dt);
+  else if (s.inkRegenDelay <= 0 && s.groundState !== GROUND_ENEMY) s.ink = Math.min(INK.capacity, s.ink + INK.regenIdle * s.inkRegenMul * dt);
   s.secondaryCooldown = Math.max(0, s.secondaryCooldown - dt);
 
   // ---------- ferramenta ----------

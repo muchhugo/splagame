@@ -26,6 +26,8 @@ export interface MapFace {
   paint: FacePaint;
   material: MaterialId;
   style?: string;
+  /** Cor-base visual do bloco (opcional). */
+  tint?: Vec3;
 }
 
 export interface Solid {
@@ -125,7 +127,7 @@ function boxFaces(b: BlockSpec, bi: number, out: MapFace[]) {
   const dy = y1 - y0;
   const dz = z1 - z0;
   const side = b.sides === 'paint' ? 'paint' : 'none';
-  const base = { blockId: b.id, blockIndex: bi, kind: 'quad' as const, material: b.material, ...(b.style ? { style: b.style } : {}) };
+  const base = { blockId: b.id, blockIndex: bi, kind: 'quad' as const, material: b.material, ...(b.style ? { style: b.style } : {}), ...(b.tint ? { tint: b.tint } : {}) };
   out.push({ ...base, id: `${b.id}:top`, origin: [x0, y1, z0], axisU: [1, 0, 0], axisV: [0, 0, 1], normal: [0, 1, 0], width: dx, height: dz, paint: b.top });
   out.push({ ...base, id: `${b.id}:-x`, origin: [x0, y0, z0], axisU: [0, 0, 1], axisV: [0, 1, 0], normal: [-1, 0, 0], width: dz, height: dy, paint: side });
   out.push({ ...base, id: `${b.id}:+x`, origin: [x1, y0, z0], axisU: [0, 0, 1], axisV: [0, 1, 0], normal: [1, 0, 0], width: dz, height: dy, paint: side });
@@ -140,7 +142,7 @@ function rampFaces(b: BlockSpec, bi: number, out: MapFace[]) {
   const [x0, y0, z0] = b.min;
   const [x1, y1, z1] = b.max;
   const dy = y1 - y0;
-  const base = { blockId: b.id, blockIndex: bi, material: b.material, ...(b.style ? { style: b.style } : {}) };
+  const base = { blockId: b.id, blockIndex: bi, material: b.material, ...(b.style ? { style: b.style } : {}), ...(b.tint ? { tint: b.tint } : {}) };
   const along = b.rise === 'x+' || b.rise === 'x-' ? 0 : 2;
   const s = b.rise === 'x+' || b.rise === 'z+' ? 1 : -1;
   const L = along === 0 ? x1 - x0 : z1 - z0;

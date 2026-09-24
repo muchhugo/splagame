@@ -44,6 +44,8 @@ export class BotBrain implements BotController {
   private wantJump = false;
   private refillHold = 0;
   private lastNode = -1;
+  /** Objetivo atual do modo (cápsula, estação, pickup), para replanejar quando muda. */
+  private objKey = '';
 
   constructor(
     private readonly nav: NavGraph,
@@ -83,8 +85,19 @@ export class BotBrain implements BotController {
     // ---------- navegação ----------
     const here = this.nav.nearest(s.pos);
     if (here) this.lastNode = here.id;
+    // objetivo do modo: portador vai à estação (e não para para brigar); os demais disputam a cápsula
+    const obj = this.objective(self, sim);
+    const key = obj ? `${obj.kind}:${obj.pos.map((v) => v.toFixed(0)).join(',')}` : '';
+    if (key !== this.objKey) {
+      this.objKey = key;
+      this.path = [];
+    }
+    if (obj?.kind === 'entregar') this.mode = 'paint';
     if (this.mode === 'paint' || (this.mode === 'refill' && s.groundState !== GROUND_OWN)) {
-      if (this.path.length === 0 || this.pathIdx >= this.path.length) this.planPaintGoal(self, sim);
+      if (this.path.length === 0 || this.pathIdx >= this.path.length) {
+        if (obj && this.mode === 'paint') this.planTo(obj.pos);
+        else this.planPaintGoal(self, sim);
+      }
     }
     let moveDir: Vec3 | null = null;
     if (this.path.length && this.pathIdx < this.path.length) {
@@ -169,6 +182,14 @@ export class BotBrain implements BotController {
         fire = false;
       }
       if (s.ink > 85 && this.rng.next() < 0.003) input.pressedActions.push({ actionId: ++this.actionId, kind: 'secondary' });
+      // na estação (portador ou quem prepara): gira pintando a área demarcada sob os pés
+      if (obj && (obj.kind === 'entregar' || obj.kind === 'estacao') && Math.hypot(obj.pos[0] - s.pos[0], obj.pos[2] - s.pos[2]) < 2.2) {
+        moveDir = null;
+        desiredYaw = sim.tick * 0.12 + self.id;
+        desiredPitch = w.kind === 'charge' ? 0.5 : 0.95;
+        fire = s.ink > 2;
+        flow = false;
+      }
     }
     this.refillHold = Math.max(0, this.refillHold - dt);
 
@@ -233,6 +254,49 @@ export class BotBrain implements BotController {
       best = t.id;
     }
     return best;
+  }
+
+  /**
+   * Objetivo do modo para este bot (mesmas regras dos humanos, sem informação privilegiada:
+   * posição da cápsula, portador e estação ativa são públicos no Correio do Ara).
+   */
+  private objective(self: SimPlayer, sim: MatchSimulation): { kind: 'entregar' | 'capsula' | 'estacao' | 'buff'; pos: Vec3 } | null {
+    const c = sim.correio;
+    const s = self.state;
+    if (c) {
+      const station = sim.opts.map.objectives.stations[c.station];
+      if (c.isCarrier(self.id)) return { kind: 'entregar', pos: station };
+      if (c.state === 'disponivel' || c.state === 'caida') {
+        // vai quem estiver entre os dois mais próximos da equipe (os outros seguem pintando/cobrindo)
+        const mine = [...sim.players.values()].filter((p) => p.team === self.team && p.state.alive);
+        mine.sort((a, b) => Math.hypot(a.state.pos[0] - c.pos[0], a.state.pos[2] - c.pos[2]) - Math.hypot(b.state.pos[0] - c.pos[0], b.state.pos[2] - c.pos[2]));
+        if (mine.slice(0, 2).some((p) => p.id === self.id)) return { kind: 'capsula', pos: c.pos };
+      }
+      const carrier = c.carrier !== null ? sim.players.get(c.carrier) : undefined;
+      // aliado carregando: prepara (pinta) a estação ativa
+      if (carrier && carrier.team === self.team && self.id % 2 === 0) return { kind: 'estacao', pos: station };
+    }
+    const pk = sim.pickupSnapshot();
+    if (pk && s.ink > 40 && self.mode.buff === null) {
+      const pickups = sim.opts.map.objectives.pickups;
+      for (const p of pk) {
+        const at = pickups[p.i].pos;
+        if (p.a === 1 && Math.hypot(at[0] - s.pos[0], at[2] - s.pos[2]) < 9) return { kind: 'buff', pos: at };
+      }
+    }
+    return null;
+  }
+
+  private planTo(pos: Vec3) {
+    if (this.lastNode < 0) return;
+    const n = this.nav.nearest(pos, 3);
+    if (!n) return;
+    const path = n.id === this.lastNode ? [n.id] : this.nav.findPath(this.lastNode, n.id);
+    if (path && path.length) {
+      this.path = path;
+      this.pathIdx = Math.min(1, path.length - 1);
+      this.goal = n.id;
+    }
   }
 
   /** Escolhe um destino com mais área neutra/inimiga, penalizando distância. */

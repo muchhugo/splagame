@@ -11,6 +11,7 @@ import {
   type PaintDeltaWire,
   type PaintSnapshotWire,
   type PlayerInput,
+  type RoundLoadingMessage,
   type RoundResult,
   type SnapshotMessage,
   type WelcomeMessage,
@@ -31,7 +32,8 @@ export class HeadlessClient {
   paintDeltas: PaintDeltaWire[] = [];
   results: RoundResult[] = [];
   notices: Array<{ code: string; message: string }> = [];
-  roundLoading: { roundId: number; mapHash: string } | null = null;
+  roundLoading: RoundLoadingMessage | null = null;
+  roundLoadings: RoundLoadingMessage[] = [];
   seq = 0;
   actionId = 0;
   keepSnapshots = 50;
@@ -75,8 +77,9 @@ export class HeadlessClient {
     room.onMessage(S2C.PAINT_DELTA, (b: Uint8Array) => this.paintDeltas.push(decodePaintDelta(new Uint8Array(b))));
     room.onMessage(S2C.ROUND_RESULT, (m: RoundResult) => this.results.push(m));
     room.onMessage(S2C.NOTICE, (m: { code: string; message: string }) => this.notices.push(m));
-    room.onMessage(S2C.ROUND_LOADING, (m: { roundId: number; mapHash: string }) => {
+    room.onMessage(S2C.ROUND_LOADING, (m: RoundLoadingMessage) => {
       this.roundLoading = m;
+      this.roundLoadings.push(m);
       room.send(C2S.LOADED, { roundId: m.roundId, mapHash: m.mapHash });
     });
     for (const t of [S2C.ROUND_COUNTDOWN, S2C.ROUND_START, S2C.PONG]) room.onMessage(t, () => {});

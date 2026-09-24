@@ -170,7 +170,18 @@ export class CharacterBody {
       if (!c) continue;
       contacts.push({ normal: [c.normal1.x, c.normal1.y, c.normal1.z], point: [c.witness1.x, c.witness1.y, c.witness1.z] });
     }
-    return { moved: [m.x, m.y, m.z], grounded: this.controller.computedGrounded(), contacts };
+    const moved: Vec3 = [m.x, m.y, m.z];
+    const grounded = this.controller.computedGrounded();
+    // Correção de penetração: o controlador do Rapier 0.20, com deslizamento ligado, deixa a
+    // cápsula afundar devagar num piso plano em alguns pontos (ex.: diagonal x = z de um bloco)
+    // quando o movimento é só vertical. Se os pés terminaram abaixo de um piso quase plano
+    // logo acima, sobe até ele. Determinístico: servidor e previsão aplicam o mesmo.
+    if (grounded || moved[1] < 0) {
+      const f: Vec3 = [feet[0] + moved[0], feet[1] + moved[1], feet[2] + moved[2]];
+      const hit = this.pw.raycast([f[0], f[1] + 0.4, f[2]], [0, -1, 0], 0.45);
+      if (hit && hit.normal[1] > 0.7 && hit.point[1] > f[1] + 1e-3) moved[1] += hit.point[1] - f[1];
+    }
+    return { moved, grounded, contacts };
   }
 
   /** Há espaço livre para a cápsula nesta posição dos pés? */

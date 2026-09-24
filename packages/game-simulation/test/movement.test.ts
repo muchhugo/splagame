@@ -36,6 +36,15 @@ function rig(pos: Vec3, yaw: number, weapon: WeaponDefinition = ESGUICHO, team: 
 const hspeed = (s: PlayerSimState) => Math.hypot(s.vel[0], s.vel[2]);
 
 describe('locomoção da forma de combate', () => {
+  it('parado não afunda no piso em nenhum ponto (regressão: controlador do Rapier na diagonal x = z)', () => {
+    for (const p of [[2, 0, 2], [-3, 0, -3], [6, 0, 6], [-8, 0, 0], [3, 0, -3]] as Vec3[]) {
+      const { s, step } = rig(p, 0);
+      step({}, 150);
+      expect(s.pos[1], `em ${p}`).toBeGreaterThan(-0.01);
+      expect(s.grounded).toBe(true);
+    }
+  });
+
   it('diagonal é normalizada e a velocidade não passa do alvo', () => {
     const r = rig([-6, 0, -3], 0);
     r.step({ moveX: 1, moveY: 1 }, 30);

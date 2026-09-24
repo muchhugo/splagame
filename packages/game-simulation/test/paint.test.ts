@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { decodePaintDelta, decodePaintSnapshot, encodePaintDelta, encodePaintSnapshot } from '@borrifo/game-contracts';
-import { PATIO_DA_OLARIA, computeMapHash } from '@borrifo/game-content';
+import { MAPS, computeMapHash } from '@borrifo/game-content';
 import { FULL_CELL_UNITS, PaintLayout, PaintReplica, PaintState, PhysicsWorld, initPhysics } from '../src/index';
 import { TEST_MAP } from './fixtures';
 
@@ -61,14 +61,26 @@ describe('layout lógico de tinta', () => {
     expect(layout.floorAt([7, 0, 0])).toBeNull(); // sob a plataforma não há piso válido
   });
 
-  it('o Pátio da Olaria gera layout estável e hash determinístico', () => {
-    const a = PaintLayout.build(PATIO_DA_OLARIA);
-    const b = PaintLayout.build(PATIO_DA_OLARIA);
+  it.each(Object.keys(MAPS))('%s gera layout estável e hash determinístico', (id) => {
+    const m = MAPS[id];
+    const a = PaintLayout.build(m);
+    const b = PaintLayout.build(m);
     expect(a.totalCells).toBe(b.totalCells);
     expect(a.totalScoringUnits).toBe(b.totalScoringUnits);
-    expect(computeMapHash(PATIO_DA_OLARIA)).toBe(computeMapHash(structuredClone(PATIO_DA_OLARIA)));
-    // simetria de ponto: área pontuável é finita e grande o bastante para 4×4
-    expect(a.totalScoringUnits * a.areaPerUnit).toBeGreaterThan(2000);
+    expect(computeMapHash(m)).toBe(computeMapHash(structuredClone(m)));
+  });
+
+  it('a área pontuável cresce com a variante (compacta < padrão < ampliada)', () => {
+    for (const fam of ['toca-do-ara', 'clube-da-mare']) {
+      const area = (v: string) => {
+        const l = PaintLayout.build(MAPS[`${fam}.${v}`]);
+        return l.totalScoringUnits * l.areaPerUnit;
+      };
+      const [c, p, a] = [area('compacto'), area('padrao'), area('ampliado')];
+      expect(c).toBeLessThan(p);
+      expect(p).toBeLessThan(a);
+      expect(c).toBeGreaterThan(500);
+    }
   });
 });
 

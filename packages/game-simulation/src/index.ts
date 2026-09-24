@@ -10,3 +10,4 @@ export * from './match/types';
 export * from './match/MatchSimulation';
 export * from './bots/NavGraph';
 export * from './bots/BotBrain';
+export * from './match/modes';

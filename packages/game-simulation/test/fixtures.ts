@@ -23,7 +23,10 @@ const blocks: BlockSpec[] = [
 
 export const TEST_MAP: MapSpec = {
   id: 'teste',
+  family: 'teste',
   name: 'Mapa de teste',
+  variant: 'padrao',
+  players: [2, 16],
   version: 1,
   cellSize: 0.25,
   bounds: { min: [-10, -2, -10], max: [10, 8, 10] },
@@ -31,6 +34,7 @@ export const TEST_MAP: MapSpec = {
   blocks,
   spawns: { 0: [{ pos: [-8, 0, 0], yaw: Math.PI / 2 }], 1: [{ pos: [8, 2, 0], yaw: -Math.PI / 2 }] },
   spawnZones: { 0: { min: [-10, -1, -2], max: [-6, 3, 2] }, 1: { min: [5, 1, -2], max: [9, 5, 2] } },
+  objectives: { capsule: [0, 0, 7], stations: [[-5, 0, 5], [5, 0, -5]], pickups: [{ pos: [-3, 0, -3], kind: 'embalo' }, { pos: [3, 0, 3], kind: 'folego' }] },
   decor: [],
   lighting: { sunDirection: [0, -1, 0], sunColor: [1, 1, 1], skyTop: [0, 0, 1], skyHorizon: [1, 1, 1], ambient: [0.5, 0.5, 0.5], shadowTint: [1, 1, 1], fogColor: [1, 1, 1], fogDensity: 0 },
 };

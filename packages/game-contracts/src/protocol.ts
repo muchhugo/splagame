@@ -25,6 +25,20 @@ export function isAppearanceId(v: unknown): v is AppearanceId {
  * Estados da sala. Espelha a máquina de estados documentada em docs/architecture.md:
  * LOBBY → LOADING → COUNTDOWN → RUNNING → FINISHING → RESULTS → (LOBBY | LOADING)
  */
+/** Modos de jogo: território (padrão, preservado) e Correio do Ara (objetivo móvel). */
+export const GAME_MODES = ['territorio', 'correio'] as const;
+export type GameModeId = (typeof GAME_MODES)[number];
+
+/**
+ * Formação escolhida por quem organiza: 'flex' dimensiona pelo número de pessoas prontas;
+ * um número fixa o limite por equipe (1 = 1 × 1 … 8 = 8 × 8).
+ */
+export type FormationOption = 'flex' | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export const FormationOptionSchema = z.union([z.literal('flex'), z.number().int().min(1).max(8)]);
+
+/** Mapa escolhido: rotação entre as famílias ou uma família fixa (a variante sai do tamanho). */
+export type MapChoice = 'rotacao' | string;
+
 export type RoomPhase = 'lobby' | 'loading' | 'countdown' | 'running' | 'finishing' | 'results' | 'closed';
 
 /* ------------------------------------------------------------------ */
@@ -38,6 +52,7 @@ export const C2S = {
   SET_APPEARANCE: 'lobby.appearance',
   SET_READY: 'lobby.ready',
   SET_BOTS: 'lobby.bots',
+  SET_OPTIONS: 'lobby.options',
   START: 'lobby.start',
   LOADED: 'round.loaded',
   VOTE: 'results.vote',
@@ -50,6 +65,14 @@ export const SetWeaponSchema = z.object({ weaponId: z.enum(['esguicho', 'rodo', 
 export const SetAppearanceSchema = z.object({ appearance: z.enum(APPEARANCE_IDS) }).strict();
 export const SetReadySchema = z.object({ ready: z.boolean() }).strict();
 export const SetBotsSchema = z.object({ enabled: z.boolean() }).strict();
+/** Opções da partida (só anfitrião, só no lobby). A família de mapa é validada no servidor. */
+export const SetOptionsSchema = z
+  .object({
+    mode: z.enum(GAME_MODES).optional(),
+    map: z.string().min(1).max(40).regex(/^[a-z0-9-]+$/).optional(),
+    formation: FormationOptionSchema.optional(),
+  })
+  .strict();
 export const StartSchema = z.object({}).strict();
 export const LoadedSchema = z.object({ roundId: z.number().int().nonnegative(), mapHash: z.string().max(64) }).strict();
 export const VoteSchema = z.object({ choice: z.enum(['rematch', 'lobby']) }).strict();
@@ -62,6 +85,7 @@ export const JoinOptionsSchema = z
     activitySessionId: z.string().min(1).max(128),
     credential: z.string().min(10).max(4096),
     clientVersion: z.string().max(32),
+    /** Hash do CATÁLOGO de mapas do cliente (todas as variantes); o servidor recusa versões diferentes. */
     mapHash: z.string().max(64),
   })
   .strict();
@@ -92,7 +116,9 @@ export interface WelcomeMessage {
   playerId: number;
   tickRate: number;
   snapshotRate: number;
+  /** Mapa planejado/atual da sala e hash do catálogo (cliente confere antes de jogar). */
   map: { id: string; version: number; hash: string };
+  catalogHash: string;
   /** Reconexão: verdadeiro quando esta conexão recuperou um slot existente. */
   resumed: boolean;
 }
@@ -117,6 +143,29 @@ export interface LobbyPlayer {
   loaded: boolean;
   /** Falso para quem entrou com a partida em andamento e aguarda a próxima rodada. */
   inRound: boolean;
+  /** Na fila/espectador para a próxima rodada (formação cheia ou número ímpar sem bots). */
+  queued: boolean;
+}
+
+/** Formação real calculada pelo servidor, mostrada antes do início. */
+export interface FormationPlan {
+  /** Jogadores por equipe na próxima rodada (0 = não dá para começar). */
+  teamSize: number;
+  /** Humanos por equipe no plano. */
+  humans: [number, number];
+  /** Bots por equipe no plano. */
+  bots: [number, number];
+  /** playerIds que ficam na fila (entram na próxima revanche com prioridade). */
+  queue: number[];
+  /** Equipe planejada de cada playerId humano no plano. */
+  teamOf: Record<number, TeamId>;
+  /** Total ativo (humanos + bots): define a variante do mapa. */
+  active: number;
+  /** Variante e mapa resultantes. */
+  mapId: string;
+  variant: 'compacto' | 'padrao' | 'ampliado';
+  /** Motivo quando teamSize = 0 (ex.: sozinho sem bots). */
+  blocked: string | null;
 }
 
 export interface LobbyState {
@@ -127,7 +176,12 @@ export interface LobbyState {
   fillWithBots: boolean;
   maxTeamSize: number;
   players: LobbyPlayer[];
-  map: { id: string; name: string };
+  /** Mapa da próxima rodada (ou da atual, durante a partida). */
+  map: { id: string; name: string; family: string; variant: 'compacto' | 'padrao' | 'ampliado' };
+  mode: GameModeId;
+  mapChoice: MapChoice;
+  formation: FormationOption;
+  plan: FormationPlan;
   roundDurationSeconds: number;
   /** Tempo restante de uma contagem/timeout de fase, em ms, relativo ao envio. */
   phaseRemainingMs: number | null;
@@ -142,6 +196,7 @@ export interface RoundLoadingMessage {
   roundId: number;
   mapId: string;
   mapHash: string;
+  mode: GameModeId;
   /** Par de cores/nomes desta rodada; igual para quem entra ou reconecta. */
   teamPairId: string;
   timeoutMs: number;
@@ -169,12 +224,19 @@ export interface PlayerRoundStats {
   eliminations: number;
   deaths: number;
   specialsUsed: number;
+  /** Correio do Ara: entregas feitas por este jogador. */
+  deliveries: number;
+  /** Mutirões ativados junto de um aliado. */
+  mutiroes: number;
 }
 
 export interface RoundResult {
   matchId: string;
   roundId: number;
   mapId: string;
+  mode: GameModeId;
+  /** Correio do Ara: entregas por equipe (território: [0, 0]). */
+  deliveries: [number, number];
   /** Área pontuável total (m²). */
   totalArea: number;
   teamArea: [number, number];
@@ -236,6 +298,12 @@ export interface SelfSnapshot {
   pr: number; // proteção de reaparecimento restante (s)
   tt: number; // deslocamento tático: fase (0 nenhum, 1 preparando, 2 em voo)
   ttt: number; // tempo restante da fase de deslocamento tático
+  sm?: number; // multiplicador de velocidade horizontal (Embalo)
+  im?: number; // multiplicador de recarga de pigmento (Fôlego/Mutirão)
+  bf?: BuffKind | null; // buff ativo
+  bt?: number; // tempo restante do buff (s)
+  mt?: number; // tempo restante do Mutirão (s)
+  mc?: number; // recarga do Mutirão (s)
 }
 
 /**
@@ -258,6 +326,46 @@ export const PFLAG_SWINGING = 1 << 9;
 export const PFLAG_TRAVEL_PREP = 1 << 10;
 export const PFLAG_TRAVEL_FLY = 1 << 11;
 export const PFLAG_SPECIAL_READY = 1 << 12;
+/** Portador da cápsula (informação pública do Correio do Ara). */
+export const PFLAG_CARRIER = 1 << 13;
+export const PFLAG_EMBALO = 1 << 14;
+export const PFLAG_FOLEGO = 1 << 15;
+export const PFLAG_MUTIRAO = 1 << 16;
+
+export type BuffKind = 'embalo' | 'folego';
+
+/**
+ * Estados explícitos da cápsula do Correio do Ara. 'aguardando' só antes da primeira
+ * aparição. Transições: disponivel → carregada → (caida ↔ carregada) → em_entrega →
+ * entregue → disponivel; caida abandonada → retornando → disponivel.
+ */
+export type CapsuleState = 'aguardando' | 'disponivel' | 'carregada' | 'caida' | 'em_entrega' | 'entregue' | 'retornando';
+
+export interface ObjectiveSnapshot {
+  st: CapsuleState;
+  /** Posição da cápsula (no portador, quando carregada). */
+  p: Vec3;
+  /** playerId do portador (público), ou null. */
+  c: number | null;
+  /** Índice da estação ativa em map.objectives.stations. */
+  s: number;
+  /** Fração da área da estação com a tinta de cada equipe. */
+  sp: [number, number];
+  /** Progresso da entrega em curso (0..1). */
+  pr: number;
+  /** Entregas por equipe. */
+  d: [number, number];
+  /** Segundos até mudar de estado (retorno, reaparecimento), 0 se não se aplica. */
+  t: number;
+}
+
+/** Pickups de buff: disponível ou tempo até reaparecer. */
+export interface PickupSnapshot {
+  i: number;
+  k: BuffKind;
+  a: 0 | 1;
+  t: number;
+}
 
 /** Objetos de mundo persistentes (Roda de Oleiro ativa, Moringa armada). */
 export interface WorldObjectState {
@@ -284,7 +392,12 @@ export type GameEvent =
   | { k: 'objectDestroyed'; id: number }
   | { k: 'special'; pid: number; kind: 'wheel' }
   | { k: 'travel'; pid: number; target: number; to: Vec3; phase: 'prep' | 'launch' | 'land' | 'cancel' }
-  | { k: 'denied'; reason: string };
+  | { k: 'denied'; reason: string }
+  | { k: 'buff'; pid: number; kind: BuffKind; replaced: BuffKind | null; pickup: number }
+  | { k: 'buffEnd'; pid: number; kind: BuffKind }
+  | { k: 'pickupSpawn'; pickup: number; kind: BuffKind }
+  | { k: 'mutirao'; a: number; b: number; team: TeamId; p: Vec3 }
+  | { k: 'capsule'; st: CapsuleState; pid: number | null; team: TeamId | null; station: number };
 
 export interface SnapshotMessage {
   t: number; // tick do servidor
@@ -297,6 +410,10 @@ export interface SnapshotMessage {
   ev: GameEvent[];
   /** Placar parcial em unidades internas [time0, time1, total]. */
   sc: [number, number, number];
+  /** Correio do Ara (só nesse modo). */
+  obj?: ObjectiveSnapshot;
+  /** Pickups de buff (quando o modo usa buffs). */
+  pk?: PickupSnapshot[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -312,7 +429,8 @@ export type NoticeCode =
   | 'not_all_ready'
   | 'map_mismatch'
   | 'replaced'
-  | 'late_join_waiting';
+  | 'late_join_waiting'
+  | 'queued';
 
 export interface NoticeMessage {
   code: NoticeCode;

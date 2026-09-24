@@ -8,8 +8,11 @@ export const TICK_DT = 1 / TICK_RATE;
 export const SNAPSHOT_RATE = 15;
 export const TICKS_PER_SNAPSHOT = Math.round(TICK_RATE / SNAPSHOT_RATE);
 
-export const MAX_TEAM_SIZE = 4;
+/** Até 8 × 8: dezesseis participantes ATIVOS por rodada (humanos + bots). */
+export const MAX_TEAM_SIZE = 8;
 export const MAX_PLAYERS = MAX_TEAM_SIZE * 2;
+/** Pessoas na sala além dos ativos ficam na fila/espectadores (limite fixo, sem vagas ocultas). */
+export const MAX_ROOM_HUMANS = MAX_PLAYERS + 4;
 
 /** Janela de reconexão (s). Ao expirar durante a partida, o slot vira bot. */
 export const RECONNECT_WINDOW_SECONDS = 20;

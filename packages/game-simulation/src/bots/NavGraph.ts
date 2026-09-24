@@ -40,6 +40,9 @@ export class NavGraph {
             const cell = layout.cellAtUV(s, u, v);
             if (cell < 0) continue;
             const p = facePoint(s, u, v, 0.02, s.normal);
+            // em rampa, a esfera inferior da cápsula encosta no plano inclinado: sobe o nó o
+            // quanto a inclinação exige (r/cosθ − r), como o controlador faz ao subir
+            if (s.normal[1] < 0.999) p[1] += MOVEMENT.capsuleRadius * (1 / Math.max(0.5, s.normal[1]) - 1);
             if (!body.fits(p)) continue;
             // mantém distância mínima de paredes para evitar nós "colados"
             g.addNode([p[0], p[1], p[2]], cell);

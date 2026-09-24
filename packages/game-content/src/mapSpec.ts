@@ -5,7 +5,7 @@ import type { TeamId, Vec3 } from '@borrifo/game-contracts';
  * por face (top/sides). O renderer usa o material para acabamento e para sinalizar
  * superfícies não pintáveis (azulejo esmaltado).
  */
-export type MaterialId = 'terracota' | 'tijolo' | 'madeira' | 'azulejo' | 'pedra' | 'barro' | 'latao' | 'muro';
+export type MaterialId = 'terracota' | 'tijolo' | 'madeira' | 'azulejo' | 'pedra' | 'barro' | 'latao' | 'muro' | 'reboco' | 'ladrilho' | 'piscina' | 'cimento';
 
 /** 'score' = pintável e conta no placar; 'paint' = pintável sem pontuar; 'none' = não pintável. */
 export type TopPaint = 'score' | 'paint' | 'none';
@@ -28,6 +28,8 @@ export interface BlockSpec {
   style?: string;
   /** Só colisor: sem faces renderizadas nem tinta (ex.: corpo da estátua, cuja malha é decoração). */
   hidden?: boolean;
+  /** Cor-base visual (RGB 0..1) no lugar da cor padrão do material; não muda regra. */
+  tint?: Vec3;
 }
 
 export interface SpawnPoint {
@@ -51,9 +53,29 @@ export interface DecorSpec {
   to?: Vec3;
 }
 
+/** Perfil de tamanho: compacto 2–4, padrão 6–8, ampliado 10–16 participantes ativos (com bots). */
+export type MapVariant = 'compacto' | 'padrao' | 'ampliado';
+export const MAP_VARIANTS: readonly MapVariant[] = ['compacto', 'padrao', 'ampliado'];
+
+/** Pontos de objetivo usados pelos modos (entram no hash: mudam a jogabilidade). */
+export interface MapObjectives {
+  /** Onde a cápsula do Correio do Ara aparece (centro disputável). */
+  capsule: Vec3;
+  /** Estações de entrega neutras, em pares simétricos [oeste, leste, oeste, leste…]. */
+  stations: Vec3[];
+  /** Pickups de buff (Embalo/Fôlego), em pares simétricos. */
+  pickups: Array<{ pos: Vec3; kind: 'embalo' | 'folego' }>;
+}
+
 export interface MapSpec {
+  /** Id único da variante (ex.: 'toca-do-ara.padrao'). */
   id: string;
+  /** Família do mapa (ex.: 'toca-do-ara'); o nome é o mesmo nas três variantes. */
+  family: string;
   name: string;
+  variant: MapVariant;
+  /** Faixa de participantes ativos (incluindo bots) para a qual a variante foi desenhada. */
+  players: [number, number];
   version: number;
   cellSize: number;
   bounds: Aabb;
@@ -61,6 +83,7 @@ export interface MapSpec {
   blocks: BlockSpec[];
   spawns: Record<TeamId, SpawnPoint[]>;
   spawnZones: Record<TeamId, Aabb>;
+  objectives: MapObjectives;
   decor: DecorSpec[];
   lighting: {
     sunDirection: Vec3;
@@ -141,6 +164,8 @@ export function computeMapHash(map: MapSpec): string {
       blocks: map.blocks,
       spawns: map.spawns,
       spawnZones: map.spawnZones,
+      objectives: map.objectives,
+      variant: map.variant,
     }),
   );
 }

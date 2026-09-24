@@ -1,7 +1,8 @@
-import type { GameEvent, PlayerInput, PlayerRoundStats, RoundResult, TeamId, Vec3, WeaponId } from '@borrifo/game-contracts';
+import type { GameEvent, GameModeId, ObjectiveSnapshot, PickupSnapshot, PlayerInput, PlayerRoundStats, RoundResult, TeamId, Vec3, WeaponId } from '@borrifo/game-contracts';
 import { FORM_FLOW, GROUND_ENEMY, INPUT_QUEUE_MAX, INPUT_STALE_TICKS, TICK_DT, neutralInput, otherTeam, Buttons } from '@borrifo/game-contracts';
 import type { ChargeWeaponDefinition, ContactWeaponDefinition, AutomaticWeaponDefinition, MapSpec } from '@borrifo/game-content';
-import { HEALTH, MORINGA, MOVEMENT, PIAO_GUIA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
+import { HEALTH, MODES, MORINGA, MOVEMENT, PIAO_GUIA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
+import { BuffPickups, CorreioMode, MutiraoTracker, applyModifiers, freshModeState, type ModeHost } from './modes';
 import { add, addScaled, aimDirection, clamp, dist, forwardFromYaw, lerp, normalize, rightFromYaw, Rng, segmentCapsuleHit, sub } from '../math';
 import type { PaintLayout } from '../paint/PaintLayout';
 import { PaintState, type PaintChangeSink } from '../paint/PaintState';
@@ -22,6 +23,8 @@ export interface MatchSimulationOptions {
   seed: number;
   durationSeconds: number;
   countdownSeconds: number;
+  /** Modo da rodada (padrão: território). */
+  mode?: GameModeId;
 }
 
 /** Posição do cano da ferramenta a partir do estado do personagem. */
@@ -61,6 +64,10 @@ export class MatchSimulation {
   private events: AddressedEvent[] = [];
   private result: RoundResult | null = null;
   private finishCount = 0;
+  readonly mode: GameModeId;
+  readonly correio: CorreioMode | null = null;
+  readonly pickups: BuffPickups | null = null;
+  readonly mutirao: MutiraoTracker | null = null;
 
   constructor(readonly opts: MatchSimulationOptions) {
     this.paint = new PaintState(opts.layout);
@@ -69,6 +76,23 @@ export class MatchSimulation {
     this.rng = new Rng(opts.seed);
     this.startTick = Math.round(opts.countdownSeconds / TICK_DT);
     this.endTick = this.startTick + Math.round(opts.durationSeconds / TICK_DT);
+    this.mode = opts.mode ?? 'territorio';
+    const def = MODES[this.mode];
+    const self = this;
+    const host: ModeHost = {
+      get tick() {
+        return self.tick;
+      },
+      players: this.players,
+      layout: opts.layout,
+      paint: this.paint,
+      physics: opts.physics,
+      map: opts.map,
+      emit: (ev, to) => this.emit(ev, to),
+    };
+    if (def.objective) this.correio = new CorreioMode(host, this.startTick);
+    if (def.buffs && opts.map.objectives.pickups.length) this.pickups = new BuffPickups(host, this.startTick);
+    if (def.mutirao) this.mutirao = new MutiraoTracker(host);
   }
 
   get layout(): PaintLayout {
@@ -112,6 +136,7 @@ export class MatchSimulation {
       bot: null,
       lastDamagedBy: null,
       travel: null,
+      mode: freshModeState(),
     };
     this.players.set(id, p);
     return p;
@@ -120,6 +145,7 @@ export class MatchSimulation {
   removePlayer(id: number) {
     const p = this.players.get(id);
     if (!p) return;
+    this.correio?.drop(id);
     p.body.dispose();
     this.players.delete(id);
   }
@@ -185,8 +211,44 @@ export class MatchSimulation {
     for (const p of this.sortedPlayers()) this.stepOnePlayer(p, dt);
     this.stepProjectiles(dt);
     this.stepObjects(dt);
+    this.stepModes();
     for (const p of this.sortedPlayers()) this.stepRespawn(p, dt);
-    if (this.tick >= this.endTick) this.finish('completed');
+    if (this.tick >= this.endTick || this.correio?.decided != null) this.finish('completed');
+  }
+
+  /** Buffs, Mutirão e Correio: temporizadores, coleta, combo e cápsula; modificadores do próximo tick. */
+  private stepModes() {
+    const st = (p: SimPlayer) => p.mode;
+    for (const p of this.players.values()) {
+      const m = p.mode;
+      if (m.buffTicks > 0 && --m.buffTicks === 0 && m.buff) {
+        this.emit({ k: 'buffEnd', pid: p.id, kind: m.buff });
+        m.buff = null;
+      }
+      if (m.mutiraoTicks > 0) m.mutiraoTicks--;
+      if (m.mutiraoCooldownTicks > 0) m.mutiraoCooldownTicks--;
+    }
+    this.pickups?.step(st);
+    this.mutirao?.step(st);
+    this.correio?.step(st);
+    for (const p of this.players.values()) applyModifiers(p, p.mode);
+  }
+
+  /** Portador desconectou (servidor): a cápsula cai; o slot segue na rodada. */
+  dropObjective(id: number) {
+    this.correio?.drop(id);
+  }
+
+  objectiveSnapshot(): ObjectiveSnapshot | undefined {
+    return this.correio?.snapshot();
+  }
+
+  pickupSnapshot(): PickupSnapshot[] | undefined {
+    return this.pickups?.snapshot();
+  }
+
+  isCarrier(id: number): boolean {
+    return this.correio?.isCarrier(id) ?? false;
   }
 
   private sortedPlayers(): SimPlayer[] {
@@ -477,9 +539,12 @@ export class MatchSimulation {
   /** Atribui conquistas de área e carga especial a quem pintou. */
   private sinkFor(p: SimPlayer | null): PaintChangeSink | undefined {
     if (!p) return undefined;
-    return (_cell, prev, next, units, scoring) => {
+    return (cell, prev, next, units, scoring) => {
       if (prev === next) return;
-      if (scoring) p.stats.paintedUnits += units;
+      if (scoring) {
+        p.stats.paintedUnits += units;
+        this.mutirao?.record(p, cell, prev, units * this.layout.areaPerUnit);
+      }
       if (!p.state.specialActive && p.state.alive) {
         p.state.special = Math.min(RODA_DE_OLEIRO.pointsRequired, p.state.special + units * this.layout.areaPerUnit);
       }
@@ -749,6 +814,13 @@ export class MatchSimulation {
     s.travelPhase = 0;
     target.travel = null;
     target.stats.deaths++;
+    // eliminação: solta a cápsula e encerra buff e Mutirão (não reiniciam no reaparecimento)
+    this.correio?.drop(target.id);
+    if (target.mode.buff && target.mode.buffTicks > 0) this.emit({ k: 'buffEnd', pid: target.id, kind: target.mode.buff });
+    target.mode.buff = null;
+    target.mode.buffTicks = 0;
+    target.mode.mutiraoTicks = 0;
+    applyModifiers(target, target.mode);
     if (s.special < RODA_DE_OLEIRO.pointsRequired) s.special *= 1 - RODA_DE_OLEIRO.deathLossFraction;
     if (killer) {
       killer.stats.eliminations++;
@@ -791,6 +863,8 @@ export class MatchSimulation {
     if (!t || t.id === p.id || t.team !== p.team) return deny('travel_invalid_target');
     if (!t.state.alive || t.state.travelPhase !== 0) return deny('travel_target_unavailable');
     if (!s.alive || s.travelPhase !== 0 || s.climbSurface >= 0) return deny('travel_state');
+    // Correio do Ara: o Pião-Guia fica indisponível para quem carrega a cápsula
+    if (this.isCarrier(p.id)) return deny('travel_carrying');
     p.travel = { targetId, destination: null, origin: [...s.pos] as Vec3 };
     s.travelPhase = 1;
     s.travelTimer = PIAO_GUIA.prepTime;
@@ -889,7 +963,11 @@ export class MatchSimulation {
     const total = L.totalScoringUnits;
     const u0 = this.paint.teamUnits[0];
     const u1 = this.paint.teamUnits[1];
-    const winner: TeamId | 'draw' = u0 === u1 ? 'draw' : u0 > u1 ? 0 : 1;
+    const deliveries: [number, number] = this.correio ? [...this.correio.deliveries] as [number, number] : [0, 0];
+    // território: mais área; Correio: mais entregas (igualdade é empate nos dois)
+    const winner: TeamId | 'draw' = this.correio
+      ? deliveries[0] === deliveries[1] ? 'draw' : deliveries[0] > deliveries[1] ? 0 : 1
+      : u0 === u1 ? 'draw' : u0 > u1 ? 0 : 1;
     const pct = (u: number) => Math.round((u / total) * 1000) / 10;
     const players: PlayerRoundStats[] = this.sortedPlayers().map((p) => ({
       playerId: p.id,
@@ -901,11 +979,15 @@ export class MatchSimulation {
       eliminations: p.stats.eliminations,
       deaths: p.stats.deaths,
       specialsUsed: p.stats.specialsUsed,
+      deliveries: p.mode.deliveries,
+      mutiroes: p.mode.mutiroes,
     }));
     this.result = {
       matchId: this.opts.matchId,
       roundId: this.opts.roundId,
       mapId: this.opts.map.id,
+      mode: this.mode,
+      deliveries,
       totalArea: Math.round(total * L.areaPerUnit * 100) / 100,
       teamArea: [Math.round(u0 * L.areaPerUnit * 100) / 100, Math.round(u1 * L.areaPerUnit * 100) / 100],
       neutralArea: Math.round((total - u0 - u1) * L.areaPerUnit * 100) / 100,
