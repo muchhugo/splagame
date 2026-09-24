@@ -13,3 +13,4 @@ playwright-report
 .DS_Store
 artifacts/tmp
 apps/game-server/data/
+e2e/out/

@@ -52,7 +52,7 @@ describe('Pátio da Olaria v2: jogabilidade do desenho', () => {
   it('da praça central não há linha de tiro dentro do alcance máximo até os pontos de spawn', () => {
     const range = ESTILINGUE.maxRange;
     const eyes: Vec3[] = [];
-    for (let x = -4; x <= 4; x += 1) for (let z = -4; z <= 4; z += 1) if (Math.abs(z) > 1.6 || true) eyes.push([x, 2.4 + 1.1, z]);
+    for (let x = -4; x <= 4; x += 1) for (let z = -4; z <= 4; z += 1) eyes.push([x, 2.4 + 1.1, z]);
     for (const t of [0, 1] as const)
       for (const sp of PATIO_DA_OLARIA.spawns[t]) {
         const target: Vec3 = [sp.pos[0], sp.pos[1] + 0.8, sp.pos[2]];

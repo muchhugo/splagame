@@ -454,7 +454,9 @@ export class GameRuntime {
   private frame() {
     if (this.disposed) return;
     const now = performance.now();
-    if (this.frameBudgetMs > 0 && now - this.lastRenderAt < this.frameBudgetMs) return;
+    // suspensa/oculta: mantém rede e estado em ritmo baixo, sem desenhar a cena
+    const budget = this.visible ? this.frameBudgetMs : 250;
+    if (budget > 0 && now - this.lastRenderAt < budget) return;
     this.lastRenderAt = now;
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
@@ -577,7 +579,7 @@ export class GameRuntime {
       this.hudTimer = 0;
       this.publishHud();
     }
-    this.scene.render();
+    if (this.visible) this.scene.render();
   }
 
   /** Mira em duas etapas: alvo visual pela câmera, trajetória validada a partir do cano. */

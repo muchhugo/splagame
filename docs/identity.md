@@ -45,8 +45,8 @@ paleta de acessibilidade troca as cores, mas nunca o dono lógico.
 
 | TeamId | Nome | Símbolo | Cor padrão | Origem do nome |
 |---|---|---|---|---|
-| 0 | Urucum | ▲ triângulo | laranja-avermelhado | pigmento natural da semente do urucum |
-| 1 | Anil | ● círculo | azul-índigo | pigmento natural do anil (índigo) |
+| 0 | Urucum | ▲ triângulo | laranja (`#ff6414`) | pigmento natural da semente do urucum |
+| 1 | Anil | ● círculo | azul-índigo (`#4a3dff`) | pigmento natural do anil (índigo) |
 
 ### Nomes de equipamentos (todos originais)
 
@@ -61,20 +61,36 @@ paleta de acessibilidade troca as cores, mas nunca o dono lógico.
 
 ### Arena
 
-**Pátio da Olaria**: pátio de chão de terracota com fornos de queima, varais de secagem,
-um galpão para cada turma, uma varanda elevada e uma chaminé central. A decoração inclui
-bandeirinhas, telhas empilhadas e moringas.
+**Pátio da Olaria**: pátio de uma olaria de beira de estrada, com uma **praça central elevada**
+(ponte de madeira sobre uma passagem inferior) e a estátua de um bibelô girando devagar num
+pedestal de azulejo. Tem varanda elevada ao norte, tablado ao sul, fornos com chaminés
+fumegando, varais, muretas e um galpão para cada turma, com duas saídas e uma roda de oleiro
+girando no telhado. Letreiros "OLARIA BORRIFO" e "PÁTIO" nos muros, bandeirinhas, potes e
+árvores no entorno ajudam na orientação.
 
 ### Direção de arte
 
-- 3D estilizado, com geometria moderada, cerâmica esmaltada (brilho especular suave),
-  terracota fosca, madeira e latão.
-- Luz de fim de tarde (sol baixo e quente, céu em gradiente) com sombras suaves
-  pré-calculadas no cenário.
-- Tinta com bordas orgânicas, leve relevo e brilho moderado. Um padrão opcional
-  (listras para Urucum, pontos para Anil) atende quem não diferencia cores.
+Cartoon vibrante, amigável e um pouco cômico, sem ser infantil nem paródia. Tem identidade
+própria: as referências externas serviram só para cor, luz e atmosfera.
+
+- **Cel shading suave** nos personagens e ferramentas (duas faixas de luz e contorno discreto).
+  No cenário é mais sutil, com sombras levemente frias e oclusão que marca o contato com o chão.
+- **Luz de dia clara e agradável:** céu azul com nuvens desenhadas, sol quente e névoa aérea
+  leve. Nem escuro nem lavado.
+- **Cor intensa onde importa:** tinta, personagens e destaques. O cenário usa terracota, madeira,
+  pedra clara, tijolo e azulejo branco e azul, com materiais foscos, não plásticos.
+- **Tinta molhada estilizada:** bordas orgânicas, leve relevo, brilhos pequenos e contidos,
+  respingos com gotas satélites. Um padrão opcional (listras para Urucum, pontos para Anil)
+  atende quem não diferencia cores.
+- **Bibelôs:** cabeça grande, olhos com pupila e sobrancelhas, tanque de vidro nas costas que
+  mostra o nível de tinta, botas na cor da turma e ferramentas com reservatórios exagerados.
+- **Peças modulares simples com acabamento:** caixotes com moldura e marca gráfica, muretas de
+  tijolo, rampas de pedra e madeira, fornos de azulejo.
+- **Legibilidade de combate em primeiro lugar:** partículas limitadas, tremor de câmera leve e
+  desligável, nada sobre a mira, personagem colado na câmera esmaecido e cores de turma sempre
+  distinguíveis do chão sem tinta.
 - Interface em português brasileiro, com tipografia arredondada (Fredoka, OFL), cantos
-  generosos e cores de barro e anil.
+  generosos, contorno de "adesivo" nos elementos do HUD e cores de barro e anil.
 
 ### Som
 
