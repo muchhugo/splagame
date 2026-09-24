@@ -18,6 +18,7 @@
     "@borrifo/voice-adapter": "workspace:*",
     "@colyseus/sdk": "0.18.4",
     "@fontsource/fredoka": "5.3.0",
+    "gsap": "^3.15.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

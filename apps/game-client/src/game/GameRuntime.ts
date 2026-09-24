@@ -244,7 +244,10 @@ export class GameRuntime {
     this.level?.setPatterns(s.paintPatterns);
     this.effects?.setTeamColors(colors);
     this.modeView?.setTeamColors(colors);
-    if (this.effects) this.effects.reduceFlashes = s.reduceFlashes;
+    if (this.effects) {
+      this.effects.reduceFlashes = s.reduceFlashes;
+      this.effects.particleScale = s.particles === 'reduzidas' ? 0.5 : 1;
+    }
     for (const v of this.views.values()) v.setTeamColor(colors[v.team]);
     if (this.rig) {
       this.rig.setFov(s.fov);
@@ -254,10 +257,12 @@ export class GameRuntime {
     this.audio.setVolumes({ master: s.volumeMaster, sfx: s.volumeSfx, music: s.volumeMusic });
     this.audio.setMuted(s.muted);
     this.frameBudgetMs = s.fpsCap > 0 ? 1000 / s.fpsCap - 0.5 : 0;
-    const scaling = s.quality === 'baixa' ? 1.6 : s.quality === 'media' ? 1.15 : 1 / Math.min(1.5, window.devicePixelRatio || 1);
+    // resolução interna: automática pela qualidade, ou fração explícita da nativa (1 = nativa)
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const scaling = s.resolution > 0 ? 1 / (s.resolution * dpr) : s.quality === 'baixa' ? 1.6 : s.quality === 'media' ? 1.15 : 1 / dpr;
     this.engine.setHardwareScalingLevel(scaling);
     this.env?.setSimplified(s.quality === 'baixa');
-    if (s.quality === 'baixa' || s.reduceFlashes) {
+    if (s.quality === 'baixa' || s.reduceFlashes || !s.postFx) {
       this.pipeline?.dispose();
       this.pipeline = null;
     } else if (!this.pipeline && this.rig) {

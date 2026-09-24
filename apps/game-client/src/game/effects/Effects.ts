@@ -155,6 +155,8 @@ export class Effects {
   private time = 0;
   private markers = new Map<number, { mesh: Mesh; life: number }>();
   reduceFlashes = false;
+  /** Densidade de partículas (configuração de vídeo): 1 normal, 0,5 reduzida. */
+  particleScale = 1;
   cameraPos: Vec3 = [0, 0, 0];
 
   constructor(
@@ -261,7 +263,7 @@ export class Effects {
     // perto da câmera: menos e menores (não cobre a mira nem o adversário)
     const camD = Math.hypot(p[0] - this.cameraPos[0], p[1] - this.cameraPos[1], p[2] - this.cameraPos[2]);
     const near = camD < 2.5 ? 0.35 : 1;
-    const count = Math.round((6 + size * 6) * near * (this.reduceFlashes ? 0.5 : 1));
+    const count = Math.round((6 + size * 6) * near * (this.reduceFlashes ? 0.5 : 1) * this.particleScale);
     for (let i = 0; i < count; i++) {
       const r = () => Math.random() - 0.5;
       const sp = 2 + Math.random() * 3 * size;
@@ -273,7 +275,7 @@ export class Effects {
 
   burst(p: Vec3, team: TeamId, radius: number) {
     const c = this.teamColors[team];
-    const n = this.reduceFlashes ? 40 : 90;
+    const n = Math.round((this.reduceFlashes ? 40 : 90) * this.particleScale);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const up = Math.random() * 0.9 + 0.1;

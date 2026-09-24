@@ -159,6 +159,24 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
                 <option value={120}>120</option>
               </select>
             </label>
+            <label className="setting">
+              <span>Resolução interna</span>
+              <select value={s.resolution} onChange={(e) => set({ resolution: Number(e.target.value) })}>
+                <option value={0}>Automática (pela qualidade)</option>
+                <option value={1}>100% (nativa)</option>
+                <option value={0.85}>85%</option>
+                <option value={0.7}>70%</option>
+                <option value={0.5}>50%</option>
+              </select>
+            </label>
+            {toggle('Pós-processamento (antisserrilhado e brilho)', 'postFx')}
+            <label className="setting">
+              <span>Partículas de tinta</span>
+              <select value={s.particles} onChange={(e) => set({ particles: e.target.value as Settings['particles'] })}>
+                <option value="normal">Normais</option>
+                <option value="reduzidas">Reduzidas</option>
+              </select>
+            </label>
             {slider('Campo de visão (°)', 'fov', 55, 95, 1, (v) => String(v))}
             {slider('Deslocamento do ombro', 'shoulder', -0.9, 0.9, 0.05)}
             {slider('Tamanho do HUD', 'hudScale', 0.8, 1.4, 0.05)}
@@ -179,8 +197,9 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             {toggle('Padrões na tinta (listras ▲ / pontos ●)', 'paintPatterns')}
             {toggle('Reduzir tremor da câmera', 'reduceShake')}
             {toggle('Reduzir clarões e partículas', 'reduceFlashes')}
+            {toggle('Reduzir animações da interface', 'reduceMotion')}
             <p className="muted" style={{ fontSize: 12 }}>
-              A cor é só apresentação: trocar a paleta não altera o dono lógico da tinta. As turmas também são identificadas por símbolo (▲ Urucum, ● Anil).
+              A cor é só apresentação: trocar a paleta não altera o dono lógico da tinta. As turmas também são identificadas por símbolo (▲ e ●), além da cor.
             </p>
           </>
         ) : null}

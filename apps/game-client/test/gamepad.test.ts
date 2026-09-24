@@ -234,3 +234,14 @@ describe('aparência nas preferências', () => {
     expect(sanitizeSettings({}).appearance).toBe(DEFAULT_SETTINGS.appearance);
   });
 });
+
+describe('vídeo e movimento nas preferências', () => {
+  it('resolução, pós-processamento, partículas e redução de animação são validados', () => {
+    const s = sanitizeSettings({ resolution: 0.7, postFx: false, particles: 'reduzidas', reduceMotion: true });
+    expect([s.resolution, s.postFx, s.particles, s.reduceMotion]).toEqual([0.7, false, 'reduzidas', true]);
+    const bad = sanitizeSettings({ resolution: 7, postFx: 'sim', particles: 'muitas', reduceMotion: 1 });
+    expect(bad.resolution).toBe(1);
+    expect([bad.postFx, bad.particles, bad.reduceMotion]).toEqual([true, 'normal', false]);
+    expect(sanitizeSettings({ resolution: 0 }).resolution).toBe(0);
+  });
+});

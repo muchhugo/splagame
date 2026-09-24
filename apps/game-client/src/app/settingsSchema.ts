@@ -44,9 +44,17 @@ export interface Settings {
   volumeMusic: number;
   muted: boolean;
   quality: 'baixa' | 'media' | 'alta';
+  /** Resolução interna: 0 = automática pela qualidade; senão fração da nativa (0,5–1). */
+  resolution: number;
+  /** Pós-processamento (antisserrilhado e brilho); desligado economiza GPU. */
+  postFx: boolean;
+  /** Densidade de partículas de tinta. */
+  particles: 'normal' | 'reduzidas';
   fpsCap: 0 | 30 | 60 | 120;
   reduceShake: boolean;
   reduceFlashes: boolean;
+  /** Menos animação de interface (além de `prefers-reduced-motion` do sistema). */
+  reduceMotion: boolean;
   hudScale: number;
   palette: 'padrao' | 'alto_contraste' | 'daltonismo';
   paintPatterns: boolean;
@@ -101,9 +109,13 @@ export const DEFAULT_SETTINGS: Settings = {
   volumeMusic: 0.45,
   muted: false,
   quality: 'media',
+  resolution: 0,
+  postFx: true,
+  particles: 'normal',
   fpsCap: 0,
   reduceShake: false,
   reduceFlashes: false,
+  reduceMotion: false,
   hudScale: 1,
   palette: 'padrao',
   paintPatterns: false,
@@ -187,9 +199,13 @@ export function sanitizeSettings(raw: unknown): Settings {
     volumeMusic: num(raw.volumeMusic, 0, 1, d.volumeMusic),
     muted: bool(raw.muted, d.muted),
     quality: oneOf(raw.quality, ['baixa', 'media', 'alta'] as const, d.quality),
+    resolution: raw.resolution === 0 ? 0 : num(raw.resolution, 0.5, 1, d.resolution),
+    postFx: bool(raw.postFx, d.postFx),
+    particles: oneOf(raw.particles, ['normal', 'reduzidas'] as const, d.particles),
     fpsCap: oneOf(raw.fpsCap, [0, 30, 60, 120] as const, d.fpsCap),
     reduceShake: bool(raw.reduceShake, d.reduceShake),
     reduceFlashes: bool(raw.reduceFlashes, d.reduceFlashes),
+    reduceMotion: bool(raw.reduceMotion, d.reduceMotion),
     hudScale: num(raw.hudScale, 0.8, 1.4, d.hudScale),
     palette: oneOf(raw.palette, ['padrao', 'alto_contraste', 'daltonismo'] as const, d.palette),
     paintPatterns: bool(raw.paintPatterns, d.paintPatterns),

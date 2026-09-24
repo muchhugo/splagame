@@ -109,6 +109,7 @@ export class AppController {
         playerName: (id) => this.lastLobby?.players.find((p) => p.playerId === id)?.displayName ?? `#${id}`,
         voiceOf: (userId) => voiceViewStore.get().map.get(userId),
         requestPaintResync: (roundId, reason) => this.conn?.send(C2S.PAINT_RESYNC, { roundId, reason: reason.slice(0, 40) }),
+        onModeNotice: (text, kind) => pushNotice(text, kind, 2600),
     };
   }
 

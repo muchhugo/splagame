@@ -17,7 +17,7 @@ import { Notices } from './Notices';
 import { TouchControls } from './TouchControls';
 import { Tutorial } from './Tutorial';
 import { installGamepadNav } from './gamepadNav';
-import { installDeviceTracking } from '../game/input/device';
+import { deviceStore, installDeviceTracking } from '../game/input/device';
 import { familyName } from '../game/input/gamepad';
 
 let controller: AppController | null = null;
@@ -78,6 +78,12 @@ export function App() {
     installGamepadNav();
   }, []);
 
+  // composição do HUD por dispositivo (toque tem layout próprio: polegares embaixo, informação em cima)
+  const device = useStore(deviceStore, (d) => d.device);
+  useEffect(() => {
+    document.documentElement.dataset.device = device;
+  }, [device]);
+
   useEffect(() => {
     if (booted) return;
     setBooted(true);
@@ -116,6 +122,7 @@ export function App() {
       {screen === 'standalone' ? <StandaloneLogin onSubmit={onStandalone} /> : null}
       {screen === 'lobby' ? <Lobby /> : null}
       {screen === 'waiting' ? <Waiting /> : null}
+      <MapLoading />
       {screen === 'match' ? <Hud /> : null}
       {screen === 'match' ? <TouchControls /> : null}
       {screen === 'match' ? <Tutorial /> : null}
@@ -149,15 +156,38 @@ function BootScreen({ connecting }: { connecting: boolean }) {
 
 function Waiting() {
   const lobby = useStore(uiStore, (s) => s.lobby);
+  const myId = useStore(uiStore, (s) => s.welcome?.playerId);
+  const me = lobby?.players.find((p) => p.playerId === myId);
   return (
     <div className="screen">
       <div className="panel dialog">
         <Logo size={56} />
-        <h2>Partida em andamento</h2>
-        <p className="muted">Você entra na próxima rodada. Enquanto isso, a arena segue ao fundo.</p>
+        <h2>{me?.queued ? 'Você está na fila' : 'Partida em andamento'}</h2>
+        <p className="muted">
+          {me?.queued ? 'A formação desta rodada já estava completa. Você tem prioridade na próxima revanche.' : 'Você entra na próxima rodada. Enquanto isso, a arena segue ao fundo.'}
+        </p>
         <p className="muted">
           {lobby?.players.filter((p) => p.inRound).length ?? 0} participantes jogando em {lobby?.map.name}.
         </p>
+      </div>
+    </div>
+  );
+}
+
+/** Troca de mapa entre rodadas: nome e variante do lugar enquanto a cena é montada. */
+function MapLoading() {
+  const ml = useStore(uiStore, (s) => s.mapLoading);
+  if (!ml) return null;
+  const v = ml.variant === 'compacto' ? 'compacta' : ml.variant === 'ampliado' ? 'ampliada' : 'padrão';
+  return (
+    <div className="screen solid map-loading" role="status" aria-live="polite">
+      <div className="boot">
+        <Logo size={64} />
+        <h2>{ml.name}</h2>
+        <span className="chip">variante {v}</span>
+        <div className="progress" aria-label="Carregando o mapa">
+          <div style={{ width: `${Math.round(ml.progress * 100)}%` }} />
+        </div>
       </div>
     </div>
   );

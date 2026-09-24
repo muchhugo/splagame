@@ -539,7 +539,8 @@ export class ArenaRoom extends Room {
       mapChoice: this.mapChoice,
       formation: this.formation,
       plan,
-      roundDurationSeconds: ArenaRoom.deps.roundDurationSeconds,
+      // duração efetiva do modo da rodada (planejado no lobby; em jogo, o da simulação)
+      roundDurationSeconds: MODES[this.sim && this.phase !== 'lobby' ? this.sim.mode : this.mode].durationSeconds === null ? ArenaRoom.deps.roundDurationSeconds : ArenaRoom.deps.correioDurationSeconds,
       phaseRemainingMs: this.phaseRemainingMs(),
       rematchVotes: [...this.players.values()].filter((p) => p.vote === 'rematch').map((p) => p.playerId),
       lastResult: this.lastResult,

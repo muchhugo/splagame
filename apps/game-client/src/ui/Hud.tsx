@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { BUFFS, CORREIO, MUTIRAO } from '@borrifo/game-content';
+import { usePop } from './motion';
 import { INK, MORINGA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
@@ -19,6 +21,7 @@ export function Hud() {
   const conn = useStore(uiStore, (s) => s.connection);
   const rtt = useStore(uiStore, (s) => s.rttMs);
   const result = useStore(uiStore, (s) => s.result);
+  const lobbyDuration = useStore(uiStore, (s) => s.lobby?.roundDurationSeconds);
   const hints = useHints();
   const teams = useTeams();
   const reticle = useRef<HTMLDivElement>(null);
@@ -59,7 +62,7 @@ export function Hud() {
           ))}
         </div>
         <div className={`timer ${urgent ? 'urgent' : ''}`} aria-label="Tempo restante">
-          {h.phase === 'countdown' ? '3:00' : fmtTime(h.timeLeftMs)}
+          {h.phase === 'countdown' ? fmtTime((lobbyDuration ?? 180) * 1000) : fmtTime(h.timeLeftMs)}
         </div>
         <div className="roster" aria-label={`Turma ${teams[1].name}`}>
           {t1.map((r) => (
@@ -69,7 +72,9 @@ export function Hud() {
           ))}
         </div>
       </div>
-      <div className="territory" title="Território pintado agora (parcial)">
+      {h.mode === 'correio' ? <ObjectiveHud /> : null}
+      <BuffChips />
+      <div className={`territory ${h.mode === 'correio' ? 'secondary' : ''}`} title="Território pintado agora (parcial)">
         <div style={{ width: `${h.territory[0]}%`, background: 'var(--team0)' }} />
         <div style={{ flex: 1 }} />
         <div style={{ width: `${h.territory[1]}%`, background: 'var(--team1)' }} />
@@ -139,7 +144,7 @@ export function Hud() {
           <div className="big" key={Math.ceil(h.timeLeftMs / 1000)}>
             {Math.max(1, Math.ceil(h.timeLeftMs / 1000))}
           </div>
-          <div className="sub">Pinte o chão! Vence quem cobrir mais área.</div>
+          <div className="sub">{h.mode === 'correio' ? `Correio do Ara: leve a cápsula à estação. ${CORREIO.targetDeliveries} entregas vencem.` : 'Pinte o chão! Vence quem cobrir mais área.'}</div>
         </div>
       ) : null}
       {!h.alive && h.phase === 'running' ? (
@@ -151,7 +156,7 @@ export function Hud() {
       {h.phase === 'finishing' ? (
         <div className="center-msg">
           <div className="big">Fim!</div>
-          <div className="sub">{result ? 'Contando o território…' : ''}</div>
+          <div className="sub">{result ? (h.mode === 'correio' ? 'Contando as entregas…' : 'Contando o território…') : ''}</div>
         </div>
       ) : null}
       {!locked && !menu && hints.device === 'teclado' && (h.phase === 'running' || h.phase === 'countdown') ? <div className="clicktoplay">Clique na arena para jogar · Esc abre o menu</div> : null}
@@ -159,6 +164,88 @@ export function Hud() {
         <div className="special-hint" aria-live="polite">
           {pressText(hints.label('special'), hints.device)} para a {RODA_DE_OLEIRO.name}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+const CAPSULE_TEXT: Record<string, string> = {
+  aguardando: 'A cápsula já vai aparecer no centro',
+  disponivel: 'Cápsula livre no centro',
+  carregada: 'Cápsula em trânsito',
+  caida: 'Cápsula caída',
+  em_entrega: 'Entregando…',
+  entregue: 'Entregue! Próxima estação anunciada',
+  retornando: 'Cápsula voltando ao centro',
+};
+
+/** Correio do Ara: placar de entregas, estado da cápsula, direção da estação ativa e progresso. */
+function ObjectiveHud() {
+  const o = useStore(hudStore, (s) => s.objective);
+  const myTeam = useStore(hudStore, (s) => s.myTeam);
+  const teams = useTeams();
+  const score = useRef<HTMLDivElement>(null);
+  usePop(score, o ? o.deliveries[0] + o.deliveries[1] : 0, 0.6);
+  if (!o) return null;
+  const mine = o.carrier ? o.carrier.team === myTeam : false;
+  const share = o.stationShare[myTeam];
+  const ready = share >= CORREIO.stationPaintShare;
+  const text = o.iCarry ? (ready ? 'Entre na estação e segure' : `Pinte a estação: ${Math.round(share * 100)}% de ${Math.round(CORREIO.stationPaintShare * 100)}%`) : o.carrier ? `${o.carrier.name} ${mine ? '(sua turma)' : '(adversário)'} está com a cápsula` : CAPSULE_TEXT[o.state];
+  return (
+    <div className={`objective ${o.iCarry ? 'carrying' : ''}`} role="status" aria-live="polite">
+      <div className="obj-score" ref={score}>
+        <b style={{ color: 'var(--team0)' }}>
+          {teams[0].symbol} {o.deliveries[0]}
+        </b>
+        <span className="muted">
+          entregas · {CORREIO.targetDeliveries} vencem
+        </span>
+        <b style={{ color: 'var(--team1)' }}>
+          {o.deliveries[1]} {teams[1].symbol}
+        </b>
+      </div>
+      <div className="obj-line">
+        <span className="obj-arrow" style={{ transform: `rotate(${o.stationBearing}deg)` }} aria-label={`Estação a ${Math.round(o.stationDistance)} m`}>
+          ▲
+        </span>
+        <span>
+          Estação {Math.round(o.stationDistance)} m · {text}
+          {o.state === 'caida' || o.state === 'retornando' ? ` (${Math.ceil(o.timer)} s)` : ''}
+        </span>
+      </div>
+      {o.state === 'em_entrega' ? (
+        <div className="obj-progress" aria-label="Progresso da entrega">
+          <i style={{ width: `${Math.round(o.progress * 100)}%`, background: o.carrier ? `var(--team${o.carrier.team})` : 'var(--ouro)' }} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Buff ativo (com tempo) e Mutirão (com recarga), à esquerda da mira, sem cobrir o centro. */
+function BuffChips() {
+  const buff = useStore(hudStore, (s) => s.buff);
+  const left = useStore(hudStore, (s) => s.buffLeft);
+  const mut = useStore(hudStore, (s) => s.mutirao);
+  const cd = useStore(hudStore, (s) => s.mutiraoCooldown);
+  const pop = useRef<HTMLSpanElement>(null);
+  usePop(pop, mut > 0 ? 'on' : 'off', 1);
+  const total = buff === 'embalo' ? BUFFS.embalo.duration : BUFFS.folego.duration;
+  return (
+    <div className="buffs" aria-live="polite">
+      {buff ? (
+        <span className={`buff ${buff}`} style={{ ['--p' as string]: String(Math.max(0, Math.min(1, left / total))) }}>
+          {buff === 'embalo' ? '» Embalo' : '💧 Fôlego'} <small>{Math.ceil(left)} s</small>
+        </span>
+      ) : null}
+      {mut > 0 ? (
+        <span className="buff mutirao" ref={pop}>
+          Mutirão! <small>{Math.ceil(mut)} s</small>
+        </span>
+      ) : cd > 0 && cd < MUTIRAO.cooldown - MUTIRAO.duration ? (
+        <span className="buff idle" title="Recarga do Mutirão">
+          Mutirão em {Math.ceil(cd)} s
+        </span>
       ) : null}
     </div>
   );
