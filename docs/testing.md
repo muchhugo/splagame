@@ -28,6 +28,36 @@ LiveKit (verifica "voz não configurada").
 O benchmark de transporte fica em `tools/bench-transport`; método e resultados estão em
 [livekit-transporte.md](livekit-transporte.md).
 
+## Validação agregada (`pnpm validar --voz --desempenho`)
+
+Rodou em 24/09/2026, numa worktree isolada do commit `e32ce54`, com pilha própria em portas
+livres. Usou SwiftShader, LiveKit local em `--dev` e mídia sintética. **Todas as 20 etapas
+passaram.** O relatório de máquina fica em `e2e/out/validacao.json`, que não é versionado.
+
+O aviso "com alterações não commitadas" do relatório vem do checkout principal, que na hora
+tinha edições em andamento (a camada de animação solta). A worktree validou só o que estava
+commitado.
+
+| Etapa | Resultado |
+|---|---|
+| typecheck (todos os pacotes) | ok |
+| vitest | **203 de 203** |
+| build de produção | ok |
+| vitrines de desenvolvimento fora do bundle | ok (83 arquivos no `dist`) |
+| nenhum segredo do `.env` no bundle | ok |
+| gancho `__borrifo` ausente em produção | ok |
+| fixture e diagnóstico de voz ausentes do host de produção | ok (1472 KB de JS verificados) |
+| credencial de desenvolvimento recusada em produção | ok |
+| tick com 4, 8 e 16 participantes | p99 de 1,59, 2,0 e 2,17 ms (orçamento de 33,3 ms) |
+| shell: host, iframe, handshake, credencial, fechamento | 9 verificações |
+| partida com dois humanos, tinta idêntica, limpeza | 10 verificações |
+| controle | 31 verificações |
+| treino rápido v2 | 22 verificações |
+| contrato de voz pelo bridge (mesmo nome, `userId`) | 11 verificações |
+| capturas desktop e celular emulado | sem erros de página |
+| desempenho do cliente 4×4 e 8×8 | ok ([performance.md](performance.md)) |
+| voz com LiveKit local e fala sintética | **5 de 5 execuções completas** |
+
 ## Resultado da última execução
 
 Resultados:

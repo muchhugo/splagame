@@ -39,7 +39,7 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 | S1 | Configurações de qualidade, resolução interna, efeitos e volumes com efeito real; persistência e migração | Preferências v2 com `resolution`, `postFx`, `particles` e `reduceMotion`, aplicadas no runtime | `gamepad.test.ts` (saneamento) | testado no laboratório |
 | P1 | Desempenho medido antes e depois; sessões longas; limpeza de recursos | `e2e/desempenho.mjs`, `scripts/bench-tick.ts`, LOD por distância | [performance.md](performance.md#execução-autônoma-antes-e-depois-24092026) | testado no laboratório (SwiftShader) |
 | P2 | 60 FPS em GPU real; rede adversa real | — | — | bloqueado externamente |
-| E1 | Script agregador de validação executado | `scripts/validar.mjs` (`pnpm validar`) | [testing.md](testing.md) | testado no laboratório |
+| E1 | Script agregador de validação executado | `scripts/validar.mjs` (`pnpm validar --voz --desempenho`): 20 de 20 etapas no commit `e32ce54`, voz 5 de 5 | [testing.md](testing.md) | testado no laboratório |
 
 ## Decisões tomadas
 
