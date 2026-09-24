@@ -105,6 +105,7 @@ export class MatchSimulation {
       lastInput: neutralInput(0, spawn.yaw, 0),
       staleTicks: 0,
       lastProcessedSeq: 0,
+      inputDebt: 0,
       hpRegenDelay: 0,
       stats: { paintedUnits: 0, eliminations: 0, deaths: 0, specialsUsed: 0 },
       contactCooldowns: new Map(),
@@ -198,6 +199,16 @@ export class MatchSimulation {
       p.lastInput = inp;
       return inp;
     }
+    // "Dívida" de ticks extrapolados: se o servidor repetiu a última entrada por
+    // falta de pacote e depois chegam várias atrasadas, descarta o movimento das
+    // excedentes (preservando as ações discretas). Assim o total de passos
+    // simulados acompanha o total de entradas do cliente, sem ganho de velocidade.
+    while (p.inputDebt > 0 && p.inputQueue.length > 1) {
+      const dropped = p.inputQueue.shift()!;
+      p.inputQueue[0] = { ...p.inputQueue[0], pressedActions: [...dropped.pressedActions, ...p.inputQueue[0].pressedActions].slice(-4) };
+      p.lastProcessedSeq = dropped.sequence;
+      p.inputDebt--;
+    }
     const next = p.inputQueue.shift();
     if (next) {
       p.lastInput = next;
@@ -205,10 +216,11 @@ export class MatchSimulation {
       p.staleTicks = 0;
       return next;
     }
-    // Sem entrada nova: repete movimento por poucos ticks; depois neutraliza.
+    // Sem entrada nova: repete o movimento por poucos ticks; depois neutraliza.
     p.staleTicks++;
     const last = p.lastInput;
     if (p.staleTicks > INPUT_STALE_TICKS) return { ...neutralInput(last.sequence, last.yaw, last.pitch), heldButtons: last.heldButtons & Buttons.FLOW };
+    p.inputDebt = Math.min(INPUT_STALE_TICKS, p.inputDebt + 1);
     return { ...last, pressedActions: [] };
   }
 

@@ -16,6 +16,8 @@ export interface ServerConfig {
   resultsFile: string;
   maxRooms: number;
   roundDurationSeconds: number;
+  joinRateBurst: number;
+  joinRatePerSecond: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -46,5 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     resultsFile: env.RESULTS_FILE ?? 'data/results.jsonl',
     maxRooms: Number(env.MAX_ROOMS ?? 50),
     roundDurationSeconds: Number(env.ROUND_DURATION_SECONDS ?? 180),
+    joinRateBurst: Number(env.JOIN_RATE_BURST ?? 10),
+    joinRatePerSecond: Number(env.JOIN_RATE_PER_SECOND ?? 1),
   };
 }

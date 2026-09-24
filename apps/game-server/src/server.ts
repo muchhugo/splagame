@@ -8,6 +8,7 @@ import { log } from './logger';
 import { JsonlResultSink, type ResultSink } from './results';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { loadStaticWorld } from './world';
+import { KeyedRateLimiter } from './rateLimit';
 
 export interface StartedServer {
   server: Server;
@@ -21,6 +22,7 @@ export interface StartedServer {
  */
 export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSink; port?: number } = {}): Promise<StartedServer> {
   await loadStaticWorld(DEFAULT_MAP_ID);
+  ArenaRoom.joinLimiter = new KeyedRateLimiter(cfg.joinRateBurst, cfg.joinRatePerSecond);
   ArenaRoom.deps = {
     verifier: new CredentialVerifier(cfg),
     sink: opts.sink ?? new JsonlResultSink(cfg.resultsFile),

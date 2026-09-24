@@ -23,6 +23,7 @@ export class LocalPredictor {
   /** Deslocamento visual que decai após correções pequenas. */
   errorOffset: Vec3 = [0, 0, 0];
   corrections = 0;
+  correctionLog: number[] = [];
   bigCorrections = 0;
   lastAck = 0;
   private ackedMaxAction = 0;
@@ -82,7 +83,9 @@ export class LocalPredictor {
     if (!this.frozen) for (const inp of this.history) stepPlayer(this.state, inp, TICK_DT, this.ctx(true));
     const err: Vec3 = [before[0] - this.state.pos[0], before[1] - this.state.pos[1], before[2] - this.state.pos[2]];
     const mag = Math.hypot(err[0], err[1], err[2]);
-    if (mag > 0.02) this.corrections++;
+    this.correctionLog.push(Math.round(mag * 1000) / 1000);
+    if (this.correctionLog.length > 60) this.correctionLog.shift();
+    if (mag > 0.05) this.corrections++;
     if (mag > 2.5) {
       // violação importante: corrige sem suavizar (sem conceder atravessamento)
       this.errorOffset = [0, 0, 0];

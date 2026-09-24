@@ -23,6 +23,8 @@ export function getController() {
 
 async function startWith(client: import('@borrifo/activity-sdk').ActivityClient) {
   controller = new AppController(client);
+  // gancho de diagnóstico SOMENTE em desenvolvimento (testes E2E automatizados)
+  if (import.meta.env.DEV) (window as unknown as { __borrifo?: unknown }).__borrifo = { controller, uiStore };
   await controller.start();
 }
 

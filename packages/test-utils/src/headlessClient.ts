@@ -35,6 +35,9 @@ export class HeadlessClient {
   seq = 0;
   actionId = 0;
   keepSnapshots = 50;
+  leftCode: number | null = null;
+  reconnects = 0;
+  drops = 0;
 
   constructor(readonly endpoint: string) {
     this.client = new Client(endpoint);
@@ -54,6 +57,9 @@ export class HeadlessClient {
 
   attach(room: Room) {
     this.room = room;
+    room.reconnection.minUptime = 0;
+    room.reconnection.minDelay = 50;
+    room.reconnection.delay = 50;
     room.onMessage(S2C.WELCOME, (m: WelcomeMessage) => (this.welcome = m));
     room.onMessage(S2C.LOBBY, (m: LobbyState) => (this.lobby = m));
     room.onMessage(S2C.SNAPSHOT, (m: SnapshotMessage) => {
@@ -70,6 +76,9 @@ export class HeadlessClient {
       room.send(C2S.LOADED, { roundId: m.roundId, mapHash: m.mapHash });
     });
     for (const t of [S2C.ROUND_COUNTDOWN, S2C.ROUND_START, S2C.PONG]) room.onMessage(t, () => {});
+    room.onLeave((code: number) => (this.leftCode = code));
+    room.onReconnect(() => this.reconnects++);
+    room.onDrop(() => this.drops++);
   }
 
   send(type: string, msg: unknown) {
@@ -91,7 +100,18 @@ export class HeadlessClient {
     }
   }
 
+  /** Derruba o socket sem handshake de fechamento (queda de rede simulada). */
+  simulateNetworkDrop() {
+    const ws = (this.room as unknown as { connection: { transport: { ws: { terminate?: () => void; close: () => void } } } }).connection.transport.ws;
+    if (ws.terminate) ws.terminate();
+    else ws.close();
+  }
+
+  /** Sai da sala; se a conexão já caiu (ex.: expulsa pelo servidor), desiste após um prazo curto. */
   async leave(consented = true) {
-    await this.room?.leave(consented);
+    const r = this.room;
+    if (!r) return;
+    r.reconnection.enabled = false;
+    await Promise.race([r.leave(consented).catch(() => {}), new Promise((res) => setTimeout(res, 1500))]);
   }
 }

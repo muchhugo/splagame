@@ -22,6 +22,8 @@ export interface SimPlayer {
   lastInput: PlayerInput;
   staleTicks: number;
   lastProcessedSeq: number;
+  /** Ticks simulados com entrada repetida ainda não compensados. */
+  inputDebt: number;
   hpRegenDelay: number;
   stats: PlayerStats;
   contactCooldowns: Map<number, number>;
