@@ -15,6 +15,59 @@
 | Recursos comprimidos ≤ 25 MB | Atendido: ~2,9 MB gzip no carregamento inicial |
 | Sem crescimento contínuo de memória | Atendido no que foi medido (60 s de partida e abrir/fechar 10×); não houve sessão longa |
 
+## Execução autônoma: antes e depois (24/09/2026)
+
+**Método.** O cliente é medido com `e2e/desempenho.mjs`: partida standalone real com bots,
+chamadas de desenho contadas envolvendo `drawElements`/`drawArrays` do WebGL, intervalo
+entre quadros, malhas, materiais, texturas e heap JS, amostrados por 8 s em cada rodada.
+
+- **"Antes"** foi medido no commit `13e8e95`, com Pátio da Olaria, 4 × 4 e a interface
+  antiga, rodando numa worktree congelada.
+- **"Depois"** foi medido no código atual.
+- Máquina e navegador são os mesmos, com **SwiftShader**: com 3 a 4 quadros por segundo,
+  cada janela tem só 20 a 30 quadros. Por isso o intervalo de quadro serve apenas como
+  referência relativa, e as **contagens** (desenhos, malhas, materiais) são o dado
+  comparável.
+
+| Cenário | Mapa | Desenhos/quadro p50 (p95) | Malhas (ativas) | Materiais | Texturas | Heap |
+|---|---|---|---|---|---|---|
+| Antes 4 × 4 | Pátio da Olaria | 330–348 (≤ 383) | 416 (213–253) | 99–104 | 4 | 214–269 MB |
+| Depois 4 × 4 | Toca do Ara padrão | 369–372 (≤ 411) | 479–481 (251–298) | 123–126 | 8 | 220–245 MB |
+| Depois 8 × 8, sem LOD | Toca do Ara ampliada | 581–624 (≤ 695) | 854–860 (507–536) | 144–152 | 8 | 257–258 MB |
+| **Depois 8 × 8, com LOD** | Toca do Ara ampliada | **495 (588)** | 853 (533) | 143 | 8 | 254 MB |
+
+- Em 4 × 4, os mapas novos, os personagens e o cenário custam cerca de 12% a mais em
+  desenhos por quadro. As texturas extras (4 → 8) são o mural, as placas e o letreiro.
+- O **LOD por distância** nos personagens reduziu os desenhos em 8 × 8 de cerca de 600
+  para 495 por quadro (−17%): o contorno some a partir de 20 m, e os detalhes do rosto e
+  da ferramenta a partir de 18 m.
+- **Materiais entre rodadas:** o crescimento pequeno (+1 a +8) vem de materiais criados na
+  primeira vez que algo aparece (um tom de pele novo, pools de efeitos), e é limitado pelo
+  número de tipos. Materiais próprios de cada personagem (sombra, bolha, marcador) são
+  liberados ao trocar de rodada; o diff de nomes entre três rodadas confirma isso. O
+  `e2e/gameplay.mjs` continua verificando os pools.
+- **Não há afirmação de 60 FPS.** Não houve GPU real.
+
+### Servidor com até 16 participantes
+
+`scripts/bench-tick.ts` roda a simulação autoritativa com bots durante 30 s simulados:
+passo completo, sem transporte.
+
+| Mapa | Modo | Ativos | Tick p50 | p95 | p99 | Máx. | Snapshot médio por cliente |
+|---|---|---|---|---|---|---|---|
+| Toca do Ara compacta | Território | 4 | 0,33 ms | 1,11 ms | 2,31 ms | 9,4 ms | 641 B |
+| Toca do Ara padrão | Território | 8 | 0,42 ms | 0,98 ms | 1,65 ms | 5,2 ms | 818 B |
+| Toca do Ara ampliada | Território | 16 | 1,01 ms | 1,85 ms | 3,00 ms | 4,8 ms | 1 250 B |
+| Clube da Maré ampliada | Território | 16 | 0,91 ms | 1,71 ms | 2,55 ms | 6,2 ms | 1 260 B |
+| Toca do Ara ampliada | Correio | 16 | 0,83 ms | 1,48 ms | 2,02 ms | 4,8 ms | 1 349 B |
+| Clube da Maré ampliada | Correio | 16 | 0,86 ms | 1,49 ms | 2,06 ms | 5,0 ms | 1 354 B |
+
+- O orçamento é de 33,3 ms por tick, a 30 Hz. Com 16 ativos, o p99 fica abaixo de 3,1 ms.
+- O snapshot de 16 jogadores tem cerca de 1,3 KB em JSON, antes da codificação do
+  transporte; a 15 Hz, dá cerca de 20 KB/s por cliente.
+- O tick e o snapshot continuam como estavam (30 Hz e 15 Hz): não houve motivo medido para
+  mudar.
+
 ## Servidor
 
 `pnpm --filter @borrifo/game-server load-test`: servidor real e clientes headless pelo

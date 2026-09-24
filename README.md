@@ -1,7 +1,7 @@
 # Borrifo — laboratório de Atividade
 
 **Borrifo** (nome provisório de desenvolvimento, ver [docs/identity.md](docs/identity.md)) é um
-jogo 3D original de disputa territorial por pigmento, em equipes de até 4 × 4, feito para
+jogo 3D original de disputa por pigmento, em equipes de 1 × 1 a 8 × 8, feito para
 rodar como **Atividade** incorporada a um host (o Trivo) e, em desenvolvimento, de forma
 independente.
 
@@ -18,6 +18,13 @@ real precisaria implementar.
 >   Chromium**. Não houve microfone físico nem LiveKit Cloud.
 > - Controle (gamepad), treino rápido, perfis com apelido e indicador de fala foram testados
 >   com **controle simulado e toque emulado**.
+> - Dois mapas, **Toca do Ara** e **Clube da Maré**, em três variantes de tamanho escolhidas
+>   pelo servidor. Formação flexível de **1 × 1 a 8 × 8**, com bots ou fila. Dois modos:
+>   **Território** e **Correio do Ara**. Buffs **Embalo** e **Fôlego** e o combo cooperativo
+>   **Mutirão**. Duas bases humanas de personagem e cenário brasileiro. Ver
+>   [docs/mapas-e-modos.md](docs/mapas-e-modos.md).
+> - Tudo foi **testado no laboratório** (`pnpm validar`). Nada foi validado com pessoas, GPU
+>   real, aparelhos físicos ou o Trivo real.
 >
 > O plano do briefing mestre está em [docs/plano-evolucao.md](docs/plano-evolucao.md). Os
 > detalhes estão em [docs/implementation-status.md](docs/implementation-status.md).
@@ -125,13 +132,17 @@ aparelho real**.
 
 ### Treino rápido
 
-Na primeira partida, um cartão no canto ensina 9 gestos, detectados pelo próprio jogo, com o
-texto do dispositivo em uso. Não pausa; pode ser pulado e refeito pelo menu.
+Na primeira partida, um cartão no canto ensina os gestos básicos e, conforme o modo, os buffs,
+o Mutirão (só com aliado) e o Correio do Ara. Cada etapa é detectada pelo próprio jogo, com o
+texto do dispositivo em uso. O cartão não pausa a partida e pode ser pulado ou refeito pelo
+menu.
 
 ## Testes e verificações
 
 ```bash
-pnpm test                                        # vitest: simulação, rede real, contrato, host, controle, perfis, cores
+pnpm validar                                     # validação agregada numa worktree isolada (ver docs/testing.md)
+pnpm validar -- --voz --desempenho               # + voz com LiveKit LOCAL (LIVEKIT_URL no ambiente) e desempenho do cliente
+pnpm test                                        # vitest: simulação, mapas, modos, formação, rede real, contrato, host, controle, perfis, cores
 pnpm typecheck                                   # TypeScript estrito em todos os pacotes
 pnpm e2e                                         # Playwright (com `pnpm dev`): host ⇄ Atividade, 2 navegadores, controle e treino
 E2E_SWIFTSHADER=1 pnpm e2e                       # o mesmo, sem GPU (containers/CI)
@@ -169,7 +180,7 @@ apps/
   game-server/      Node + Colyseus 0.18 — salas autoritativas, 30 Hz
 packages/
   game-contracts/   identidade, protocolo, entradas saneadas, codificação binária da tinta
-  game-content/     MapSpec do Pátio da Olaria, ferramentas e balanceamento
+  game-content/     mapas como dados (kit de peças, Toca do Ara, Clube da Maré × 3 variantes), modos, ferramentas, balanceamento
   game-simulation/  física Rapier, movimento, tinta, dano, rodada e bots (sem DOM)
   activity-sdk/     contrato host ⇄ Atividade (handshake, MessageChannel, schemas)
   voice-adapter/    visão limitada da voz do host para o jogo
@@ -187,6 +198,8 @@ docs/               arquitetura, integração, rede, tinta, design, testes, dese
 - [docs/networking.md](docs/networking.md): protocolo, previsão, reconciliação, reconexão.
 - [docs/paint-system.md](docs/paint-system.md): células lógicas, pontuação, sincronização, renderização.
 - [docs/game-design.md](docs/game-design.md): loop, formas, ferramentas, arena, direção de arte.
+- [docs/mapas-e-modos.md](docs/mapas-e-modos.md): mapas e variantes, formação flexível, Correio do Ara, buffs, Mutirão, treino.
+- [docs/execucao-autonoma.md](docs/execucao-autonoma.md): matriz de requisitos, evidências, decisões e checkpoints da execução autônoma.
 - [docs/testing.md](docs/testing.md) e [docs/performance.md](docs/performance.md).
 - [docs/decisions/](docs/decisions/): ADRs curtos das decisões e dos desvios da stack proposta.
 - [ASSET_LICENSES.md](ASSET_LICENSES.md): origem e licença de cada recurso.

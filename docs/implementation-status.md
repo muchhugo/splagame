@@ -1,6 +1,6 @@
 # Estado da implementação
 
-Atualizado em 24/09/2026 (controle, treino, perfis e voz, tokens, revisão LiveKit). Nome do jogo: **Borrifo** (provisório; não renomeie sem atualizar
+Atualizado em 24/09/2026 (execução autônoma: mapas e variantes, formação 1 × 1–8 × 8, Correio do Ara, buffs, Mutirão, personagens, cenário, interface, desempenho, validação). Nome do jogo: **Borrifo** (provisório; não renomeie sem atualizar
 `packages/game-contracts/src/identity.ts` e [identity.md](identity.md)).
 
 Legenda:
@@ -18,7 +18,11 @@ Legenda:
 | Área | Estado | Evidência / observação |
 |---|---|---|
 | Identidade centralizada (nome, slug, id, versão) | Testado | `identity.ts`, usada por UI, logs e contrato |
-| Arena Pátio da Olaria v2 (praça elevada, passagem inferior, varanda, tablado, galpões com 2 saídas) | Testado | `map.test.ts` (alcance, saídas, linha de tiro, simetria) e tour pela câmera de gameplay |
+| Mapas Toca do Ara e Clube da Maré, 3 variantes cada, escolhidos pelo servidor (mapId, variante, hash) | Testado | `map.test.ts` nas 6 variantes (spawns, saídas, alcance com volta, objetivos, linha de tiro, simetria), `paint.test.ts`, `network.test.ts` (mapa e variante no carregamento), E2E (troca de mapa entre rodadas) e capturas `e2e/mapas.mjs`. Ver [mapas-e-modos.md](mapas-e-modos.md) |
+| Formação 1 × 1 a 8 × 8 (Flex, limites fixos, ímpares com bots ou fila, prioridade na revanche) | Testado | `formation.test.ts` (17) e `network.test.ts` (20 na sala, 21ª recusada, plano 8 × 8 + 4 na fila, aviso de fila, opções só do anfitrião) |
+| Correio do Ara (estados explícitos, posse única, 60% + 1,2 s, Pião-Guia bloqueado, queda, retorno, posse máxima, 5 entregas, empate) | Testado | `modes.test.ts`, incluindo bots entregando no mapa real; E2E e capturas do HUD |
+| Buffs Embalo e Fôlego; combo Mutirão | Testado | `modes.test.ts` (+15% medido, recarga +25%, coleta simultânea, parede, proteção, substituição, eliminação; Mutirão: área, setor, recarga, células não reusadas, 1 × 1, máximo com Fôlego) |
+| Personagens: duas bases humanas, tons de pele, aparência sincronizada, animações, Forma Pião | Testado | `network.test.ts` (aparência validada), vitrine de poses (`e2e/vitrine.mjs`) e partidas; mesma hitbox para todos |
 | Movimento, forma Pião, escalada, salto de borda | Testado | `movement.test.ts` (14) |
 | Pigmento, custo, recarga, regeneração | Testado | `movement.test.ts` |
 | Dano, eliminação, reaparecimento, proteção de spawn | Testado | `match.test.ts` |
@@ -44,11 +48,11 @@ Legenda:
 | Credencial de partida (backend, ACL, TTL, jti, recusa em produção) | Testado | `credential.test.ts` (21) e `network.test.ts` |
 | Modo `jwks` (host real) | Não verificado | Implementado em `auth.ts`; sem JWKS real para testar |
 | Voz: `VoiceAdapter` e estado "não configurada" | Testado | E2E: o chip mostra "Voz não configurada neste ambiente" |
-| Voz: LiveKit no host (token no backend, só microfone, consentimento explícito) | Laboratório | `e2e/voz.mjs` com **servidor LiveKit local** (`--dev`, v1.13.7) e mídia **simulada** do Chromium. Duas pessoas entram na chamada. O microfone só liga com o clique no host, o `userId` chega ao jogo e o indicador de fala aparece no lobby e no placar. Fechar a Atividade mantém a chamada. **Sem microfone físico nem LiveKit Cloud.** O indicador no placar falhou em 2 de 5 execuções: a detecção de fala sobre o bipe do dispositivo falso é intermitente |
+| Voz: LiveKit no host (token no backend, só microfone, consentimento explícito) | Laboratório | `e2e/voz.mjs` com **servidor LiveKit local** (`--dev`, v1.13.7) e mídia **simulada**. Com fala sintética reproduzível, **10/10** execuções completas; com o bipe do Chromium, 2/5 (a detecção do SFU sobre o bipe é bimodal). Diagnóstico por camadas em [execucao-autonoma.md](execucao-autonoma.md#voz-diagnóstico-24092026). Contrato e interface testados de forma determinística (`e2e/voz-interface.mjs`, nomes iguais em contas distintas). **Sem microfone físico nem LiveKit Cloud** |
 | Perfis: apelido da comunidade → nome de exibição → usuário; avatar só de host permitido | Testado | `profile.test.ts` (contrato), `profiles.test.ts` (servidor real: prioridade, texto limpo, 24 caracteres, avatar filtrado, apelido novo ao reconectar sem duplicar o jogador) e `e2e/voz.mjs` ("Aninha") |
 | Nomes sobre os personagens e indicador de fala discreto | Testado (regra) / Laboratório | A regra de visibilidade tem teste unitário: adversário atrás de parede ou submerso não mostra nome nem fala. Nomes vistos em captura; o anel de fala no placar foi visto no `e2e/voz.mjs` |
 | Controle (gamepad): detecção, glifos Xbox/PlayStation/Nintendo/genérico, troca de dispositivo sem pausa, remapeamento, zonas mortas, curva, vibração limitada, mira assistida leve, menus pelo direcional | Laboratório | 14 testes unitários e `e2e/gamepad.mjs` (31 verificações numa partida real) com controle **simulado** (`navigator.getGamepads` falso). **Nenhum controle físico, Electron ou celular** |
-| Treino rápido (9 etapas, pulável, refeito pelo menu, salvo por versão) | Laboratório | `tutorial.test.ts` e `e2e/tutorial.mjs`: teclado, controle simulado e toque **emulado** (contexto móvel do Playwright) |
+| Treino rápido v2 (9 etapas básicas + buffs, Mutirão e Correio conforme o modo; pulável; salvo por versão) | Laboratório | `tutorial.test.ts` e `e2e/tutorial.mjs`: teclado, controle simulado e toque **emulado** (contexto móvel do Playwright) |
 | Preferências v2 (esquema validado, migração da v1, armazenamento indisponível) | Testado | `gamepad.test.ts` (valores fora de faixa, JSON quebrado, migração, remapeamento sem conflito) |
 | Tokens do Trivo (SVG), pares de cores escolhidos pelo servidor, cenário separado | Testado | `palette.test.ts`: valores exatos do SVG, distância OKLab entre equipes, daltonismo simulado, cenário e marca. `profiles.test.ts`: mesmo par para toda a sala |
 | Benchmark LiveKit Data × Colyseus (2/4/8/16) | Laboratório (loopback) | [livekit-transporte.md](livekit-transporte.md); decisão: manter o Colyseus |
@@ -62,9 +66,11 @@ Legenda:
 | Música de fundo | Parcial | Trilha generativa própria (fora do escopo da troca por arquivos); não foi ouvida |
 | Acessibilidade (paletas, padrões, redução de tremor e flashes, escala do HUD, remapeamento, reduced-motion) | Parcial | Implementada; não revisada com usuários nem com leitor de tela |
 | Pausa ao ocultar ou suspender | Testado | `e2e/gameplay.mjs` (0 quadros oculta) |
-| Controles de toque e mobile | Não verificado | `TouchControls.tsx` existe; nenhum dispositivo real |
-| Desempenho do cliente numa GPU real | Não verificado | Só SwiftShader (~4 FPS, não representativo) |
-| Modos adicionais (§26) | Não implementado | Fase 6 |
+| Controles de toque e composição mobile (lobby em abas, HUD de toque próprio, áreas seguras) | Laboratório | Capturas com celular **emulado** (Playwright `isMobile`/`hasTouch`, 844 × 390 e 390 × 844); nenhum dispositivo real |
+| Desempenho do cliente numa GPU real | Não verificado | Só SwiftShader. Medidos desenhos por quadro, malhas, materiais e heap antes/depois e em 8 × 8 ([performance.md](performance.md)); nenhuma afirmação de FPS |
+| Configurações de vídeo com efeito real (qualidade, resolução interna, pós-processamento, partículas, limite de FPS) e redução de animações | Testado | Validação e persistência em `gamepad.test.ts`; aplicadas no runtime |
+| Validação agregada | Testado | `pnpm validar` ([testing.md](testing.md)) |
+| Modos além de Território e Correio | Não implementado | Fora do escopo desta entrega (briefing §8.5) |
 
 ## Critérios de aceitação do primeiro marco (§31)
 

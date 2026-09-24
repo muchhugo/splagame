@@ -5,10 +5,13 @@ foram ajustados em partidas com bots, não em testes com pessoas.
 
 ## Loop
 
-1. Lobby: escolher equipe (Urucum ▲ ou Anil ●) e ferramenta, e marcar "Pronto". O anfitrião
-   inicia, e as vagas vazias podem virar bibelô-bots.
-2. Rodada de 3 minutos no Pátio da Olaria: cobrir o chão com a cor da própria equipe. Paredes são
-   pintáveis e escaláveis, mas **não pontuam**.
+1. Lobby: escolher visual, ferramenta e equipe preferida, e marcar "Pronto". Quem organiza
+   escolhe o modo, o mapa (ou a rotação) e a formação (Flex ou 1 × 1 a 8 × 8). O lobby mostra
+   a formação real antes do início, com bots identificados e fila.
+2. Rodada na Toca do Ara ou no Clube da Maré. No **Território** (3 min), vence quem cobrir
+   mais chão com a cor da própria equipe; paredes são pintáveis e escaláveis, mas **não
+   pontuam**. No **Correio do Ara** (4 min ou 5 entregas), vence quem entregar mais vezes a
+   cápsula numa estação preparada com a própria tinta. Ver [mapas-e-modos.md](mapas-e-modos.md).
 3. Eliminar adversários tira ritmo deles e deixa uma mancha na cor de quem eliminou, mas **não dá
    ponto direto**. Ganha quem tiver mais chão ao soar o sino.
 4. Resultados com percentuais, área em m² e estatísticas por jogador. Todos votam revanche, ou o
@@ -76,38 +79,23 @@ de caminhada, rampa ou queda). Não veem através de paredes e ignoram inimigos 
 distância. Alternam entre pintar território, recarregar, perseguir e fugir, e usam Moringa e
 especial. Servem para preencher vagas e testar, não como adversário competitivo.
 
-## Arena: Pátio da Olaria (v2)
+## Arenas
 
-Pátio de olaria com simetria de ponto (cada equipe tem a mesma área pontuável):
+O antigo Pátio da Olaria evoluiu para a **Toca do Ara**, e o segundo mapa é o **Clube da
+Maré**. Cada um tem três variantes de tamanho (compacta, padrão e ampliada), escolhidas pelo
+servidor pelo total de participantes ativos. O desenho, os lugares nomeáveis e os testes
+estão em [mapas-e-modos.md](mapas-e-modos.md).
 
-```text
-            varanda elevada (rampas nas duas pontas, parapeito)
-   ┌───────────────────────────────────────────────────────────┐
-   │ galpão  │ varais/mureta │      PRAÇA CENTRAL      │ varais │ galpão │
-   │ Urucum  │  forno +      │  elevada (2,4 m), ponte  │ forno  │ Anil   │
-   │ 2 saídas│  chaminé      │  de madeira, estátua     │        │ 2 saídas│
-   │ (rampas)│  pilar/muro   │  giratória, passagem     │        │        │
-   │         │               │  inferior, rampas O/S    │        │        │
-   └───────────────────────────────────────────────────────────┘
-            tablado com rampas (lado sul)  ·  caixotes e potes como cobertura
-```
+Princípios mantidos nas seis variantes, todos testados:
 
-- **Centro disputado:** praça elevada com ponte de madeira sobre uma **passagem inferior** (rota
-  protegida por baixo). A estátua no pedestal quebra a linha de visão no topo.
-- **Rotas laterais:** varanda elevada ao norte e tablado ao sul, cada um com duas rampas.
-  Corredores entre os dois têm varais e muretas baixas (1 m) que quebram linhas longas sem virar
-  labirinto.
-- **Saídas da base:** cada galpão tem rampas frontais e laterais (8 no total, testado). O spawn
-  fica de frente para uma saída, com 3 m livres.
-- **Tinta como rota:** fornos, muros e pilares têm faces pintáveis. Escalar dá acesso à praça, à
-  varanda e aos atalhos sem passar pelas rampas.
-- **Orientação:** letreiros "OLARIA BORRIFO" e "PÁTIO" nos muros, estátua giratória no centro,
-  chaminés com fumaça e roda de oleiro no telhado de cada galpão.
-- Alturas moderadas (1 a 3 m), sem quedas mortais nem água.
-
-Testes do desenho em `packages/game-simulation/test/map.test.ts`: spawns livres e voltados a
-uma saída; praça, varanda, tablado e passagem inferior alcançáveis caminhando; oito rampas de
-galpão; sem linha de tiro da praça aos spawns dentro do alcance máximo; simetria de área.
+- simetria de ponto;
+- centro disputado;
+- rotas laterais;
+- pelo menos duas saídas por base;
+- spawn de frente para a saída;
+- paredes pintáveis como atalho;
+- nenhuma linha de tiro do centro até o spawn;
+- nenhum poço sem saída.
 
 ## Direção de arte
 
