@@ -7,7 +7,7 @@
 //   AUDIO_FILE=caminho.wav usa --use-file-for-fake-audio-capture (entrada reproduzível).
 import { chromium } from 'playwright';
 import { writeFileSync } from 'node:fs';
-import { OUT } from './lib.mjs';
+import { HOST_URL, OUT } from './lib.mjs';
 
 const args = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'];
 if (process.env.AUDIO_FILE) args.push(`--use-file-for-fake-audio-capture=${process.env.AUDIO_FILE}`);
@@ -29,8 +29,8 @@ async function openAs(origin, user) {
   return { page, frame };
 }
 
-const A = await openAs('http://localhost:3000/', 'ana');
-const B = await openAs('http://127.0.0.1:3000/', 'bruno');
+const A = await openAs(HOST_URL, 'ana');
+const B = await openAs(HOST_URL.replace('localhost', '127.0.0.1'), 'bruno');
 for (const x of [A, B]) {
   await x.page.click('button:has-text("Entrar na chamada")');
   await x.page.waitForSelector('button:has-text("Ativar microfone")', { timeout: 30000 });

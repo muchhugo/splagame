@@ -12,7 +12,7 @@
 //
 // Requer o host com LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET do servidor local.
 import { chromium } from 'playwright';
-import { OUT, check, done, watchErrors } from './lib.mjs';
+import { HOST_URL, OUT, check, done, watchErrors } from './lib.mjs';
 import { escreverFalaSintetica } from './fala-sintetica.mjs';
 
 const args = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'];
@@ -35,8 +35,8 @@ async function openAs(origin, user) {
   return { page, frame, errs };
 }
 
-const A = await openAs('http://localhost:3000/', 'ana');
-const B = await openAs('http://127.0.0.1:3000/', 'bruno');
+const A = await openAs(HOST_URL, 'ana');
+const B = await openAs(HOST_URL.replace('localhost', '127.0.0.1'), 'bruno');
 await A.frame.waitForFunction(() => window.__borrifo.uiStore.get().lobby?.players.filter((p) => !p.isBot).length === 2, null, { timeout: 30000 }).catch(() => {});
 const humans = await A.frame.evaluate(() => window.__borrifo.uiStore.get().lobby.players.filter((p) => !p.isBot).map((p) => p.displayName));
 check(humans.length === 2, `os dois na mesma sala (${humans.join(', ')})`);
