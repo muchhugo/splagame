@@ -1,11 +1,17 @@
 import type { ActionKind } from '@borrifo/game-contracts';
 import { Buttons, PITCH_LIMIT, clamp } from '@borrifo/game-contracts';
 import { settingsStore, type BindableAction } from '../../app/settings';
+import { NO_ASSIST, type AimAssistResult } from './aimAssist';
+import { LOOK_RATE, applyCurve, gamepadHub, type PadAction } from './gamepad';
+import { setDevice } from './device';
 
 /**
- * Entrada de mouse/teclado. Só captura quando o canvas tem foco ou o ponteiro
- * está travado — nunca intercepta atalhos com o usuário digitando fora do jogo.
- * Converte "alternar" em bit contínuo (FLOW) antes de chegar à simulação.
+ * Entrada de mouse/teclado, controle e toque. Teclado e mouse só capturam
+ * quando o canvas tem foco ou o ponteiro está travado — nunca interceptam
+ * atalhos com o usuário digitando fora do jogo. O controle vale enquanto
+ * `padAllowed()` (partida visível, sem menu aberto). Converte "alternar" em
+ * bit contínuo (FLOW) antes de chegar à simulação. Trocar de dispositivo no
+ * meio da partida não interrompe nada: as fontes são somadas.
  */
 export class InputManager {
   yaw = 0;
@@ -25,9 +31,17 @@ export class InputManager {
   private lookDX = 0;
   private lookDY = 0;
   private touch = { mx: 0, my: 0, fire: false, flow: false };
+  /** Quando o controle pode agir no personagem (definido pelo AppController). */
+  padAllowed: () => boolean = () => true;
+  /** Mapa aberto: A/LT escolhem o companheiro (tratado pelo mapa), não pulam. */
+  private unsubPad: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.tabIndex = 0;
+    this.unsubPad = gamepadHub.subscribe((e) => {
+      if (e.type === 'press') this.onPad(e.button, true);
+      else if (e.type === 'release') this.onPad(e.button, false);
+    });
     this.on(canvas, 'mousedown', (e) => this.onMouseDown(e as MouseEvent));
     this.on(window, 'mouseup', (e) => {
       if ((e as MouseEvent).button === 0) this.mouseFire = false;
@@ -86,27 +100,85 @@ export class InputManager {
     this.lookDY += e.movementY;
   }
 
-  /** Aplica o movimento do mouse acumulado (chamado a cada frame). */
-  consumeLook() {
+  /** Aplica o giro acumulado do mouse/toque e o do analógico direito (chamado a cada frame). */
+  consumeLook(dt = 0, assist: AimAssistResult = NO_ASSIST) {
     const s = settingsStore.get();
     const k = 0.0022 * s.sensitivity;
     this.yaw += this.lookDX * k;
     this.pitch += this.lookDY * k * (s.invertY ? -1 : 1);
-    this.pitch = clamp(this.pitch, -PITCH_LIMIT + 0.05, PITCH_LIMIT - 0.05);
     this.lookDX = 0;
     this.lookDY = 0;
+    const g = s.gamepad;
+    gamepadHub.deadzones = { left: g.deadzoneLeft, right: g.deadzoneRight };
+    if (dt > 0 && this.padOn()) {
+      const f = gamepadHub.frame;
+      const [rx, ry] = applyCurve(f.rx, f.ry, g.curve);
+      this.yaw += rx * LOOK_RATE.yaw * g.sensX * (g.invertX ? -1 : 1) * assist.slow * dt + assist.dYaw;
+      this.pitch += ry * LOOK_RATE.pitch * g.sensY * (g.invertY ? -1 : 1) * assist.slow * dt + assist.dPitch;
+    }
+    this.pitch = clamp(this.pitch, -PITCH_LIMIT + 0.05, PITCH_LIMIT - 0.05);
   }
 
   /** Entrada de toque (analógico virtual e área de câmera). */
   setTouch(mx: number, my: number, fire: boolean, flow: boolean) {
     this.touch = { mx, my, fire, flow };
+    if (mx || my || fire || flow) setDevice('toque');
   }
   touchLook(dx: number, dy: number) {
     this.lookDX += dx * 1.6;
     this.lookDY += dy * 1.6;
+    setDevice('toque');
   }
   touchAction(a: ActionKind) {
     this.pendingActions.push(a);
+    setDevice('toque');
+  }
+  /** Botão de mapa na tela de toque: sempre alterna. */
+  toggleMap() {
+    this.mapToggled = !this.mapOpen;
+    this.onMapChanged?.(this.mapOpen);
+  }
+
+  private padActionOf(button: number): PadAction | null {
+    const binds = settingsStore.get().gamepad.binds;
+    for (const [a, b] of Object.entries(binds)) if (b === button) return a as PadAction;
+    return null;
+  }
+
+  private padOn(): boolean {
+    return this.enabled && settingsStore.get().gamepad.enabled && this.padAllowed();
+  }
+
+  private onPad(button: number, down: boolean) {
+    const action = this.padActionOf(button);
+    if (!action) return;
+    if (down) {
+      if (!this.padOn()) return;
+      this.onUserGesture?.();
+      const s = settingsStore.get();
+      const mapOpen = this.mapOpen;
+      if (action === 'jump' && !mapOpen) this.pendingActions.push('jump');
+      if (action === 'secondary' || (action === 'contextual' && !mapOpen)) this.pendingActions.push('secondary');
+      if (action === 'special') this.pendingActions.push('special');
+      if (action === 'flow' && s.flowMode === 'toggle') this.flowToggled = !this.flowToggled;
+      if (action === 'recenter') this.pitch = 0.1;
+      if (action === 'menu') this.onMenuRequested?.();
+      if (action === 'map') {
+        if (s.mapMode === 'toggle') this.mapToggled = !this.mapToggled;
+        this.onMapChanged?.(this.mapOpen);
+      }
+    } else if (action === 'map') this.onMapChanged?.(this.mapOpen);
+  }
+
+  private padHeld(action: PadAction): boolean {
+    return this.padOn() && gamepadHub.isPressed(settingsStore.get().gamepad.binds[action]);
+  }
+
+  /** Magnitudes atuais dos analógicos (0..1) — usadas pela assistência de mira. */
+  padMagnitudes(): { look: number; move: number } {
+    if (!this.padOn()) return { look: 0, move: 0 };
+    const f = gamepadHub.frame;
+    return { look: Math.min(1, Math.hypot(f.rx, f.ry)), move: Math.min(1, Math.hypot(f.lx, f.ly)) };
   }
 
   private bindOf(code: string): BindableAction | null {
@@ -146,11 +218,13 @@ export class InputManager {
   }
 
   get mapOpen(): boolean {
-    return settingsStore.get().mapMode === 'toggle' ? this.mapToggled : this.held('map');
+    // "segurar" com teclado/controle; o botão de toque sempre alterna
+    return settingsStore.get().mapMode === 'toggle' ? this.mapToggled : this.held('map') || this.padHeld('map') || this.mapToggled;
   }
 
   closeMap() {
     this.mapToggled = false;
+    this.keys.delete(settingsStore.get().keybinds.map);
     this.onMapChanged?.(false);
   }
 
@@ -158,6 +232,11 @@ export class InputManager {
     if (!this.enabled) return [0, 0];
     let x = (this.held('right') ? 1 : 0) - (this.held('left') ? 1 : 0) + this.touch.mx;
     let y = (this.held('forward') ? 1 : 0) - (this.held('back') ? 1 : 0) + this.touch.my;
+    if (this.padOn()) {
+      // analógico esquerdo: para cima é negativo no mapeamento padrão
+      x += gamepadHub.frame.lx;
+      y -= gamepadHub.frame.ly;
+    }
     const l = Math.hypot(x, y);
     if (l > 1) {
       x /= l;
@@ -169,8 +248,8 @@ export class InputManager {
   buttons(): number {
     if (!this.enabled) return 0;
     let b = 0;
-    if (this.mouseFire || this.held('fireAlt') || this.touch.fire) b |= Buttons.FIRE;
-    const flow = settingsStore.get().flowMode === 'toggle' ? this.flowToggled : this.held('flow');
+    if (this.mouseFire || this.held('fireAlt') || this.touch.fire || this.padHeld('fire')) b |= Buttons.FIRE;
+    const flow = settingsStore.get().flowMode === 'toggle' ? this.flowToggled : this.held('flow') || this.padHeld('flow');
     if (flow || this.touch.flow) b |= Buttons.FLOW;
     if (this.mapOpen) b |= Buttons.MAP;
     return b;
@@ -191,6 +270,7 @@ export class InputManager {
   }
 
   dispose() {
+    this.unsubPad();
     this.releaseLock();
     for (const [t, type, fn, opts] of this.listeners) t.removeEventListener(type, fn, opts);
     this.listeners = [];

@@ -3,9 +3,8 @@ import { TEAMS } from '@borrifo/game-contracts';
 import { INK, MORINGA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
-import { settingsStore } from '../app/settings';
 import { hudDom, hudStore } from '../game/hud';
-import { keyName } from './Lobby';
+import { pressText, useHints } from '../app/hints';
 import { VoiceChip } from './VoiceChip';
 
 function fmtTime(ms: number) {
@@ -20,7 +19,7 @@ export function Hud() {
   const conn = useStore(uiStore, (s) => s.connection);
   const rtt = useStore(uiStore, (s) => s.rttMs);
   const result = useStore(uiStore, (s) => s.result);
-  const keys = useStore(settingsStore, (s) => s.keybinds);
+  const hints = useHints();
   const reticle = useRef<HTMLDivElement>(null);
   const blocked = useRef<HTMLDivElement>(null);
   const hit = useRef<HTMLDivElement>(null);
@@ -98,13 +97,13 @@ export function Hud() {
             <circle cx="40" cy="40" r="32" fill="none" stroke={specialReady ? 'var(--ouro)' : inkColor} strokeWidth="8" strokeDasharray={`${(h.special / 100) * circ} ${circ}`} transform="rotate(-90 40 40)" strokeLinecap="round" />
           </svg>
           <div className="label">
-            {h.specialActive ? 'Roda\nativa' : specialReady ? `${keyName(keys.special)}\nRoda!` : `${Math.floor(h.special)}%`}
+            {h.specialActive ? 'Roda\nativa' : specialReady ? `${hints.label('special')}\nRoda!` : `${Math.floor(h.special)}%`}
           </div>
         </div>
         <div className="equip">
           <strong>{w.name}</strong>
           <span className={h.secondaryReady ? '' : 'dim'}>
-            <kbd>{keyName(keys.secondary)}</kbd> {MORINGA.name} ({MORINGA.inkCost}%)
+            <kbd>{hints.label('secondary')}</kbd> {MORINGA.name} ({MORINGA.inkCost}%)
           </span>
           <div className="healthbar" title="Resistência">
             <div style={{ width: `${h.hp}%`, background: h.hp < 40 ? 'var(--bad)' : 'var(--ok)' }} />
@@ -151,7 +150,12 @@ export function Hud() {
           <div className="sub">{result ? 'Contando o território…' : ''}</div>
         </div>
       ) : null}
-      {!locked && !menu && (h.phase === 'running' || h.phase === 'countdown') ? <div className="clicktoplay">Clique na arena para jogar · Esc abre o menu</div> : null}
+      {!locked && !menu && hints.device === 'teclado' && (h.phase === 'running' || h.phase === 'countdown') ? <div className="clicktoplay">Clique na arena para jogar · Esc abre o menu</div> : null}
+      {specialReady && !h.specialActive && h.alive && h.phase === 'running' ? (
+        <div className="special-hint" aria-live="polite">
+          {pressText(hints.label('special'), hints.device)} para a {RODA_DE_OLEIRO.name}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@borrifo/bench-transport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark isolado: tráfego de gameplay sintético via LiveKit Data × Colyseus/WebSocket",
+  "scripts": {
+    "bench": "tsx src/run.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@colyseus/core": "0.18.16",
+    "@colyseus/sdk": "0.18.4",
+    "@colyseus/ws-transport": "0.18.3",
+    "@livekit/rtc-node": "1.1.0",
+    "express": "^5.2.1",
+    "livekit-server-sdk": "2.19.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "tsx": "4.23.15"
+  }
+}

@@ -35,6 +35,9 @@ export class SampleBank {
         this.fetcher(url)
           .then((r) => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            // fallback de SPA: o servidor devolveu a página em vez do arquivo (ausente ou cache
+            // do servidor de desenvolvimento desatualizado — reinicie o Vite após regenerar os sons)
+            if (r.headers?.get?.('content-type')?.startsWith('text/html')) throw new Error('o servidor devolveu HTML, não áudio');
             return r.arrayBuffer();
           })
           .catch((e: unknown) => {

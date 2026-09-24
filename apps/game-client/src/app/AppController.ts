@@ -6,7 +6,9 @@ import { CLIENT_CONFIG } from '../config';
 import { GameRuntime, WebGL2UnavailableError, detectWebGL2 } from '../game/GameRuntime';
 import { MatchConnection } from '../net/MatchConnection';
 import { hudStore } from '../game/hud';
+import { deviceStore } from '../game/input/device';
 import { pushNotice, showError, uiStore } from './uiStore';
+import { maybeAutoStartTutorial } from './tutorial';
 
 const MAP = MAPS[DEFAULT_MAP_ID];
 const MAP_HASH = computeMapHash(MAP);
@@ -62,7 +64,10 @@ export class AppController {
       this.runtime = await GameRuntime.create(this.canvas, MAP, {
         sendInput: (w) => this.conn?.sendInput(w),
         onMapToggle: (open) => uiStore.set({ mapOpen: open }),
-        onMenuRequested: () => uiStore.set({ menuOpen: true }),
+        onMenuRequested: () => {
+          uiStore.set({ menuOpen: true });
+          this.runtime?.input.releaseLock();
+        },
         onPointerLock: (locked) => {
           uiStore.set({ pointerLocked: locked });
           // Esc libera o ponteiro: abre o menu sem pausar a partida dos demais
@@ -72,6 +77,11 @@ export class AppController {
         playerName: (id) => this.lastLobby?.players.find((p) => p.playerId === id)?.displayName ?? `#${id}`,
         requestPaintResync: (roundId, reason) => this.conn?.send(C2S.PAINT_RESYNC, { roundId, reason: reason.slice(0, 40) }),
       }, progress);
+      // o controle só move o personagem com a partida visível e sem menu por cima
+      this.runtime.input.padAllowed = () => {
+        const u = uiStore.get();
+        return u.screen === 'match' && !u.menuOpen && !u.settingsOpen;
+      };
       uiStore.set({ sceneReady: true });
     } catch (e) {
       const webgl = e instanceof WebGL2UnavailableError;
@@ -134,6 +144,8 @@ export class AppController {
       },
       onRoundStart: (m: import('@borrifo/game-contracts').RoundStartMessage) => {
         rt().setPhase('running', m.durationMs);
+        // quem ainda não fez o treino desta versão ganha o treino rápido (não bloqueia; dá para pular)
+        if (uiStore.get().screen === 'match') maybeAutoStartTutorial();
         this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'in_match', matchId: this.lastLobby?.matchId });
       },
       onRoundResult: (r: import('@borrifo/game-contracts').RoundResult) => {
@@ -258,7 +270,10 @@ export class AppController {
   }
   resumeGame() {
     uiStore.set({ menuOpen: false, settingsOpen: false });
-    this.runtime?.input.requestLock();
+    // fora da partida (lobby, resultados) o menu só fecha: travar o ponteiro ali bloquearia os botões
+    if (uiStore.get().screen !== 'match') return;
+    // com controle não há ponteiro para travar
+    if (deviceStore.get().device !== 'controle') this.runtime?.input.requestLock();
     this.canvas.focus();
   }
 

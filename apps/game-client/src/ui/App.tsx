@@ -3,7 +3,7 @@ import { GAME_NAME } from '@borrifo/game-contracts';
 import { AppController } from '../app/AppController';
 import { settingsStore, PALETTES } from '../app/settings';
 import { useStore } from '../app/store';
-import { showError, uiStore } from '../app/uiStore';
+import { pushNotice, showError, uiStore } from '../app/uiStore';
 import { connectEmbedded, connectStandaloneDev, isEmbedded, readHandshakeFragment } from '../boot/host';
 import { CLIENT_CONFIG } from '../config';
 import { Logo } from './Logo';
@@ -15,6 +15,10 @@ import { StandaloneLogin } from './StandaloneLogin';
 import { TacticalMap } from './TacticalMap';
 import { Notices } from './Notices';
 import { TouchControls } from './TouchControls';
+import { Tutorial } from './Tutorial';
+import { installGamepadNav } from './gamepadNav';
+import { installDeviceTracking } from '../game/input/device';
+import { familyName } from '../game/input/gamepad';
 
 let controller: AppController | null = null;
 export function getController() {
@@ -67,6 +71,12 @@ export function App() {
     };
   }, []);
 
+  // controles: avisos de conexão, último dispositivo usado (dicas) e navegação da interface
+  useEffect(() => {
+    installDeviceTracking(pushNotice, familyName);
+    installGamepadNav();
+  }, []);
+
   useEffect(() => {
     if (booted) return;
     setBooted(true);
@@ -107,6 +117,7 @@ export function App() {
       {screen === 'waiting' ? <Waiting /> : null}
       {screen === 'match' ? <Hud /> : null}
       {screen === 'match' ? <TouchControls /> : null}
+      {screen === 'match' ? <Tutorial /> : null}
       {screen === 'match' && mapOpen ? <TacticalMap /> : null}
       {screen === 'results' ? <Results /> : null}
       {screen === 'error' ? <ErrorScreen /> : null}

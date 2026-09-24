@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { uiStore } from '../app/uiStore';
 import { getController } from './App';
 
 /**
@@ -75,6 +76,14 @@ export function TouchControls() {
   const tap = (a: 'jump' | 'secondary' | 'special') => ({ onPointerDown: () => getController()?.runtime?.input.touchAction(a) });
   return (
     <div className="touch">
+      <div className="tsys">
+        <button aria-label="Mapa tático" onPointerDown={() => getController()?.runtime?.input.toggleMap()}>
+          Mapa
+        </button>
+        <button aria-label="Menu" onPointerDown={() => uiStore.set({ menuOpen: true })}>
+          ☰
+        </button>
+      </div>
       <div className="stick" ref={stick} onPointerDown={onStick} onPointerMove={onStick} onPointerUp={onStick} onPointerCancel={onStick} aria-label="Analógico de movimento">
         <div className="knob" ref={knob} />
       </div>

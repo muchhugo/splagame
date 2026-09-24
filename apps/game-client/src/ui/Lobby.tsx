@@ -2,7 +2,7 @@ import { TEAMS, type LobbyPlayer, type TeamId, type WeaponId } from '@borrifo/ga
 import { WEAPONS, MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
-import { settingsStore } from '../app/settings';
+import { useHints, type HintAction } from '../app/hints';
 import { getController } from './App';
 import { Logo } from './Logo';
 import { VoiceChip } from './VoiceChip';
@@ -18,7 +18,7 @@ export function Lobby() {
   const welcome = useStore(uiStore, (s) => s.welcome);
   const ctx = useStore(uiStore, (s) => s.context);
   const rtt = useStore(uiStore, (s) => s.rttMs);
-  const keys = useStore(settingsStore, (s) => s.keybinds);
+  const hints = useHints();
   if (!lobby || !welcome) return null;
   const c = getController();
   const myId = welcome.playerId;
@@ -76,31 +76,12 @@ export function Lobby() {
           })}
         </div>
         <div className="lobby-foot">
-          <div className="keys">
-            <span>
-              <kbd>{keyName(keys.forward)}</kbd>
-              <kbd>{keyName(keys.left)}</kbd>
-              <kbd>{keyName(keys.back)}</kbd>
-              <kbd>{keyName(keys.right)}</kbd> mover
-            </span>
-            <span>
-              <kbd>Mouse</kbd> mirar / <kbd>Clique</kbd> usar ferramenta
-            </span>
-            <span>
-              <kbd>{keyName(keys.flow)}</kbd> Forma Pião
-            </span>
-            <span>
-              <kbd>{keyName(keys.jump)}</kbd> pular
-            </span>
-            <span>
-              <kbd>{keyName(keys.secondary)}</kbd> {MORINGA.name}
-            </span>
-            <span>
-              <kbd>{keyName(keys.special)}</kbd> {RODA_DE_OLEIRO.name}
-            </span>
-            <span>
-              <kbd>{keyName(keys.map)}</kbd> mapa / Pião-Guia
-            </span>
+          <div className="keys" aria-label="Controles">
+            {CONTROL_LIST.map(([a, text]) => (
+              <span key={a}>
+                <kbd>{hints.label(a)}</kbd> {text}
+              </span>
+            ))}
           </div>
           <div className="row">
             {isHost ? (
@@ -164,9 +145,15 @@ function TeamColumn(props: { team: TeamId; players: LobbyPlayer[]; myId: number;
   );
 }
 
-export function keyName(code: string): string {
-  if (code.startsWith('Key')) return code.slice(3);
-  if (code.startsWith('Digit')) return code.slice(5);
-  const map: Record<string, string> = { Space: 'Espaço', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', Tab: 'Tab', AltLeft: 'Alt', CapsLock: 'Caps' };
-  return map[code] ?? code;
-}
+export { keyName } from '../app/hints';
+
+const CONTROL_LIST: Array<[HintAction, string]> = [
+  ['move', 'mover'],
+  ['look', 'mirar'],
+  ['fire', 'usar ferramenta'],
+  ['flow', 'Forma Pião'],
+  ['jump', 'pular'],
+  ['secondary', MORINGA.name],
+  ['special', RODA_DE_OLEIRO.name],
+  ['map', 'mapa / Pião-Guia'],
+];

@@ -1,0 +1,454 @@
+{
+  "ambiente": {
+    "node": "v22.22.2",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "nucleos": 4,
+    "duracaoS": 20,
+    "livekitUrl": "ws://127.0.0.1:7880",
+    "livekitPid": 21574
+  },
+  "resultados": [
+    {
+      "transport": "colyseus-websocket",
+      "jogadores": 2,
+      "snapshotBytes": 460,
+      "snapshotAtrasoMs": {
+        "p50": 0.24,
+        "p95": 0.37,
+        "p99": 0.47,
+        "max": 4.31,
+        "jitterDesvio": 0.18
+      },
+      "tintaAtrasoMs": {
+        "p50": 0.29,
+        "p99": 0.69
+      },
+      "rttLossyMs": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "rttConfiavelMs": {
+        "p50": 0.38,
+        "p95": 0.58,
+        "p99": 1.02
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 68.33,
+        "msgsps": 28.15
+      },
+      "porClienteUp": {
+        "kbitps": 9.62,
+        "msgsps": 30.05
+      },
+      "entradasNaAutoridadePct": 100.16,
+      "cpu": {
+        "processoBenchPct": 3.82,
+        "sfuPct": null
+      },
+      "memoriaMb": {
+        "processoBench": 126.31,
+        "sfu": null
+      },
+      "conexaoTodosMs": 69,
+      "reconexao": {
+        "quedaDeSocketMs": 266
+      },
+      "servidor": {
+        "entradas": 2,
+        "quedas": 1
+      }
+    },
+    {
+      "transport": "livekit-data",
+      "jogadores": 2,
+      "snapshotBytes": 460,
+      "snapshotAtrasoMs": {
+        "p50": 1.36,
+        "p95": 2.41,
+        "p99": 3.75,
+        "max": 7.19,
+        "jitterDesvio": 0.59
+      },
+      "tintaAtrasoMs": {
+        "p50": 1.16,
+        "p99": 2.43
+      },
+      "rttLossyMs": {
+        "p50": 2.44,
+        "p95": 4.84,
+        "p99": 6.35
+      },
+      "rttConfiavelMs": {
+        "p50": 2.9,
+        "p95": 4.94,
+        "p99": 6.91
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 68.52,
+        "msgsps": 31.7
+      },
+      "porClienteUp": {
+        "kbitps": 9.65,
+        "msgsps": 30.15
+      },
+      "entradasNaAutoridadePct": 100.5,
+      "cpu": {
+        "processoBenchPct": 14.96,
+        "sfuPct": 6.45
+      },
+      "memoriaMb": {
+        "processoBench": 153.06,
+        "sfu": 83.45
+      },
+      "snapshotsEnvioRejeitado": "0/604",
+      "conexaoTodosMs": 227,
+      "custoEnvioTickAutoridadeMs": {
+        "p50": 0.21,
+        "p99": 0.41
+      },
+      "reconexao": {
+        "resumeMs": 95,
+        "fullReconnectMs": 97
+      }
+    },
+    {
+      "transport": "colyseus-websocket",
+      "jogadores": 4,
+      "snapshotBytes": 540,
+      "snapshotAtrasoMs": {
+        "p50": 0.19,
+        "p95": 0.35,
+        "p99": 0.52,
+        "max": 2.2,
+        "jitterDesvio": 0.12
+      },
+      "tintaAtrasoMs": {
+        "p50": 0.31,
+        "p99": 0.59
+      },
+      "rttLossyMs": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "rttConfiavelMs": {
+        "p50": 0.36,
+        "p95": 0.58,
+        "p99": 0.83
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 77.81,
+        "msgsps": 28.1
+      },
+      "porClienteUp": {
+        "kbitps": 9.65,
+        "msgsps": 30.15
+      },
+      "entradasNaAutoridadePct": 100.5,
+      "cpu": {
+        "processoBenchPct": 3.67,
+        "sfuPct": null
+      },
+      "memoriaMb": {
+        "processoBench": 160.94,
+        "sfu": null
+      },
+      "conexaoTodosMs": 23,
+      "reconexao": {
+        "quedaDeSocketMs": 214
+      },
+      "servidor": {
+        "entradas": 4,
+        "quedas": 1
+      }
+    },
+    {
+      "transport": "livekit-data",
+      "jogadores": 4,
+      "snapshotBytes": 540,
+      "snapshotAtrasoMs": {
+        "p50": 1.88,
+        "p95": 3.7,
+        "p99": 5.31,
+        "max": 7.33,
+        "jitterDesvio": 0.87
+      },
+      "tintaAtrasoMs": {
+        "p50": 1.28,
+        "p99": 4.07
+      },
+      "rttLossyMs": {
+        "p50": 3.18,
+        "p95": 4.51,
+        "p99": 8.26
+      },
+      "rttConfiavelMs": {
+        "p50": 3.96,
+        "p95": 5.39,
+        "p99": 9.31
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 78.2,
+        "msgsps": 31.8
+      },
+      "porClienteUp": {
+        "kbitps": 9.65,
+        "msgsps": 30.15
+      },
+      "entradasNaAutoridadePct": 100.5,
+      "cpu": {
+        "processoBenchPct": 21.64,
+        "sfuPct": 9.55
+      },
+      "memoriaMb": {
+        "processoBench": 180.69,
+        "sfu": 86.07
+      },
+      "snapshotsEnvioRejeitado": "0/1208",
+      "conexaoTodosMs": 317,
+      "custoEnvioTickAutoridadeMs": {
+        "p50": 0.23,
+        "p99": 0.45
+      },
+      "reconexao": {
+        "resumeMs": 196,
+        "fullReconnectMs": 104
+      }
+    },
+    {
+      "transport": "colyseus-websocket",
+      "jogadores": 8,
+      "snapshotBytes": 700,
+      "snapshotAtrasoMs": {
+        "p50": 0.22,
+        "p95": 0.38,
+        "p99": 0.66,
+        "max": 2.47,
+        "jitterDesvio": 0.15
+      },
+      "tintaAtrasoMs": {
+        "p50": 0.31,
+        "p99": 0.67
+      },
+      "rttLossyMs": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "rttConfiavelMs": {
+        "p50": 0.38,
+        "p95": 0.7,
+        "p99": 1.7
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 97.42,
+        "msgsps": 28.15
+      },
+      "porClienteUp": {
+        "kbitps": 9.63,
+        "msgsps": 30.1
+      },
+      "entradasNaAutoridadePct": 100.33,
+      "cpu": {
+        "processoBenchPct": 3.56,
+        "sfuPct": null
+      },
+      "memoriaMb": {
+        "processoBench": 186.56,
+        "sfu": null
+      },
+      "conexaoTodosMs": 44,
+      "reconexao": {
+        "quedaDeSocketMs": 259
+      },
+      "servidor": {
+        "entradas": 8,
+        "quedas": 1
+      }
+    },
+    {
+      "transport": "livekit-data",
+      "jogadores": 8,
+      "snapshotBytes": 700,
+      "snapshotAtrasoMs": {
+        "p50": 3.07,
+        "p95": 6.12,
+        "p99": 7.75,
+        "max": 9.31,
+        "jitterDesvio": 1.52
+      },
+      "tintaAtrasoMs": {
+        "p50": 1.71,
+        "p99": 6.34
+      },
+      "rttLossyMs": {
+        "p50": 6.14,
+        "p95": 10.26,
+        "p99": 14.44
+      },
+      "rttConfiavelMs": {
+        "p50": 7.17,
+        "p95": 11.88,
+        "p99": 16.29
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 97.54,
+        "msgsps": 31.9
+      },
+      "porClienteUp": {
+        "kbitps": 9.63,
+        "msgsps": 30.1
+      },
+      "entradasNaAutoridadePct": 100.33,
+      "cpu": {
+        "processoBenchPct": 39.44,
+        "sfuPct": 15.3
+      },
+      "memoriaMb": {
+        "processoBench": 200.41,
+        "sfu": 95.64
+      },
+      "snapshotsEnvioRejeitado": "0/2416",
+      "conexaoTodosMs": 618,
+      "custoEnvioTickAutoridadeMs": {
+        "p50": 0.3,
+        "p99": 0.76
+      },
+      "reconexao": {
+        "resumeMs": 165,
+        "fullReconnectMs": 87
+      }
+    },
+    {
+      "transport": "colyseus-websocket",
+      "jogadores": 16,
+      "snapshotBytes": 1020,
+      "snapshotAtrasoMs": {
+        "p50": 0.3,
+        "p95": 0.5,
+        "p99": 0.71,
+        "max": 2.42,
+        "jitterDesvio": 0.11
+      },
+      "tintaAtrasoMs": {
+        "p50": 0.43,
+        "p99": 1.95
+      },
+      "rttLossyMs": {
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "rttConfiavelMs": {
+        "p50": 0.56,
+        "p95": 1.16,
+        "p99": 2.9
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 136.21,
+        "msgsps": 28.15
+      },
+      "porClienteUp": {
+        "kbitps": 9.65,
+        "msgsps": 30.15
+      },
+      "entradasNaAutoridadePct": 100.5,
+      "cpu": {
+        "processoBenchPct": 4.55,
+        "sfuPct": null
+      },
+      "memoriaMb": {
+        "processoBench": 203.91,
+        "sfu": null
+      },
+      "conexaoTodosMs": 44,
+      "reconexao": {
+        "quedaDeSocketMs": 254
+      },
+      "servidor": {
+        "entradas": 16,
+        "quedas": 1
+      }
+    },
+    {
+      "transport": "livekit-data",
+      "jogadores": 16,
+      "snapshotBytes": 1020,
+      "snapshotAtrasoMs": {
+        "p50": 5.47,
+        "p95": 12.28,
+        "p99": 16.24,
+        "max": 26.15,
+        "jitterDesvio": 3.47
+      },
+      "tintaAtrasoMs": {
+        "p50": 2.41,
+        "p99": 12.33
+      },
+      "rttLossyMs": {
+        "p50": 12.28,
+        "p95": 21.99,
+        "p99": 25.99
+      },
+      "rttConfiavelMs": {
+        "p50": 13.52,
+        "p95": 22.69,
+        "p99": 26.71
+      },
+      "perdaSnapshotsPct": 0,
+      "porClienteDown": {
+        "kbitps": 135.78,
+        "msgsps": 32.05
+      },
+      "porClienteUp": {
+        "kbitps": 9.6,
+        "msgsps": 30
+      },
+      "entradasNaAutoridadePct": 100,
+      "cpu": {
+        "processoBenchPct": 75.53,
+        "sfuPct": 25.4
+      },
+      "memoriaMb": {
+        "processoBench": 225.27,
+        "sfu": 117.57
+      },
+      "snapshotsEnvioRejeitado": "0/4816",
+      "conexaoTodosMs": 1299,
+      "custoEnvioTickAutoridadeMs": {
+        "p50": 0.49,
+        "p99": 1.25
+      },
+      "reconexao": {
+        "resumeMs": 201,
+        "fullReconnectMs": 125
+      }
+    }
+  ],
+  "audio": [
+    {
+      "cenario": "só voz",
+      "quadrosPorSegundo": 100,
+      "esperadoPorSegundo": 100,
+      "buracosAcimaDe40ms": 0,
+      "maiorBuracoMs": 15,
+      "intervaloP99Ms": 11.4
+    },
+    {
+      "cenario": "voz + dados de 16 jogadores no mesmo SFU",
+      "quadrosPorSegundo": 100,
+      "esperadoPorSegundo": 100,
+      "buracosAcimaDe40ms": 0,
+      "maiorBuracoMs": 37,
+      "intervaloP99Ms": 14.5
+    }
+  ]
+}

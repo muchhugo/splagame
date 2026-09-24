@@ -31,6 +31,10 @@ import { Environment } from './render/Environment';
 import { LevelRenderer } from './render/LevelRenderer';
 import { Effects } from './effects/Effects';
 import { InputManager } from './input/InputManager';
+import { AIM_ASSIST_TUNING, NO_ASSIST, aimAssist, type AimAssistResult, type AimTarget } from './input/aimAssist';
+import { RUMBLE, RumbleGate, gamepadHub, type RumbleKind } from './input/gamepad';
+import { deviceStore } from './input/device';
+import { tutorialTick } from '../app/tutorial';
 import { LocalPredictor } from './prediction/LocalPredictor';
 import { RemoteInterpolator } from './prediction/RemoteInterpolator';
 import { hudDom, hudStore, type KillfeedEntry } from './hud';
@@ -146,6 +150,7 @@ export class GameRuntime {
     this.input.onMapChanged = (o) => this.hooks.onMapToggle(o);
     this.input.onPointerLockChange = (l) => this.hooks.onPointerLock(l);
     this.input.onUserGesture = () => this.hooks.onUserGesture();
+    this.input.onMenuRequested = () => this.hooks.onMenuRequested();
     this.resizeObs = new ResizeObserver(() => this.engine.resize());
     this.resizeObs.observe(canvas);
     this.settingsUnsub = settingsStore.subscribe(() => this.applySettings(settingsStore.get()));
@@ -372,15 +377,20 @@ export class GameRuntime {
           this.damageT = 0.4;
           this.rig.shake(0.08 + e.dmg * 0.001);
           this.play('hurt');
+          this.rumble('dano');
         }
         return;
       case 'elim': {
         const vp = this.lastPos.get(e.victim);
         if (vp) this.effects.elimination(vp, teamOf(e.victim));
-        if (e.killer === this.myId) this.play('elim_confirm');
+        if (e.killer === this.myId) {
+          this.play('elim_confirm');
+          this.rumble('eliminou');
+        }
         if (e.victim === this.myId) {
           this.play('death');
           this.rig.shake(0.18);
+          this.rumble('eliminado');
         } else if (vp) this.play('death', vp, teamOf(e.victim), 0.6);
         const causeName: Record<string, string> = { esguicho: 'Esguicho', rodo: 'Rodo', estilingue: 'Estilingue', moringa: 'Moringa', wheel: 'Roda de Oleiro', contact: 'Rodo' };
         this.killfeed = [
@@ -413,14 +423,21 @@ export class GameRuntime {
       case 'burst':
         this.effects.burst(e.p, e.team, e.r);
         this.play('burst', e.p, e.team);
-        if (this.predictor && dist3(this.predictor.state.pos, e.p) < 6) this.rig.shake(0.1);
+        if (this.predictor && dist3(this.predictor.state.pos, e.p) < 6) {
+          this.rig.shake(0.1);
+          this.rumble('moringa');
+        }
         return;
       case 'wave':
         this.effects.wave(e.p, e.team, e.r);
         this.play('wave', e.p, e.team);
         return;
       case 'special':
-        if (e.pid === this.myId) this.play('special_activate');
+        if (e.pid === this.myId) {
+          this.tutorialCounters.specials++;
+          this.play('special_activate');
+          this.rumble('especial');
+        }
         return;
       case 'travel':
         if (e.phase === 'launch') {
@@ -496,9 +513,9 @@ export class GameRuntime {
       this.fpsTimer = 0;
     }
     this.impactBudget = Math.max(0, this.impactBudget - dt * 20);
-    this.input.consumeLook();
     const inRound = this.phase === 'countdown' || this.phase === 'running';
     const pred = this.predictor;
+    this.input.consumeLook(dt, this.aimAssistStep(dt, inRound));
 
     // ---------- previsão em passo fixo (30 Hz) + envio de entradas ----------
     if (pred && inRound) {
@@ -614,6 +631,49 @@ export class GameRuntime {
     if (this.visible) this.scene.render();
   }
 
+  /**
+   * Assistência de mira do controle (leve, configurável). Só considera
+   * adversários que o jogador já vê: vivos, fora da tinta, sem proteção e com
+   * linha de visão livre a partir da câmera.
+   */
+  private aimAssistStep(dt: number, inRound: boolean): AimAssistResult {
+    const g = settingsStore.get().gamepad;
+    const pred = this.predictor;
+    if (!g.aimAssist || g.aimAssistStrength <= 0 || !inRound || this.phase !== 'running' || !pred || deviceStore.get().device !== 'controle') return NO_ASSIST;
+    const s = pred.state;
+    if (!s.alive || s.form !== 0 || s.travelPhase !== 0) return NO_ASSIST;
+    const mag = this.input.padMagnitudes();
+    const camPos = this.rig.position();
+    const rTick = this.interp.renderTick(performance.now());
+    const targets: AimTarget[] = [];
+    for (const id of this.interp.ids()) {
+      if (this.roster.get(id)?.team === this.myTeam) continue;
+      const smp = this.interp.sample(id, rTick);
+      if (!smp) continue;
+      const f = smp.flags;
+      if (!(f & PFLAG_ALIVE) || f & PFLAG_SUBMERGED || f & PFLAG_PROTECTED) continue;
+      const c: Vec3 = [smp.pos[0], smp.pos[1] + MOVEMENT.combatHitHeight * 0.55, smp.pos[2]];
+      const d: Vec3 = [c[0] - camPos[0], c[1] - camPos[1], c[2] - camPos[2]];
+      const dist = Math.hypot(d[0], d[1], d[2]);
+      if (dist > AIM_ASSIST_TUNING.range || dist < 0.5) continue;
+      const dir: Vec3 = [d[0] / dist, d[1] / dist, d[2] / dist];
+      const wall = this.physics.raycast(camPos, dir, dist - 0.4);
+      if (wall) continue;
+      targets.push({ yaw: yawFromDir(dir), pitch: pitchFromDir(dir), dist });
+    }
+    return aimAssist(this.input.yaw, this.input.pitch, targets, Math.max(mag.look, mag.move), g.aimAssistStrength, dt);
+  }
+
+  private rumbleGate = new RumbleGate();
+  /** Vibração curta no controle, só quando ele é o dispositivo em uso. */
+  private rumble(kind: RumbleKind) {
+    const g = settingsStore.get().gamepad;
+    if (!g.vibration || g.vibrationIntensity <= 0 || deviceStore.get().device !== 'controle' || !this.visible) return;
+    if (!this.rumbleGate.allow(kind, performance.now())) return;
+    const p = RUMBLE[kind];
+    gamepadHub.rumble(p.ms, p.weak * g.vibrationIntensity, p.strong * g.vibrationIntensity);
+  }
+
   /** Mira em duas etapas: alvo visual pela câmera, trajetória validada a partir do cano. */
   private computeAim(pred: LocalPredictor): { yaw: number; pitch: number; dir: Vec3; blocked: Vec3 | null; target: Vec3 } {
     const camPos = this.rig.position();
@@ -657,6 +717,8 @@ export class GameRuntime {
       const d = aimDirection(yawFromDir(dir) + (Math.random() - 0.5) * sp, pitchFromDir(dir) + (Math.random() - 0.5) * sp * 0.5);
       this.effects.shot(muzzle, [d[0] * w.projectileSpeed, d[1] * w.projectileSpeed, d[2] * w.projectileSpeed], w.straightTime, w.gravity, w.maxLife, team);
       this.play('shot_esguicho', undefined, team, 0.7, this.stepDelay + i * w.fireInterval);
+      // rajada contínua: vibra só no começo, nunca a cada gota
+      if (performance.now() - (this.lastLocalShotAt.get('shot_esguicho') ?? -Infinity) > 260) this.rumble('disparo');
       this.lastLocalShotAt.set('shot_esguicho', performance.now());
     }
     if (intents.flick && w.kind === 'contact') {
@@ -666,6 +728,7 @@ export class GameRuntime {
         this.effects.shot(muzzle, [d[0] * w.flickSpeed, d[1] * w.flickSpeed + w.flickUp, d[2] * w.flickSpeed], 0, w.flickGravity, w.flickLife, team);
       }
       this.play('shot_flick', undefined, team, undefined, this.stepDelay);
+      this.rumble('disparo');
       this.lastLocalShotAt.set('shot_flick', performance.now());
     }
     if (intents.chargeRelease > 0) {
@@ -674,10 +737,15 @@ export class GameRuntime {
       const end: Vec3 = hit ? hit.point : [muzzle[0] + dir[0] * range, muzzle[1] + dir[1] * range, muzzle[2] + dir[2] * range];
       this.effects.beam(muzzle, end, team, intents.chargeRelease);
       this.play('charge_release', undefined, team, undefined, this.stepDelay);
+      this.rumble('disparo');
       this.lastLocalReleaseAt = performance.now();
       this.rig.shake(0.03);
     }
-    if (intents.throwSecondary) this.play('throw');
+    if (intents.throwSecondary) {
+      this.tutorialCounters.thrown++;
+      this.play('throw');
+      this.rumble('moringa');
+    }
     if (intents.jumped) this.play('jump', undefined, team, 0.8, this.stepDelay);
   }
 
@@ -711,6 +779,7 @@ export class GameRuntime {
     const pos = me ? undefined : v.pos;
     if (landed >= 0.25) {
       const hard = Math.min(1.2, 0.6 + landed * 0.8);
+      if (me && landed >= 0.6) this.rumble('aterrissagem');
       if (kind === 'step_ink') this.play('step_ink', pos, undefined, hard * 1.3);
       else this.play('land', pos, undefined, hard);
     } else this.play(kind, pos, undefined, me ? 0.8 : 0.65);
@@ -922,9 +991,30 @@ export class GameRuntime {
     return [((out.x + 1) / 2) * rect.width, ((1 - out.y) / 2) * rect.height];
   }
 
+  /** Contadores do próprio jogador para o treino rápido. */
+  private tutorialCounters = { thrown: 0, specials: 0 };
+
   private publishHud() {
     const pred = this.predictor;
     const s = pred?.state;
+    if (s && this.phase === 'running') {
+      tutorialTick(
+        {
+          pos: s.pos,
+          yaw: this.input.yaw,
+          pitch: this.input.pitch,
+          ink: s.ink,
+          form: s.form,
+          submerged: s.submerged,
+          firing: (this.input.buttons() & Buttons.FIRE) !== 0,
+          alive: s.alive,
+          mapOpen: this.input.mapOpen,
+          thrown: this.tutorialCounters.thrown,
+          specials: this.tutorialCounters.specials,
+        },
+        1 / 15,
+      );
+    }
     const snap = this.lastSnapshot;
     const tl = this.phase === 'running' || this.phase === 'countdown' ? Math.max(0, this.timeLeftMs - (performance.now() - this.timeLeftAt)) : this.timeLeftMs;
     if (this.phase === 'countdown') {

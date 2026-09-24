@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
-import { ACTION_LABELS, DEFAULT_SETTINGS, PALETTES, settingsStore, type BindableAction, type Settings } from '../app/settings';
+import { ACTION_LABELS, DEFAULT_GAMEPAD, DEFAULT_SETTINGS, PALETTES, rebind, settingsStore, type BindableAction, type GamepadSettings, type Settings } from '../app/settings';
+import { keyName, useHints } from '../app/hints';
+import { PAD_ACTIONS, PAD_ACTION_LABELS, RUMBLE, buttonGlyph, familyName, gamepadHub, type PadAction } from '../game/input/gamepad';
+import { padCapture } from './gamepadNav';
 import { getController } from './App';
-import { keyName } from './Lobby';
 import { VoiceChip } from './VoiceChip';
+import { endTutorial, restartTutorial, skipStep, tutorialStore } from '../app/tutorial';
 
 /** Menu (Esc). A partida continua para todos enquanto ele está aberto. */
 export function Menu() {
   const settingsOpen = useStore(uiStore, (s) => s.settingsOpen);
   const screen = useStore(uiStore, (s) => s.screen);
+  const tutorial = useStore(tutorialStore, (t) => t.active);
   const c = getController();
   if (settingsOpen) return <SettingsPanel onClose={() => uiStore.set({ settingsOpen: false, ...(screen !== 'match' ? { menuOpen: false } : {}) })} />;
   return (
@@ -28,6 +32,20 @@ export function Menu() {
         <button className="btn ghost" onClick={() => void c?.toggleFullscreen()}>
           Tela cheia
         </button>
+        {tutorial ? (
+          <div className="row">
+            <button className="btn small ghost" onClick={() => skipStep()}>
+              Pular etapa do treino
+            </button>
+            <button className="btn small ghost" data-sfx="back" onClick={() => endTutorial()}>
+              Encerrar treino
+            </button>
+          </div>
+        ) : (
+          <button className="btn ghost" onClick={() => restartTutorial()}>
+            {screen === 'match' ? 'Refazer o treino rápido' : 'Refazer o treino na próxima rodada'}
+          </button>
+        )}
         <div className="row">
           <VoiceChip />
         </div>
@@ -39,11 +57,13 @@ export function Menu() {
   );
 }
 
-type Tab = 'controles' | 'video' | 'acessibilidade' | 'audio';
+type Tab = 'controles' | 'controle' | 'video' | 'acessibilidade' | 'audio';
+const TAB_LABELS: Record<Tab, string> = { controles: 'Teclado e mouse', controle: 'Controle', video: 'Vídeo', acessibilidade: 'Acessibilidade', audio: 'Áudio' };
 
 function SettingsPanel({ onClose }: { onClose: () => void }) {
   const s = useStore(settingsStore, (x) => x);
-  const [tab, setTab] = useState<Tab>('controles');
+  const hints = useHints();
+  const [tab, setTab] = useState<Tab>(() => (hints.device === 'controle' ? 'controle' : 'controles'));
   const [listening, setListening] = useState<BindableAction | null>(null);
   const set = (p: Partial<Settings>) => settingsStore.set(p);
   const slider = (label: string, key: keyof Settings, min: number, max: number, step: number, fmt: (v: number) => string = (v) => v.toFixed(2)) => (
@@ -66,7 +86,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       return;
     }
     e.preventDefault();
-    if (e.code !== 'Escape') set({ keybinds: { ...s.keybinds, [listening]: e.code } });
+    // tecla já usada por outra ação: as duas trocam (nunca ficam duas ações na mesma tecla)
+    if (e.code !== 'Escape') set({ keybinds: rebind(s.keybinds, listening, e.code) });
     setListening(null);
   };
   return (
@@ -81,9 +102,9 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="tabs" role="tablist">
-          {(['controles', 'video', 'acessibilidade', 'audio'] as Tab[]).map((t) => (
+          {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
             <button key={t} className="btn small ghost" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-              {{ controles: 'Controles', video: 'Vídeo', acessibilidade: 'Acessibilidade', audio: 'Áudio' }[t]}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </div>
@@ -118,6 +139,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
             </button>
           </>
         ) : null}
+        {tab === 'controle' ? <GamepadTab /> : null}
         {tab === 'video' ? (
           <>
             <label className="setting">
@@ -175,5 +197,132 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Configurações › Controle: sensibilidade, zonas mortas, curva, vibração, mira assistida e botões. */
+function GamepadTab() {
+  const g = useStore(settingsStore, (x) => x.gamepad);
+  const mapMode = useStore(settingsStore, (x) => x.mapMode);
+  const hints = useHints();
+  const [listening, setListening] = useState<PadAction | null>(null);
+  const [live, setLive] = useState('');
+  const setPad = (p: Partial<GamepadSettings>) => settingsStore.set((st) => ({ gamepad: { ...st.gamepad, ...p } }));
+  const pad = hints.pad;
+  const glyph = (i: number) => buttonGlyph(hints.family, i);
+
+  // remapeamento: o próximo botão apertado vai para a ação; Esc ou 6 s cancelam
+  useEffect(() => {
+    if (!listening) return;
+    const timer = setTimeout(() => setListening(null), 6000);
+    padCapture.fn = (button) => {
+      settingsStore.set((st) => ({ gamepad: { ...st.gamepad, binds: rebind(st.gamepad.binds, listening, button) } }));
+      setListening(null);
+    };
+    const esc = (e: KeyboardEvent) => e.code === 'Escape' && (e.stopPropagation(), setListening(null));
+    window.addEventListener('keydown', esc, true);
+    return () => {
+      clearTimeout(timer);
+      padCapture.fn = null;
+      window.removeEventListener('keydown', esc, true);
+    };
+  }, [listening]);
+
+  // leitura ao vivo, para conferir controles genéricos ou sem mapeamento padrão
+  useEffect(() => {
+    const t = setInterval(() => {
+      const f = gamepadHub.frame;
+      const down = f.pressed.map((p, i) => (p ? glyph(i) : null)).filter(Boolean);
+      setLive(gamepadHub.active ? `Esquerdo (${f.lx.toFixed(2)}, ${f.ly.toFixed(2)}) · Direito (${f.rx.toFixed(2)}, ${f.ry.toFixed(2)}) · ${down.length ? down.join(' + ') : 'nenhum botão'}` : '');
+    }, 100);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hints.family]);
+
+  const range = (label: string, key: keyof GamepadSettings, min: number, max: number, step: number, fmt: (v: number) => string) => (
+    <label className="setting">
+      <span>
+        {label}: <b>{fmt(g[key] as number)}</b>
+      </span>
+      <input type="range" min={min} max={max} step={step} value={g[key] as number} onChange={(e) => setPad({ [key]: Number(e.target.value) } as Partial<GamepadSettings>)} />
+    </label>
+  );
+  const check = (label: string, key: keyof GamepadSettings) => (
+    <label className="setting">
+      <span>{label}</span>
+      <input type="checkbox" checked={g[key] as boolean} onChange={(e) => setPad({ [key]: e.target.checked } as Partial<GamepadSettings>)} />
+    </label>
+  );
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  return (
+    <>
+      <p className="muted" style={{ fontSize: 13, margin: 0 }} aria-live="polite">
+        {pad
+          ? `Conectado: controle ${familyName(pad.family)}${pad.standard ? '' : ' (sem mapeamento padrão: confira os botões abaixo)'}${pad.rumble ? '' : ' · este navegador não oferece vibração para ele'}.`
+          : 'Nenhum controle detectado. Conecte por USB ou Bluetooth e aperte qualquer botão: o navegador só mostra o controle depois do primeiro botão.'}
+      </p>
+      {live ? (
+        <p className="muted" style={{ fontSize: 12, margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+          {live}
+        </p>
+      ) : null}
+      {check('Usar controle', 'enabled')}
+      <label className="setting">
+        <span>Ícones dos botões</span>
+        <select value={g.preset} onChange={(e) => setPad({ preset: e.target.value as GamepadSettings['preset'] })}>
+          <option value="auto">Automático{pad ? ` (${familyName(pad.family)})` : ''}</option>
+          <option value="xbox">Xbox</option>
+          <option value="playstation">PlayStation</option>
+          <option value="nintendo">Nintendo</option>
+          <option value="generico">Genérico</option>
+        </select>
+      </label>
+      {range('Sensibilidade horizontal', 'sensX', 0.2, 3, 0.05, (v) => v.toFixed(2))}
+      {range('Sensibilidade vertical', 'sensY', 0.2, 3, 0.05, (v) => v.toFixed(2))}
+      {check('Inverter eixo vertical', 'invertY')}
+      {check('Inverter eixo horizontal', 'invertX')}
+      {range('Zona morta do analógico esquerdo', 'deadzoneLeft', 0.02, 0.4, 0.01, pct)}
+      {range('Zona morta do analógico direito', 'deadzoneRight', 0.02, 0.4, 0.01, pct)}
+      <label className="setting">
+        <span>Curva de resposta da câmera</span>
+        <select value={g.curve} onChange={(e) => setPad({ curve: e.target.value as GamepadSettings['curve'] })}>
+          <option value="linear">Linear</option>
+          <option value="padrao">Padrão (suave no centro)</option>
+          <option value="precisa">Precisa (mais lenta no centro)</option>
+        </select>
+      </label>
+      {check('Vibração', 'vibration')}
+      {range('Intensidade da vibração', 'vibrationIntensity', 0, 1, 0.05, pct)}
+      <button
+        className="btn small ghost"
+        disabled={!pad?.rumble || !g.vibration}
+        onClick={() => {
+          const p = RUMBLE.teste;
+          gamepadHub.rumble(p.ms, p.weak * g.vibrationIntensity, p.strong * g.vibrationIntensity);
+        }}
+      >
+        Testar vibração
+      </button>
+      {check('Assistência de mira (leve)', 'aimAssist')}
+      {range('Força da assistência', 'aimAssistStrength', 0, 1, 0.05, pct)}
+      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        A assistência só desacelera a câmera perto de um adversário que você já está vendo e puxa a mira muito de leve enquanto você mira. Ela nunca mira sozinha nem mostra quem está escondido.
+      </p>
+      <strong style={{ marginTop: 6 }}>Botões</strong>
+      {PAD_ACTIONS.map((a) => (
+        <div className="setting" key={a}>
+          <span>{PAD_ACTION_LABELS[a]}</span>
+          <button className={`keybtn ${listening === a ? 'listening' : ''}`} onClick={() => setListening(listening === a ? null : a)}>
+            {listening === a ? 'Aperte um botão do controle… (Esc cancela)' : glyph(g.binds[a])}
+          </button>
+        </div>
+      ))}
+      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        Fixos: {glyph(12)}/{glyph(13)}/{glyph(14)}/{glyph(15)} navegam nos menus e escolhem o companheiro no mapa ({mapMode === 'hold' ? 'segure o botão do mapa' : 'abra o mapa'}), {glyph(hints.family === 'nintendo' ? 1 : 0)} confirma, {glyph(hints.family === 'nintendo' ? 0 : 1)} volta, {glyph(4)}/{glyph(5)} trocam de aba. Botão já usado por outra ação: as duas trocam.
+      </p>
+      <button className="btn small ghost" onClick={() => settingsStore.set({ gamepad: DEFAULT_GAMEPAD })}>
+        Restaurar padrão do controle
+      </button>
+    </>
   );
 }
