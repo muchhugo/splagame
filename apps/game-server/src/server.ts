@@ -1,13 +1,12 @@
 import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { GAME_NAME, GAME_VERSION, MATCH_ROOM_NAME } from '@borrifo/game-contracts';
-import { DEFAULT_MAP_ID } from '@borrifo/game-content';
 import type { ServerConfig } from './config';
 import { CredentialVerifier } from './auth';
 import { log } from './logger';
 import { JsonlResultSink, type ResultSink } from './results';
 import { ArenaRoom } from './rooms/ArenaRoom';
-import { loadStaticWorld } from './world';
+import { preloadAllWorlds } from './world';
 import { KeyedRateLimiter } from './rateLimit';
 
 export interface StartedServer {
@@ -21,12 +20,14 @@ export interface StartedServer {
  * Não usa Route Handlers nem funções efêmeras: o loop da partida vive aqui.
  */
 export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSink; port?: number } = {}): Promise<StartedServer> {
-  await loadStaticWorld(DEFAULT_MAP_ID);
+  // todas as variantes de todos os mapas: a escolha por rodada é síncrona e sem espera
+  await preloadAllWorlds();
   ArenaRoom.joinLimiter = new KeyedRateLimiter(cfg.joinRateBurst, cfg.joinRatePerSecond);
   ArenaRoom.deps = {
     verifier: new CredentialVerifier(cfg),
     sink: opts.sink ?? new JsonlResultSink(cfg.resultsFile),
     roundDurationSeconds: cfg.roundDurationSeconds,
+    correioDurationSeconds: cfg.correioDurationSeconds,
   };
   const allowed = new Set(cfg.allowedOrigins);
   // CORS do matchmaking: só origens permitidas (a credencial vai no corpo do POST).

@@ -9,7 +9,7 @@
  */
 import os from 'node:os';
 import { C2S, encodePaintDelta, encodePaintSnapshot } from '@borrifo/game-contracts';
-import { PATIO_DA_OLARIA, computeMapHash } from '@borrifo/game-content';
+import { CATALOG_HASH } from '@borrifo/game-content';
 import { HeadlessClient, TEST_DEV_SECRET, issueDevCredential } from '@borrifo/test-utils';
 import { loadConfig } from '../src/config';
 import { startGameServer } from '../src/server';
@@ -46,7 +46,7 @@ const cfg = loadConfig({
 const srv = await startGameServer(cfg, { sink: new MemoryResultSink(), port });
 const url = `http://127.0.0.1:${port}`;
 const sid = `carga-${Date.now().toString(36)}`;
-const mapHash = computeMapHash(PATIO_DA_OLARIA);
+const mapHash = CATALOG_HASH;
 
 const clients: HeadlessClient[] = [];
 for (let i = 0; i < CLIENTS; i++) {

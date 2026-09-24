@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { C2S } from '@borrifo/game-contracts';
 import { HeadlessClient, issueDevCredential, TEST_DEV_SECRET } from '@borrifo/test-utils';
-import { PATIO_DA_OLARIA } from '@borrifo/game-content';
+import { MAPS } from '@borrifo/game-content';
 import { PaintLayout, PaintReplica } from '@borrifo/game-simulation';
 import { MAP_HASH, startTestServer } from './helpers';
 import type { StartedServer } from '../src/server';
@@ -24,9 +24,11 @@ describe('sala de partida pelo transporte real', () => {
     expect(a.lobby!.hostPlayerId).toBe(a.welcome!.playerId);
     a.send(C2S.START, {});
     await a.waitFor(() => a.lobby?.phase === 'running', 20000, 'running');
-    expect(a.lobby!.players.filter((p) => p.isBot).length).toBe(7);
+    // flex com bots e uma pessoa: treino 1 × 1 (um bot), na variante compacta
+    expect(a.lobby!.players.filter((p) => p.isBot).length).toBe(1);
+    expect(a.lobby!.map.variant).toBe('compacto');
     // envia entradas: anda para frente e atira
-    const layout = PaintLayout.build(PATIO_DA_OLARIA);
+    const layout = PaintLayout.build(MAPS[a.lobby!.map.id]);
     const timer = setInterval(() => a.sendInput({ moveY: 1, yaw: Math.PI / 2, pitch: 0.3, heldButtons: 1 }), 33);
     await a.waitFor(() => a.results.length > 0, 20000, 'resultado');
     clearInterval(timer);

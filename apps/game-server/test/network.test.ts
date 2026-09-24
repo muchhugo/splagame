@@ -40,24 +40,78 @@ describe('ingresso, vagas e lobby', () => {
     await Promise.all(clients.map((c) => c.leave()));
   });
 
-  it('bloqueia a nona pessoa e valida troca de equipe e comandos de anfitrião', async () => {
+  it('sala aceita até 20 pessoas (16 jogam, 4 na fila); a 21ª é recusada; equipe com 8 fica cheia', async () => {
     const sid = newSid();
     const clients: HeadlessClient[] = [];
-    for (let i = 0; i < 8; i++) clients.push(await join(`v${i}`, sid));
-    await expect(join('v9', sid)).rejects.toThrow();
+    for (let i = 0; i < 20; i++) clients.push(await join(`v${i}`, sid));
+    await expect(join('v20', sid)).rejects.toThrow();
     const host = clients.find((c) => c.welcome!.playerId === c.lobby!.hostPlayerId)!;
+    await host.waitFor(() => host.lobby!.players.length === 20, 3000, '20 no lobby');
+    // plano visível antes do início: 8 × 8 e 4 na fila (flex, sem bots)
+    host.send(C2S.SET_BOTS, { enabled: false });
+    await host.waitFor(() => host.lobby!.plan.teamSize === 8 && host.lobby!.plan.queue.length === 4, 3000, 'plano 8×8 + fila');
+    expect(host.lobby!.plan.variant).toBe('ampliado');
     const guest = clients.find((c) => c !== host)!;
-    // equipe cheia: 4 em cada
     const myTeam = guest.lobby!.players.find((p) => p.playerId === guest.welcome!.playerId)!.team;
     guest.send(C2S.SET_TEAM, { team: myTeam === 0 ? 1 : 0 });
     await guest.waitFor(() => guest.notices.find((n) => n.code === 'team_full'), 3000, 'team_full');
     guest.send(C2S.START, {});
     await guest.waitFor(() => guest.notices.find((n) => n.code === 'not_host'), 3000, 'not_host');
+    guest.send(C2S.SET_OPTIONS, { mode: 'correio' });
+    await guest.waitFor(() => guest.notices.filter((n) => n.code === 'not_host').length >= 2, 3000, 'opções só do anfitrião');
     host.send(C2S.START, {});
     await host.waitFor(() => host.notices.find((n) => n.code === 'not_all_ready'), 3000, 'not_all_ready');
-    // entrada fora de fase (lobby) é ignorada sem derrubar a sala
     guest.sendInput({ moveY: 1 });
     await Promise.all(clients.map((c) => c.leave()));
+  });
+
+  it('opções do anfitrião: modo, mapa e formação validados; mapa e variante escolhidos pelo servidor', async () => {
+    const sid = newSid();
+    const host = await join('o1', sid);
+    const b = await join('o2', sid);
+    host.send(C2S.SET_OPTIONS, { mode: 'correio', map: 'clube-da-mare', formation: 4 });
+    await b.waitFor(() => b.lobby!.mode === 'correio' && b.lobby!.mapChoice === 'clube-da-mare' && b.lobby!.formation === 4, 3000, 'opções');
+    // 4 × 4 com bots: 8 ativos → Clube da Maré padrão
+    expect(b.lobby!.plan.teamSize).toBe(4);
+    expect(b.lobby!.plan.bots[0] + b.lobby!.plan.bots[1]).toBe(6);
+    expect(b.lobby!.map.id).toBe('clube-da-mare.padrao');
+    host.send(C2S.SET_OPTIONS, { map: 'mapa-que-nao-existe' });
+    await host.waitFor(() => host.notices.find((n) => n.code === 'invalid_message'), 3000, 'mapa inválido');
+    host.send(C2S.SET_OPTIONS, { formation: 9 } as never);
+    host.send(C2S.SET_OPTIONS, { mode: 'caos' } as never);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(b.lobby!.formation).toBe(4);
+    expect(b.lobby!.mode).toBe('correio');
+    b.send(C2S.SET_READY, { ready: true });
+    await host.waitFor(() => host.lobby!.players.find((p) => p.playerId === b.welcome!.playerId)?.ready === true, 3000, 'pronto');
+    host.send(C2S.START, {});
+    const loading = await host.waitFor(() => host.roundLoadings?.[0], 10000, 'round.loading');
+    expect(loading.mapId).toBe('clube-da-mare.padrao');
+    expect(loading.mode).toBe('correio');
+    await host.waitFor(() => host.lobby!.phase === 'running', 25000, 'running');
+    await host.waitFor(() => host.lastSnapshot?.obj !== undefined, 5000, 'snapshot do objetivo');
+    expect(host.lastSnapshot!.pk!.length).toBeGreaterThan(0);
+    await Promise.all([host.leave(), b.leave()]);
+  });
+
+  it('ímpar sem bots: equipes equilibradas e fila avisada; quem ficou de fora tem prioridade na revanche', async () => {
+    const sid = newSid();
+    const cs = [await join('q1', sid), await join('q2', sid), await join('q3', sid)];
+    const host = cs.find((c) => c.welcome!.playerId === c.lobby!.hostPlayerId)!;
+    host.send(C2S.SET_BOTS, { enabled: false });
+    await host.waitFor(() => host.lobby!.plan.teamSize === 1 && host.lobby!.plan.queue.length === 1, 3000, 'plano 1×1 + fila');
+    const queuedId = host.lobby!.plan.queue[0];
+    for (const c of cs) if (c !== host) c.send(C2S.SET_READY, { ready: true });
+    await host.waitFor(() => host.lobby!.players.filter((p) => p.ready).length >= 2, 3000, 'prontos');
+    host.send(C2S.START, {});
+    const queued = cs.find((c) => c.welcome!.playerId === queuedId)!;
+    await queued.waitFor(() => queued.notices.find((n) => n.code === 'queued'), 5000, 'aviso de fila');
+    await host.waitFor(() => host.lobby!.phase === 'running' || host.lobby!.phase === 'countdown', 25000, 'rodada');
+    expect(host.lobby!.players.find((p) => p.playerId === queuedId)!.queued).toBe(true);
+    expect(host.lobby!.players.filter((p) => p.inRound).length).toBe(2);
+    // o próximo plano já coloca quem esperou para jogar
+    expect(host.lobby!.plan.queue).not.toContain(queuedId);
+    await Promise.all(cs.map((c) => c.leave()));
   });
 });
 

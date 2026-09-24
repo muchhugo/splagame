@@ -9,8 +9,12 @@ import {
   JoinOptionsSchema,
   LoadedSchema,
   MAX_CLIENT_MESSAGES_PER_SECOND,
-  MAX_PLAYERS,
+  MAX_ROOM_HUMANS,
   MAX_TEAM_SIZE,
+  PFLAG_CARRIER,
+  PFLAG_EMBALO,
+  PFLAG_FOLEGO,
+  PFLAG_MUTIRAO,
   PFLAG_ALIVE,
   PFLAG_CHARGING,
   PFLAG_CLIMBING,
@@ -33,6 +37,11 @@ import {
   SetTeamSchema,
   SetWeaponSchema,
   SetAppearanceSchema,
+  SetOptionsSchema,
+  type FormationOption,
+  type FormationPlan,
+  type GameModeId,
+  type MapChoice,
   APPEARANCE_IDS,
   DEFAULT_APPEARANCE,
   type AppearanceId,
@@ -60,14 +69,15 @@ import {
   type WeaponId,
   type WorldObjectState,
 } from '@borrifo/game-contracts';
-import { DEFAULT_MAP_ID, DEFAULT_TEAM_PAIR_ID, MATCH, MORINGA, RODA_DE_OLEIRO, pickTeamPair } from '@borrifo/game-content';
+import { CATALOG_HASH, DEFAULT_MAP_ID, DEFAULT_TEAM_PAIR_ID, MAP_FAMILIES, MAP_FAMILY_IDS, MATCH, MODES, MORINGA, RODA_DE_OLEIRO, mapFor, pickTeamPair } from '@borrifo/game-content';
 import { BotBrain, MatchSimulation, PhysicsWorld, toSelfSnapshot, type SimPlayer } from '@borrifo/game-simulation';
 import type { ZodType } from 'zod';
 import { AuthError, sanitizeDisplayName, type CredentialVerifier, type VerifiedIdentity } from '../auth';
 import { log } from '../logger';
 import { KeyedRateLimiter, TokenBucket } from '../rateLimit';
 import type { ResultSink } from '../results';
-import { loadStaticWorld, type StaticWorld } from '../world';
+import { staticWorld, type StaticWorld } from '../world';
+import { planFormation, type Formation } from '../formation';
 
 interface RoomPlayer {
   playerId: number;
@@ -89,12 +99,19 @@ interface RoomPlayer {
   lastResyncAt: number;
   reconnect: { reject: Function } | null;
   vote: 'rematch' | 'lobby' | null;
+  /** Ordem de chegada (desempate da fila). */
+  joinOrder: number;
+  /** Rodadas seguidas na fila: prioridade na próxima formação. */
+  sitOuts: number;
+  /** Na fila/espectador nesta rodada. */
+  queued: boolean;
 }
 
 export interface ArenaDeps {
   verifier: CredentialVerifier;
   sink: ResultSink;
   roundDurationSeconds: number;
+  correioDurationSeconds: number;
 }
 
 const BOT_NAMES = ['Bibelô Jarra', 'Bibelô Vaso', 'Bibelô Cuia', 'Bibelô Tacho', 'Bibelô Pote', 'Bibelô Bule', 'Bibelô Caneca', 'Bibelô Moringa'];
@@ -133,6 +150,13 @@ export class ArenaRoom extends Room {
   private replacedSessions = new Set<string>();
   private botSeed = 1;
   private tickDurations: number[] = [];
+  /** Opções da partida (anfitrião, no lobby). */
+  private mode: GameModeId = 'territorio';
+  private mapChoice: MapChoice = 'rotacao';
+  private formation: FormationOption = 'flex';
+  /** Família da próxima rodada na rotação (alterna a cada rodada). */
+  private rotation = 0;
+  private joinCounter = 0;
 
   /* ------------------------- autenticação ------------------------- */
 
@@ -142,8 +166,8 @@ export class ArenaRoom extends Room {
     const parsed = JoinOptionsSchema.safeParse(options);
     if (!parsed.success) throw new ServerError(400, 'opções de entrada inválidas');
     const { activitySessionId, credential, mapHash } = parsed.data;
-    const world = await loadStaticWorld(DEFAULT_MAP_ID);
-    if (mapHash !== world.mapHash) throw new ServerError(409, 'versão do mapa incompatível com o servidor; recarregue a Atividade');
+    // o cliente precisa de TODAS as variantes na mesma versão: qualquer escolha do servidor é carregável
+    if (mapHash !== CATALOG_HASH) throw new ServerError(409, 'versão dos mapas incompatível com o servidor; recarregue a Atividade');
     try {
       return await ArenaRoom.deps.verifier.verify(credential, activitySessionId);
     } catch (e) {
@@ -164,10 +188,9 @@ export class ArenaRoom extends Room {
     ArenaRoom.bySession.set(sid, this.roomId);
     this.activitySessionId = sid;
     this.matchId = randomUUID();
-    this.maxClients = MAX_PLAYERS + 2;
+    this.maxClients = MAX_ROOM_HUMANS + 2;
     this.maxMessagesPerSecond = MAX_CLIENT_MESSAGES_PER_SECOND;
-    this.world = await loadStaticWorld(DEFAULT_MAP_ID);
-    this.physics = new PhysicsWorld(this.world.map);
+    this.world = staticWorld(DEFAULT_MAP_ID);
     this.registerMessages();
     this.setFixedTimestep(() => this.fixedStep(), TICK_RATE);
     log('info', 'room.created', { activitySessionId: sid, matchId: this.matchId, roomId: this.roomId });
@@ -189,7 +212,7 @@ export class ArenaRoom extends Room {
       return;
     }
     const humans = [...this.players.values()].filter((p) => !p.isBot);
-    if (humans.length >= MAX_PLAYERS) throw new ServerError(409, 'sala cheia');
+    if (humans.length >= MAX_ROOM_HUMANS) throw new ServerError(409, 'sala cheia');
     const midRound = this.phase !== 'lobby' && this.phase !== 'results';
     const team = this.pickTeamForNewcomer();
     const p: RoomPlayer = {
@@ -212,6 +235,9 @@ export class ArenaRoom extends Room {
       lastResyncAt: 0,
       reconnect: null,
       vote: null,
+      joinOrder: this.joinCounter++,
+      sitOuts: 0,
+      queued: false,
     };
     this.players.set(p.playerId, p);
     this.bySessionId.set(client.sessionId, p.playerId);
@@ -229,6 +255,8 @@ export class ArenaRoom extends Room {
     const p = pid !== undefined ? this.players.get(pid) : undefined;
     if (!p) return;
     p.connection = 'reconnecting';
+    // Correio do Ara: quem cai da conexão solta a cápsula (o slot segue na rodada)
+    this.sim?.dropObjective(p.playerId);
     const def = this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
     p.reconnect = def;
     def.catch(() => {
@@ -361,15 +389,23 @@ export class ArenaRoom extends Room {
       this.fillWithBots = m.enabled;
       this.broadcastLobby();
     });
+    this.guarded(C2S.SET_OPTIONS, SetOptionsSchema, (p, m, client) => {
+      if (p.playerId !== this.hostPlayerId) return this.notice(client, 'not_host', 'Só quem organiza a sala muda as opções da partida.');
+      if (this.phase !== 'lobby') return this.notice(client, 'wrong_phase', 'Mude as opções no lobby.');
+      if (m.map !== undefined && m.map !== 'rotacao' && !MAP_FAMILY_IDS.includes(m.map)) return this.notice(client, 'invalid_message', 'Mapa desconhecido.');
+      if (m.mode !== undefined) this.mode = m.mode;
+      if (m.map !== undefined) this.mapChoice = m.map;
+      if (m.formation !== undefined) this.formation = m.formation as FormationOption;
+      this.broadcastLobby();
+    });
     this.guarded(C2S.START, StartSchema, (p, _m, client) => {
       if (p.playerId !== this.hostPlayerId) return this.notice(client, 'not_host', 'Só quem organiza a sala pode iniciar.');
       if (this.phase !== 'lobby') return this.notice(client, 'wrong_phase', 'A partida já começou.');
       const humans = [...this.players.values()].filter((x) => !x.isBot && x.connection === 'connected');
       const notReady = humans.filter((x) => x.playerId !== p.playerId && !x.ready);
       if (notReady.length) return this.notice(client, 'not_all_ready', `Aguardando: ${notReady.map((x) => x.displayName).join(', ')}`);
-      const t0 = humans.filter((x) => x.team === 0).length;
-      const t1 = humans.filter((x) => x.team === 1).length;
-      if (!this.fillWithBots && (t0 === 0 || t1 === 0)) return this.notice(client, 'not_all_ready', 'Cada equipe precisa de alguém (ou ative os bots).');
+      const plan = this.plan();
+      if (plan.f.blocked) return this.notice(client, 'not_all_ready', plan.f.blocked);
       this.startRound();
     });
     this.guarded(C2S.LOADED, LoadedSchema, (p, m, client) => {
@@ -385,7 +421,7 @@ export class ArenaRoom extends Room {
       if (m.choice === 'lobby' && p.playerId === this.hostPlayerId) return this.returnToLobby();
       this.broadcastLobby();
       const humans = [...this.players.values()].filter((x) => !x.isBot && x.connection === 'connected');
-      if (humans.length && humans.every((x) => x.vote === 'rematch')) this.startRound();
+      if (humans.length && humans.every((x) => x.vote === 'rematch') && !this.plan().f.blocked) this.startRound();
     });
     this.guarded(C2S.PAINT_RESYNC, PaintResyncSchema, (p, m, client) => {
       if (!this.sim || m.roundId !== this.roundId) return;
@@ -443,6 +479,32 @@ export class ArenaRoom extends Room {
     this.promoteHostIfNeeded();
   }
 
+  /** Família de mapa da próxima rodada (rotação alterna a cada rodada iniciada). */
+  private nextFamily(): string {
+    if (this.mapChoice !== 'rotacao') return this.mapChoice;
+    return MAP_FAMILIES[this.rotation % MAP_FAMILIES.length].id;
+  }
+
+  /**
+   * Formação e mapa da PRÓXIMA rodada, a partir de quem está conectado. Mostrado no
+   * lobby antes do início; aplicado em startRound. Nunca muda a rodada em andamento.
+   */
+  private plan(): { f: Formation; mapId: string } {
+    const cands = [...this.players.values()]
+      .filter((p) => !p.isBot && p.connection === 'connected' && p.connection !== ('replaced_by_bot' as string))
+      .map((p) => ({ playerId: p.playerId, team: p.team, joinOrder: p.joinOrder, sitOuts: p.sitOuts }));
+    const f = planFormation(cands, this.formation, this.fillWithBots);
+    const mapId = mapFor(this.nextFamily(), Math.max(2, f.active)).id;
+    return { f, mapId };
+  }
+
+  private planWire(): FormationPlan {
+    const { f, mapId } = this.plan();
+    const teamOf: Record<number, TeamId> = {};
+    for (const [id, t] of f.teamOf) teamOf[id] = t;
+    return { teamSize: f.teamSize, humans: f.humans, bots: f.bots, queue: f.queue, teamOf, active: f.active, mapId, variant: staticWorld(mapId).map.variant, blocked: f.blocked };
+  }
+
   private lobbyState(): LobbyState {
     const players: LobbyPlayer[] = [...this.players.values()]
       .sort((a, b) => a.playerId - b.playerId)
@@ -459,7 +521,11 @@ export class ArenaRoom extends Room {
         connection: p.isBot ? 'bot' : p.connection,
         loaded: p.loaded,
         inRound: p.inRound,
+        queued: p.queued,
       }));
+    const plan = this.planWire();
+    // no lobby/resultado mostra o mapa planejado; durante a rodada, o mapa em jogo
+    const shown = this.phase === 'lobby' || this.phase === 'results' ? staticWorld(plan.mapId).map : this.world.map;
     return {
       phase: this.phase,
       matchId: this.matchId,
@@ -468,7 +534,11 @@ export class ArenaRoom extends Room {
       fillWithBots: this.fillWithBots,
       maxTeamSize: MAX_TEAM_SIZE,
       players,
-      map: { id: this.world.map.id, name: this.world.map.name },
+      map: { id: shown.id, name: shown.name, family: shown.family, variant: shown.variant },
+      mode: this.mode,
+      mapChoice: this.mapChoice,
+      formation: this.formation,
+      plan,
       roundDurationSeconds: ArenaRoom.deps.roundDurationSeconds,
       phaseRemainingMs: this.phaseRemainingMs(),
       rematchVotes: [...this.players.values()].filter((p) => p.vote === 'rematch').map((p) => p.playerId),
@@ -478,7 +548,7 @@ export class ArenaRoom extends Room {
   }
 
   private roundLoading(): RoundLoadingMessage {
-    return { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, teamPairId: this.teamPairId, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 };
+    return { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, mode: this.sim?.mode ?? this.mode, teamPairId: this.teamPairId, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 };
   }
 
   private phaseRemainingMs(): number | null {
@@ -504,6 +574,7 @@ export class ArenaRoom extends Room {
       tickRate: TICK_RATE,
       snapshotRate: SNAPSHOT_RATE,
       map: { id: this.world.map.id, version: this.world.map.version, hash: this.world.mapHash },
+      catalogHash: CATALOG_HASH,
       resumed,
     });
   }
@@ -531,62 +602,88 @@ export class ArenaRoom extends Room {
     for (const p of [...this.players.values()]) {
       if (p.isBot || p.connection === 'replaced_by_bot') this.players.delete(p.playerId);
     }
+    // formação e mapa definidos ANTES da rodada (mudanças de grupo valem para a próxima)
+    const { f, mapId } = this.plan();
     const humans = [...this.players.values()];
     for (const p of humans) {
-      p.inRound = true;
+      const t = f.teamOf.get(p.playerId);
       p.loaded = false;
       p.vote = null;
-    }
-    if (this.fillWithBots) {
-      for (const team of [0, 1] as const) {
-        let count = humans.filter((p) => p.team === team).length;
-        while (count < MAX_TEAM_SIZE) {
-          const id = this.nextPlayerId++;
-          this.players.set(id, {
-            playerId: id,
-            userId: null,
-            displayName: BOT_NAMES[(id + team) % BOT_NAMES.length],
-            avatarUrl: null,
-            // bots variam entre as duas bases e os tons (identificados como bots na interface)
-            appearance: APPEARANCE_IDS[(id * 3) % APPEARANCE_IDS.length],
-            isBot: true,
-            team,
-            weaponId: (['esguicho', 'rodo', 'estilingue', 'esguicho'] as const)[count % 4],
-            ready: true,
-            connection: 'bot',
-            loaded: true,
-            inRound: true,
-            sessionId: null,
-            inputBucket: new TokenBucket(1, 1),
-            controlBucket: new TokenBucket(1, 1),
-            invalidCount: 0,
-            lastResyncAt: 0,
-            reconnect: null,
-            vote: 'rematch',
-          });
-          count++;
-        }
+      if (t === undefined) {
+        // fila/espectador: avisado antes; entra com prioridade na próxima revanche
+        p.inRound = false;
+        p.queued = true;
+        p.sitOuts++;
+        const c = this.clients.find((x) => x.sessionId === p.sessionId);
+        if (c) this.notice(c, 'queued', 'Formação completa: você fica na fila e entra na próxima rodada.');
+      } else {
+        p.team = t;
+        p.inRound = true;
+        p.queued = false;
+        p.sitOuts = 0;
       }
     }
+    for (const team of [0, 1] as const) {
+      for (let k = 0; k < f.bots[team]; k++) {
+        const id = this.nextPlayerId++;
+        this.players.set(id, {
+          playerId: id,
+          userId: null,
+          displayName: BOT_NAMES[(id + team) % BOT_NAMES.length],
+          avatarUrl: null,
+          // bots variam entre as duas bases e os tons (identificados como bots na interface)
+          appearance: APPEARANCE_IDS[(id * 3) % APPEARANCE_IDS.length],
+          isBot: true,
+          team,
+          weaponId: (['esguicho', 'rodo', 'estilingue', 'esguicho'] as const)[(f.humans[team] + k) % 4],
+          ready: true,
+          connection: 'bot',
+          loaded: true,
+          inRound: true,
+          sessionId: null,
+          inputBucket: new TokenBucket(1, 1),
+          controlBucket: new TokenBucket(1, 1),
+          invalidCount: 0,
+          lastResyncAt: 0,
+          reconnect: null,
+          vote: 'rematch',
+          joinOrder: Number.MAX_SAFE_INTEGER,
+          sitOuts: 0,
+          queued: false,
+        });
+      }
+    }
+    // mapa e física da rodada (troca só entre rodadas)
+    if (!this.physics || this.world.map.id !== mapId) {
+      this.physics?.dispose();
+      this.world = staticWorld(mapId);
+      this.physics = new PhysicsWorld(this.world.map);
+    }
+    if (this.mapChoice === 'rotacao') this.rotation++;
     const seed = (Math.random() * 2 ** 31) | 0;
     this.teamPairId = pickTeamPair(this.paletteSeed, this.roundId).id;
+    const modeDef = MODES[this.mode];
     this.sim = new MatchSimulation({
       map: this.world.map,
       layout: this.world.layout,
-      physics: this.physics!,
+      physics: this.physics,
       matchId: this.matchId,
       roundId: this.roundId,
       contextTag: paintContextTag(this.matchId, this.world.mapHash),
       seed,
-      durationSeconds: ArenaRoom.deps.roundDurationSeconds,
+      durationSeconds: modeDef.durationSeconds === null ? ArenaRoom.deps.roundDurationSeconds : ArenaRoom.deps.correioDurationSeconds,
       countdownSeconds: MATCH.countdownSeconds,
+      mode: this.mode,
     });
-    for (const p of [...this.players.values()].sort((a, b) => a.playerId - b.playerId)) {
+    for (const p of [...this.players.values()].filter((x) => x.inRound).sort((a, b) => a.playerId - b.playerId)) {
       const sp = this.sim.addPlayer(p.playerId, p.displayName, p.team, p.weaponId, p.isBot);
       if (p.isBot || p.connection === 'replaced_by_bot') sp.bot = new BotBrain(this.world.nav, this.botSeed++);
     }
-    log('info', 'round.loading', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, players: this.players.size });
-    this.broadcast(S2C.ROUND_LOADING, this.roundLoading());
+    log('info', 'round.loading', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, players: this.sim.players.size, mapId: this.world.map.id, mode: this.mode, teamSize: f.teamSize, queued: f.queue.length });
+    for (const c of this.clients) {
+      const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
+      if (p?.inRound) c.send(S2C.ROUND_LOADING, this.roundLoading());
+    }
     this.broadcastLobby();
   }
 
@@ -631,6 +728,7 @@ export class ArenaRoom extends Room {
       else {
         p.ready = false;
         p.inRound = true;
+        p.queued = false;
         p.loaded = false;
         p.vote = null;
       }
@@ -709,7 +807,7 @@ export class ArenaRoom extends Room {
     const sim = this.sim;
     if (!sim) return;
     const tuples: RemotePlayerTuple[] = [];
-    for (const sp of sim.players.values()) tuples.push(remoteTuple(sp));
+    for (const sp of sim.players.values()) tuples.push(remoteTuple(sp, sim.isCarrier(sp.id)));
     const objects: WorldObjectState[] = sim.objects.map((o) =>
       o.kind === 'moringa'
         ? { id: o.id, kind: 'moringa', team: o.team, owner: o.owner, p: r2(o.pos), t: o.armed ? Math.max(0, 1 - o.fuse / MORINGA.fuse) : 0 }
@@ -718,6 +816,8 @@ export class ArenaRoom extends Room {
     const events = this.pendingEvents;
     this.pendingEvents = [];
     const sc: [number, number, number] = [sim.paint.teamUnits[0], sim.paint.teamUnits[1], sim.layout.totalScoringUnits];
+    const obj = sim.objectiveSnapshot();
+    const pk = sim.pickupSnapshot();
     for (const c of this.clients) {
       const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
       if (!p || !p.inRound) continue;
@@ -727,11 +827,13 @@ export class ArenaRoom extends Room {
         ack: sp?.lastProcessedSeq ?? 0,
         ph: this.phase,
         tl: Math.round(sim.phaseRemainingMs),
-        me: sp ? toSelfSnapshot(sp.state) : null,
+        me: sp ? { ...toSelfSnapshot(sp.state), bf: sp.mode.buff, bt: Math.round(sp.mode.buffTicks / TICK_RATE * 10) / 10, mt: Math.round(sp.mode.mutiraoTicks / TICK_RATE * 10) / 10, mc: Math.round(sp.mode.mutiraoCooldownTicks / TICK_RATE * 10) / 10 } : null,
         pl: tuples,
         ob: objects,
         ev: events.filter((e) => e.to === undefined || e.to === p.playerId).map((e) => e.ev),
         sc,
+        ...(obj ? { obj } : {}),
+        ...(pk ? { pk } : {}),
       };
       c.send(S2C.SNAPSHOT, msg);
     }
@@ -742,7 +844,7 @@ function r2(v: [number, number, number]): [number, number, number] {
   return [Math.round(v[0] * 100) / 100, Math.round(v[1] * 100) / 100, Math.round(v[2] * 100) / 100];
 }
 
-export function remoteTuple(sp: SimPlayer): RemotePlayerTuple {
+export function remoteTuple(sp: SimPlayer, carrier = false): RemotePlayerTuple {
   const s = sp.state;
   let flags = 0;
   if (s.alive) flags |= PFLAG_ALIVE;
@@ -758,6 +860,11 @@ export function remoteTuple(sp: SimPlayer): RemotePlayerTuple {
   if (s.travelPhase === 1) flags |= PFLAG_TRAVEL_PREP;
   if (s.travelPhase === 2) flags |= PFLAG_TRAVEL_FLY;
   if (s.special >= RODA_DE_OLEIRO.pointsRequired) flags |= PFLAG_SPECIAL_READY;
+  // informação pública do modo: portador e buffs ativos (efeito visível no personagem)
+  if (carrier) flags |= PFLAG_CARRIER;
+  if (sp.mode.buff === 'embalo' && sp.mode.buffTicks > 0) flags |= PFLAG_EMBALO;
+  if (sp.mode.buff === 'folego' && sp.mode.buffTicks > 0) flags |= PFLAG_FOLEGO;
+  if (sp.mode.mutiraoTicks > 0) flags |= PFLAG_MUTIRAO;
   return [
     sp.id,
     Math.round(s.pos[0] * 100),

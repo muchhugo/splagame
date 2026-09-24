@@ -16,6 +16,8 @@ export interface ServerConfig {
   resultsFile: string;
   maxRooms: number;
   roundDurationSeconds: number;
+  /** Duração do Correio do Ara (s); padrão do modo, ajustável para testes. */
+  correioDurationSeconds: number;
   joinRateBurst: number;
   joinRatePerSecond: number;
   /** Hosts de onde avatares podem vir (https). Vazio = ninguém tem avatar por URL; a interface usa iniciais. */
@@ -50,6 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     resultsFile: env.RESULTS_FILE ?? 'data/results.jsonl',
     maxRooms: Number(env.MAX_ROOMS ?? 50),
     roundDurationSeconds: Number(env.ROUND_DURATION_SECONDS ?? 180),
+    correioDurationSeconds: Number(env.CORREIO_DURATION_SECONDS ?? 240),
     joinRateBurst: Number(env.JOIN_RATE_BURST ?? 10),
     joinRatePerSecond: Number(env.JOIN_RATE_PER_SECOND ?? 1),
     avatarAllowedHosts: (env.AVATAR_ALLOWED_HOSTS ?? '')
