@@ -120,7 +120,21 @@ export class CharacterView {
   private formBlend = 0;
   private spin = 0;
   private squash = 0;
+  private squashAmp = 0.14;
   private wasGrounded = true;
+  /**
+   * "Desleixo controlado": molas de inércia do tronco, cabeça, cabelo e braços, frenagem com
+   * escorregão e aterrissagem elástica. Só visual: posição, rumo, hitbox e mira continuam
+   * exatamente os da simulação. `focus` (0..1) sobe rápido ao mirar/disparar e corta o exagero.
+   */
+  private sp = { lagX: new Spring(), lagZ: new Spring(), twist: new Spring(), headX: new Spring(), headZ: new Spring(), hairX: new Spring(), hairZ: new Spring() };
+  private prevPos: [number, number, number] | null = null;
+  private prevYaw = 0;
+  private velS: [number, number] = [0, 0];
+  private accS: [number, number] = [0, 0];
+  private focus = 0;
+  private brakeT = 0;
+  private flail = 0;
   private blinkTimer = 2;
   private flashTimer = 0;
   private hurtTimer = 0;
@@ -559,11 +573,18 @@ export class CharacterView {
   readonly foot = { step: false, landed: 0 };
   private stepSign = 0;
   private airTime = 0;
+  private lastAir = 0;
 
   /** Reação a dano: tranco, careta e lampejo claro. */
   hitReaction() {
     this.flashTimer = 0.12;
     this.hurtTimer = 0.35;
+    // tranco: o tronco e a cabeça levam um empurrão que balança e assenta
+    const side = (this.playerId * 37 + Math.floor(this.idleT * 10)) % 2 ? 1 : -1;
+    this.sp.lagX.v -= 7;
+    this.sp.headX.v -= 10;
+    this.sp.lagZ.v += 5 * side;
+    this.sp.headZ.v += 8 * side;
   }
 
   update(dt: number, v: CharacterVisual, groundY: number | null, sunVis = 1) {
@@ -585,6 +606,8 @@ export class CharacterView {
     if (!this.wasAlive) {
       this.combat.rotation.y = 0;
       this.wasAlive = true;
+      for (const k of Object.values(this.sp)) k.reset();
+      this.prevPos = null;
     }
     this.root.setEnabled(true);
     this.root.position.set(v.pos[0], v.pos[1], v.pos[2]);
@@ -678,10 +701,20 @@ export class CharacterView {
     this.hips.position.y = 0.64 + bob - (v.grounded ? 0 : 0.02);
     this.torso.rotation.z = s * 0.05 * walk;
     this.torso.scaling.y = 1 + breathe;
-    if (!this.wasGrounded && v.grounded) this.squash = 0.18;
+    if (!this.wasGrounded && v.grounded) {
+      // aterrissagem elástica proporcional à queda (sem mudar a hitbox: é escala visual)
+      const impact = Math.min(1, this.lastAir * 1.4);
+      this.squash = 0.2 + impact * 0.08;
+      this.squashAmp = (0.1 + impact * 0.16) * (1 - this.focus * 0.6);
+      this.sp.lagX.v += 4 * impact;
+      this.sp.headX.v += 7 * impact;
+      this.sp.hairX.v -= 9 * impact;
+      this.flail = Math.max(this.flail, impact);
+    }
+    this.lastAir = v.grounded ? this.lastAir : this.airTime;
     this.wasGrounded = v.grounded;
     this.squash = Math.max(0, this.squash - dt);
-    const sq = this.squash > 0 ? Math.sin((this.squash / 0.18) * Math.PI) * 0.14 : 0;
+    const sq = this.squash > 0 ? Math.sin((this.squash / 0.28) * Math.PI) * this.squashAmp : 0;
     const stretch = !v.grounded ? Math.min(0.08, Math.abs(v.vy) * 0.01) : 0;
     this.combat.scaling.y *= 1 - sq + stretch;
     this.combat.scaling.x *= 1 + sq * 0.5;
@@ -746,6 +779,8 @@ export class CharacterView {
     if (this.band) this.band.scaling.z = 1 + (v.charging ? v.charge * 2.6 : 0);
     this.tankLiquid.scaling.y = Math.max(0.03, v.ink / 100);
 
+    this.looseLayer(dt, v, walk, run, s, celebrate, hurt);
+
     // ---------------- rosto: piscar, olhar, expressão ----------------
     this.blinkTimer -= dt;
     const blink = this.blinkTimer < 0.1 ? 0.12 : 1;
@@ -777,6 +812,158 @@ export class CharacterView {
       const sc = Math.max(0.35, 1 - h * 0.12) * (v.form === 1 ? 0.9 : 1.0);
       this.shadow.scaling.set(sc, 1, sc);
     } else this.shadow.setEnabled(false);
+  }
+
+  /**
+   * Camada de "boneco de posto" controlado, somada por cima da pose-base. Mede velocidade,
+   * aceleração e giro a partir do próprio estado visual e move só nós internos (tronco,
+   * cabeça, cabelo, braços, pernas). O nó raiz (posição e rumo) nunca é alterado aqui.
+   */
+  private looseLayer(dt: number, v: CharacterVisual, walk: number, run: number, s: number, celebrate: number, hurt: number) {
+    if (dt <= 0) return;
+    const sp = this.sp;
+    // velocidade/aceleração visuais (suavizadas); teleporte ou reaparecimento zera
+    let vx = this.velS[0],
+      vz = this.velS[1];
+    if (this.prevPos) {
+      const dx = v.pos[0] - this.prevPos[0],
+        dz = v.pos[2] - this.prevPos[2];
+      if (Math.hypot(dx, dz) > 3) this.velS = [0, 0];
+      else {
+        vx = dx / dt;
+        vz = dz / dt;
+      }
+    }
+    const k = Math.min(1, dt * 14);
+    const ax = (vx - this.velS[0]) / dt,
+      az = (vz - this.velS[1]) / dt;
+    this.velS = [this.velS[0] + (vx - this.velS[0]) * k, this.velS[1] + (vz - this.velS[1]) * k];
+    this.accS = [this.accS[0] + (clampAbs(ax, 60) - this.accS[0]) * k, this.accS[1] + (clampAbs(az, 60) - this.accS[1]) * k];
+    let yawRate = 0;
+    if (this.prevPos) {
+      const dy = Math.atan2(Math.sin(v.yaw - this.prevYaw), Math.cos(v.yaw - this.prevYaw));
+      yawRate = clampAbs(dy / dt, 14);
+    }
+    this.prevPos = [v.pos[0], v.pos[1], v.pos[2]];
+    this.prevYaw = v.yaw;
+    const fx = Math.sin(v.yaw),
+      fz = Math.cos(v.yaw);
+    const fwdAcc = this.accS[0] * fx + this.accS[1] * fz;
+    const sideAcc = this.accS[0] * fz - this.accS[1] * fx;
+
+    // precisão: mirar, disparar, carregar e ações de contato cortam o exagero (entra rápido, sai devagar)
+    const precise = v.firing || v.charging || v.dragging || v.swinging || v.travel > 0 || v.climbing || v.form === 1;
+    this.focus += ((precise ? 1 : 0) - this.focus) * Math.min(1, dt * (precise ? 16 : 3));
+    const loose = 1 - 0.8 * this.focus;
+
+    // inércia do tronco: atrasa ao acelerar, embala ao frear, inclina e torce nas curvas
+    const lagX = sp.lagX.step(clampAbs(-fwdAcc * 0.012, 0.32) * loose, 110, 9, dt);
+    const lagZ = sp.lagZ.step(clampAbs(-yawRate * 0.045 + sideAcc * 0.012, 0.3) * loose, 95, 8, dt);
+    const twist = sp.twist.step(clampAbs(-yawRate * 0.05, 0.32) * loose, 80, 8, dt);
+    this.torso.rotation.x += lagX;
+    this.torso.rotation.z += lagZ;
+    this.torso.rotation.y = twist;
+    // cabeça segue o tronco com atraso e passa um pouco do ponto
+    const headX = sp.headX.step(-lagX * 0.7, 70, 6, dt);
+    const headZ = sp.headZ.step(-lagZ * 0.9 + twist * 0.2, 65, 5.5, dt);
+    this.head.rotation.x += headX * (1 - this.focus * 0.7);
+    this.head.rotation.z = headZ;
+    // cabelo e rabo de cavalo: balançam com a aceleração, o giro e a subida/descida
+    const hairX = sp.hairX.step(clampAbs(v.vy * 0.07 - fwdAcc * 0.018, 0.9), 55, 4, dt);
+    const hairZ = sp.hairZ.step(clampAbs(yawRate * 0.08 - sideAcc * 0.02, 0.8), 50, 4, dt);
+    if (this.pony) {
+      this.pony.rotation.x += clampAbs(hairX, 0.7);
+      this.pony.rotation.z += clampAbs(hairZ, 0.6);
+    }
+
+    const grounded = v.grounded && !v.climbing;
+    // frenagem brusca: escorrega com os pés à frente e os braços jogados para a frente
+    const speed = Math.hypot(this.velS[0], this.velS[1]);
+    if (grounded && fwdAcc < -16 && speed < 3.2) this.brakeT = Math.max(this.brakeT, 0.32);
+    this.brakeT = Math.max(0, this.brakeT - dt);
+    const brake = this.brakeT > 0 ? Math.sin((this.brakeT / 0.32) * Math.PI) * loose : 0;
+    if (brake > 0) {
+      this.thighL.rotation.x -= 0.55 * brake;
+      this.thighR.rotation.x -= 0.35 * brake;
+      this.kneeL.rotation.x += 0.2 * brake;
+      this.hips.position.y -= 0.035 * brake;
+      this.torso.rotation.x -= 0.18 * brake;
+    }
+    this.flail = Math.max(0, this.flail - dt * 2.5);
+
+    const t = this.idleT;
+    if (celebrate > 0) {
+      // vitória: rebolado, braços moles acenando fora de fase e cabeça balançando
+      this.combat.rotation.y = Math.sin(t * 2.4) * 0.45;
+      this.shoulderL.rotation.z = -0.35 - Math.abs(Math.sin(t * 7)) * 0.6;
+      this.shoulderR.rotation.z = 0.35 + Math.abs(Math.sin(t * 7 + 1.4)) * 0.6;
+      this.elbowL.rotation.x = -0.2 - Math.max(0, Math.sin(t * 7 + 0.8)) * 0.9;
+      this.elbowR.rotation.x = -0.2 - Math.max(0, Math.sin(t * 7 + 2.2)) * 0.9;
+      this.head.rotation.z += Math.sin(t * 5) * 0.25;
+      this.torso.rotation.z += Math.sin(t * 2.4 + 0.6) * 0.12;
+      return;
+    }
+    if (celebrate < 0) {
+      // derrota: largado, braços pendurados balançando e cabeça "não acredito"
+      this.combat.rotation.y = 0;
+      this.shoulderL.rotation.x = 0.1 + Math.sin(t * 1.4) * 0.18;
+      this.shoulderR.rotation.x = 0.1 + Math.sin(t * 1.4 + 0.5) * 0.18;
+      this.head.rotation.y = Math.sin(t * 1.1) * 0.35;
+      this.hips.position.y -= 0.05;
+      this.kneeL.rotation.x = this.kneeR.rotation.x = 0.25;
+      return;
+    }
+    this.combat.rotation.y = 0;
+    if (this.focus > 0.95) return;
+    const idle = (1 - walk) * (grounded ? 1 : 0);
+    // braço livre: balanço exagerado e cotovelo mole na corrida; pendurado e oscilando parado
+    const armSwing = s * (0.9 + run * 0.5) * walk;
+    const floppy = Math.sin(this.phase + 1.3) * 0.45 * walk;
+    const dangle = Math.sin(t * 1.7 + this.playerId) * 0.12;
+    const freeArm = this.weaponId !== 'rodo';
+    if (freeArm) {
+      const lx = grounded ? (walk > 0.05 ? -0.35 - armSwing : -0.12 + dangle) : -2.1 + Math.sin(t * 15) * 0.35;
+      this.shoulderL.rotation.x += (lx - this.shoulderL.rotation.x) * loose;
+      this.shoulderL.rotation.z += ((grounded ? 0.16 + Math.abs(floppy) * 0.35 + idle * 0.05 : 0.7) - this.shoulderL.rotation.z) * loose;
+      this.elbowL.rotation.x += ((grounded ? -0.35 - Math.max(0, floppy) * 1.1 - idle * 0.15 : -0.5) - this.elbowL.rotation.x) * loose;
+      // mão da ferramenta: abaixa um pouco e balança quando não está mirando (volta rápido ao mirar)
+      const rDown = grounded ? idle * 0.55 + walk * 0.25 : 0.35;
+      this.shoulderR.rotation.x += (rDown + s * 0.25 * walk) * loose;
+      this.shoulderR.rotation.z += (grounded ? -0.06 : -0.35) * loose;
+    }
+    // ao frear ou no pouso forte, os braços voam para a frente/para cima e voltam
+    const toss = Math.max(brake, this.flail);
+    if (toss > 0) {
+      this.shoulderL.rotation.x -= 1.1 * toss;
+      this.shoulderR.rotation.x -= 0.4 * toss;
+      this.shoulderL.rotation.z += 0.3 * toss;
+    }
+    // parado: postura largada, peso trocando de lado e uma "sacudida" de vez em quando
+    if (idle > 0) {
+      const sway = Math.sin(t * 1.25 + this.playerId * 0.7);
+      this.torso.rotation.x += 0.09 * idle * loose;
+      this.torso.rotation.z += sway * 0.06 * idle * loose;
+      this.hips.position.x = sway * 0.025 * idle * loose;
+      this.hips.rotation.z = -sway * 0.05 * idle * loose;
+      this.thighL.rotation.z = 0.06 * idle;
+      this.thighR.rotation.z = -0.06 * idle;
+      const fidget = Math.pow(Math.max(0, Math.sin(t * 0.55 + this.playerId * 1.9)), 12);
+      this.head.rotation.z += fidget * 0.35 * loose;
+      this.shoulderL.position.y = 0.38 + fidget * 0.05;
+      this.shoulderR.position.y = 0.38 + fidget * 0.05;
+    } else {
+      this.hips.position.x = 0;
+      this.hips.rotation.z = 0;
+      this.thighL.rotation.z = this.thighR.rotation.z = 0;
+      this.shoulderL.position.y = this.shoulderR.position.y = 0.38;
+    }
+    // no ar: braços abertos girando, pernas pedalando (só na subida e no topo)
+    if (!grounded && !v.climbing) {
+      const pedal = Math.sin(t * 16) * 0.35 * loose;
+      this.thighL.rotation.x += pedal;
+      this.thighR.rotation.x -= pedal;
+    }
+    void hurt;
   }
 
   muzzleWorld(): Vector3 {
@@ -832,3 +1019,28 @@ function topProfile(): Vector3[] {
     new Vector3(0, 0.55, 0),
   ];
 }
+
+/**
+ * Mola amortecida para movimento secundário (só apresentação). Semi-implícita e com
+ * passo limitado: estável mesmo com quadros longos.
+ */
+class Spring {
+  x = 0;
+  v = 0;
+  step(target: number, k: number, damping: number, dt: number): number {
+    const h = Math.min(dt, 1 / 30);
+    let n = Math.max(1, Math.ceil(dt / h));
+    const hh = dt / n;
+    while (n-- > 0) {
+      this.v += (k * (target - this.x) - damping * this.v) * hh;
+      this.x += this.v * hh;
+    }
+    return this.x;
+  }
+  reset() {
+    this.x = 0;
+    this.v = 0;
+  }
+}
+
+const clampAbs = (x: number, m: number) => Math.max(-m, Math.min(m, x));

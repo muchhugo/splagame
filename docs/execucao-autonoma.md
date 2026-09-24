@@ -66,6 +66,13 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
   correção determinística de penetração em `CharacterBody.move`, compartilhada por servidor
   e previsão, com teste de regressão.
 - **LOD por distância** nos personagens, para caber 16 em campo.
+- **Animação solta só na apresentação.** O pedido de movimento de boneco de posto foi
+  implementado como uma camada de molas depois da pose base. Ela não muda raiz, rumo nem
+  hitbox, e um fator de foco reduz o exagero a 20% durante mira, disparo e ações de
+  precisão. Na vitrine, em SwiftShader, a camada responde: a freada dispara a derrapada, a
+  curva gera atraso e torção, o squash chega a 0,26 numa queda de 1,5 m e o foco fica em 1
+  no disparo. Os testes e o E2E de partida passaram. **Não foi avaliada por pessoas
+  jogando**, então a intensidade é de protótipo.
 - **Validação numa worktree isolada** do commit, com pilha própria em portas livres: valida
   o que está commitado e não interfere na pilha de desenvolvimento.
 

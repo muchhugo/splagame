@@ -116,6 +116,33 @@ Cartoon vibrante e amigável, cômico sem ser infantil, com identidade própria 
   limitadas e reduzidas perto da câmera, tremor de câmera leve e desligável, e personagem colado
   na câmera esmaecido para não tapar a mira.
 
+### Animação: solta, desleixada e legível
+
+Os personagens se mexem com uma energia de boneco de posto, controlada. O desleixo é
+**só apresentação**: a camada (`looseLayer` em `CharacterView.ts`) nunca muda posição, rumo,
+hitbox, colisão, previsão nem direção da mira. Ela lê a velocidade e a aceleração pela
+posição renderizada e move molas amortecidas:
+
+- **Corrida:** braço livre com balanço exagerado e cotovelo mole; o tronco atrasa e torce na
+  curva e se inclina na aceleração.
+- **Mudança brusca:** ao frear forte, uma derrapada curta: tronco para trás, braços jogados e
+  pés compensando.
+- **Salto e aterrissagem:** no ar, pernas pedalando e braços para cima; ao pousar, squash
+  proporcional à altura da queda.
+- **Idle:** corpo largado, peso trocando de quadril, balanço lento e uma mexida ocasional.
+- **Secundários:** cabeça e rabo de cavalo em molas próprias, com limite de ângulo para não
+  atravessar o corpo.
+- **Dano, vitória e derrota:** o dano dá um tranco nas molas; a vitória rebola e sacode os
+  braços; a derrota deixa os braços pendurados e a cabeça balançando.
+
+**Foco competitivo.** Ao atirar, carregar, arrastar ou girar a ferramenta, e também na viagem
+tática, escalando ou no Pião, o fator de foco sobe em cerca de 60 ms. O exagero cai então para
+20%, e o braço da ferramenta fica na pose de mira. Quando a ação acaba, o foco volta devagar
+(cerca de 0,3 s), sem estalo. A silhueta de disparo e a de mira ficam iguais às de antes.
+
+A vitrine de desenvolvimento tem poses com movimento real (`freada`, `curva` e
+`aterrissagem`), que rodam em passo fixo e congelam logo depois do evento.
+
 ## Cores das equipes por rodada
 
 O servidor escolhe um par de apresentação a cada rodada (Urucum × Anil, Açaí × Mate, Pitanga

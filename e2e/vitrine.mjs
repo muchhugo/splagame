@@ -17,7 +17,8 @@ for (const pose of POSES) {
     const arma = pose === 'rodo' ? 'rodo' : pose === 'estilingue' ? 'estilingue' : 'esguicho';
     await page.goto(`${GAME_URL}vitrine.html?pose=${encodeURIComponent(pose)}&giro=${giro}&arma=${arma}`);
     await page.waitForFunction(() => window.__vitrine?.ready, null, { timeout: 60000 });
-    await page.waitForTimeout(pose === 'dano' ? 750 : 1400);
+    if (['freada', 'curva', 'aterrissagem'].includes(pose)) await page.waitForFunction(() => window.__vitrine?.congelado, null, { timeout: 60000 });
+    else await page.waitForTimeout(pose === 'dano' ? 750 : 1400);
     await page.screenshot({ path: `${DIR}vitrine-${pose}-${nome}.png` });
   }
 }

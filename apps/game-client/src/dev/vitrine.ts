@@ -3,6 +3,8 @@
  * (o Vite só empacota `index.html`). Mostra as 8 aparências lado a lado com o mesmo
  * CharacterView do jogo, em uma pose fixa, para capturas comparáveis e revisão.
  *   ?pose=parado|corrida|salto|disparo|pião|dano|vitoria|derrota|rodo|estilingue
+ *         |freada|curva|aterrissagem (movimento real: a camada solta mede velocidade e
+ *          aceleração pela posição; a cena congela logo depois do evento)
  *   &giro=0..6.28 (ângulo da câmera)  &arma=esguicho|rodo|estilingue
  */
 import { ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, MeshBuilder, Scene, StandardMaterial, Vector3 } from '@babylonjs/core';
@@ -52,14 +54,38 @@ function visual(x: number, t: number): CharacterVisual {
   if (pose === 'estilingue') Object.assign(base, { charging: true, charge: 0.8 });
   if (pose === 'vitoria') base.celebrate = 1;
   if (pose === 'derrota') base.celebrate = -1;
-  void t;
+  // Poses com movimento: corre em direção à câmera e para; corre de lado e vira; cai e pousa.
+  if (pose === 'freada') {
+    const tt = Math.min(t, T_EVENTO);
+    Object.assign(base, { pos: [x, 0, -6.5 * (T_EVENTO - tt)], yaw: 0, speed: t < T_EVENTO ? 6.5 : 0 });
+  }
+  if (pose === 'curva') {
+    const antes = t < T_EVENTO;
+    const z = antes ? 0 : -6.5 * (t - T_EVENTO);
+    const dx = antes ? 6.5 * (t - T_EVENTO) : 0;
+    Object.assign(base, { pos: [x + dx * 0.15, 0, z * 0.15], yaw: antes ? Math.PI / 2 : Math.PI, speed: 6.5 });
+  }
+  if (pose === 'aterrissagem') {
+    const tq = T_EVENTO - 0.55;
+    const y = t < tq ? 1.5 : Math.max(0, 1.5 - 4.9 * (t - tq) ** 2 * 2);
+    Object.assign(base, { pos: [x, y, 0], grounded: y <= 0, vy: y <= 0 ? 0 : -9.8 * 2 * Math.max(0, t - tq) });
+  }
   return base;
 }
 
+const T_EVENTO = 1.2;
+// quanto tempo depois do evento a cena congela (pico do squash / derrapada / atraso do tronco)
+const CONGELA = pose === 'freada' ? T_EVENTO + 0.1 : pose === 'curva' ? T_EVENTO + 0.12 : pose === 'aterrissagem' ? T_EVENTO + 0.06 : Infinity;
 let t = 0;
 let hurtDone = false;
 engine.runRenderLoop(() => {
-  const dt = Math.min(0.05, engine.getDeltaTime() / 1000);
+  // passo fixo nas poses com movimento: a captura não depende da velocidade da máquina
+  const dt = CONGELA < Infinity ? 1 / 60 : Math.min(0.05, engine.getDeltaTime() / 1000);
+  if (t >= CONGELA) {
+    (window as unknown as { __vitrine: { congelado?: boolean } }).__vitrine.congelado = true;
+    scene.render();
+    return;
+  }
   t += dt;
   for (const { v, x } of views) {
     v.camDist = 8;
