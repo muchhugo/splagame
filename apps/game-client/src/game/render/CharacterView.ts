@@ -631,7 +631,10 @@ export class CharacterView {
     this.visibleFactor += (vis - this.visibleFactor) * Math.min(1, dt * 10);
     const translucent = this.visibleFactor < 0.98;
     for (const m of this.meshes) if (m !== this.swirl) m.visibility = this.visibleFactor;
-    for (const m of this.outlined) m.renderOutline = !translucent;
+    // LOD por distância (menos desenho com 16 em campo): o contorno é uma passada extra
+    // por malha e some a partir de 20 m
+    const outlineOn = !translucent && this.camDist < 20;
+    for (const m of this.outlined) m.renderOutline = outlineOn;
     // aura de modo (prioridade: Mutirão > Embalo > Fôlego); o portador é marcado pela cápsula
     const auraKind = v.mutirao ? 'mutirao' : v.embalo ? 'embalo' : v.folego ? 'folego' : null;
     this.aura.setEnabled(auraKind !== null && this.visibleFactor > 0.3);
@@ -641,8 +644,8 @@ export class CharacterView {
       this.aura.scaling.setAll(1 + Math.sin(this.idleT * pulse) * 0.08 + (v.carrier ? 0.15 : 0));
       this.aura.rotation.y += dt * (auraKind === 'embalo' ? 6 : 1.5);
     }
-    // LOD: detalhes pequenos do rosto e da ferramenta somem de longe (menos desenho)
-    const near = this.camDist < 26;
+    // LOD: detalhes pequenos do rosto e da ferramenta somem a partir de 18 m
+    const near = this.camDist < 18;
     for (const m of this.detail) m.setEnabled(near);
 
     // ---------------- locomoção ----------------

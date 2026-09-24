@@ -19,7 +19,8 @@
     "e2e": "node e2e/shell.mjs && node e2e/gameplay.mjs && node e2e/gamepad.mjs && node e2e/tutorial.mjs",
     "e2e:voz": "node e2e/voz.mjs",
     "e2e:audio": "node e2e/audio.mjs && node e2e/audio-cobertura.mjs",
-    "audio:build": "python3 scripts/audio/build_sfx.py"
+    "audio:build": "python3 scripts/audio/build_sfx.py",
+    "validar": "node scripts/validar.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
