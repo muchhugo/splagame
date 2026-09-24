@@ -38,6 +38,9 @@ export class HeadlessClient {
   leftCode: number | null = null;
   reconnects = 0;
   drops = 0;
+  /** Bytes de aplicação recebidos/enviados pelo WebSocket (medição de banda local). */
+  bytesIn = 0;
+  bytesOut = 0;
 
   constructor(readonly endpoint: string) {
     this.client = new Client(endpoint);
@@ -57,6 +60,7 @@ export class HeadlessClient {
 
   attach(room: Room) {
     this.room = room;
+    this.countBytes(room);
     room.reconnection.minUptime = 0;
     room.reconnection.minDelay = 50;
     room.reconnection.delay = 50;
@@ -79,6 +83,18 @@ export class HeadlessClient {
     room.onLeave((code: number) => (this.leftCode = code));
     room.onReconnect(() => this.reconnects++);
     room.onDrop(() => this.drops++);
+  }
+
+  private countBytes(room: Room) {
+    type Ws = { addEventListener?: (t: 'message', cb: (ev: { data: unknown }) => void) => void };
+    const tr = (room as unknown as { connection: { transport: { ws: Ws; send: (d: Uint8Array) => void } } }).connection.transport;
+    const size = (d: unknown) => (d instanceof ArrayBuffer ? d.byteLength : ArrayBuffer.isView(d) ? d.byteLength : typeof d === 'string' ? d.length : 0);
+    tr.ws.addEventListener?.('message', (ev) => (this.bytesIn += size(ev.data)));
+    const send = tr.send.bind(tr);
+    tr.send = (d: Uint8Array) => {
+      this.bytesOut += d.byteLength;
+      send(d);
+    };
   }
 
   send(type: string, msg: unknown) {

@@ -144,6 +144,12 @@ export class Effects {
   private lasers = new Map<number, Beam>();
   private objects = new Map<number, { node: TransformNode; kind: 'moringa' | 'wheel'; ring?: Mesh; seen: number }>();
   private objectMats: StandardMaterial[] = [];
+  /** Materiais compartilhados dos objetos de mundo (um por tipo e equipe; nunca por objeto). */
+  private objMat: { clay: StandardMaterial | null; team: [StandardMaterial | null, StandardMaterial | null]; ring: [StandardMaterial | null, StandardMaterial | null] } = {
+    clay: null,
+    team: [null, null],
+    ring: [null, null],
+  };
   private teamColors: [Color3, Color3];
   private ceramic = new Color3(0.95, 0.92, 0.85);
   private time = 0;
@@ -193,6 +199,51 @@ export class Effects {
 
   setTeamColors(c: [Color3, Color3]) {
     this.teamColors = c;
+    for (const t of [0, 1] as const) {
+      const tm = this.objMat.team[t];
+      if (tm) {
+        tm.diffuseColor = c[t];
+        tm.emissiveColor = c[t].scale(0.4);
+      }
+      const rm = this.objMat.ring[t];
+      if (rm) rm.emissiveColor = c[t];
+    }
+  }
+
+  private clayMat() {
+    if (!this.objMat.clay) {
+      const m = new StandardMaterial('mat-barro-obj', this.scene);
+      m.diffuseColor = new Color3(0.72, 0.42, 0.25);
+      m.specularColor = new Color3(0.2, 0.2, 0.2);
+      this.objectMats.push(m);
+      this.objMat.clay = m;
+    }
+    return this.objMat.clay;
+  }
+
+  private teamObjMat(team: TeamId) {
+    let m = this.objMat.team[team];
+    if (!m) {
+      m = new StandardMaterial(`mat-equipe-obj-${team}`, this.scene);
+      m.diffuseColor = this.teamColors[team];
+      m.emissiveColor = this.teamColors[team].scale(0.4);
+      this.objectMats.push(m);
+      this.objMat.team[team] = m;
+    }
+    return m;
+  }
+
+  private ringMat(team: TeamId) {
+    let m = this.objMat.ring[team];
+    if (!m) {
+      m = new StandardMaterial(`mat-alcance-${team}`, this.scene);
+      m.disableLighting = true;
+      m.emissiveColor = this.teamColors[team];
+      m.alpha = 0.6;
+      this.objectMats.push(m);
+      this.objMat.ring[team] = m;
+    }
+    return m;
   }
 
   color(team: TeamId) {
@@ -369,14 +420,8 @@ export class Effects {
 
   private makeObject(o: WorldObjectState) {
     const node = new TransformNode(`obj-${o.id}`, this.scene);
-    const c = this.teamColors[o.team];
-    const clay = new StandardMaterial('mat-barro-obj', this.scene);
-    clay.diffuseColor = new Color3(0.72, 0.42, 0.25);
-    clay.specularColor = new Color3(0.2, 0.2, 0.2);
-    const team = new StandardMaterial('mat-equipe-obj', this.scene);
-    team.diffuseColor = c;
-    team.emissiveColor = c.scale(0.4);
-    this.objectMats.push(clay, team);
+    const clay = this.clayMat();
+    const team = this.teamObjMat(o.team);
     if (o.kind === 'moringa') {
       const body = MeshBuilder.CreateSphere('moringa', { diameter: MORINGA.radius * 2.2, segments: 10 }, this.scene);
       body.scaling.y = 1.15;
@@ -403,12 +448,7 @@ export class Effects {
     // aviso ao adversário: anel no chão com o alcance máximo
     const ring = MeshBuilder.CreateTorus('alcance', { diameter: RODA_DE_OLEIRO.waveRadius * 2, thickness: 0.08, tessellation: 64 }, this.scene);
     ring.position.y = 0.05;
-    const rm = new StandardMaterial('mat-alcance', this.scene);
-    rm.disableLighting = true;
-    rm.emissiveColor = c;
-    rm.alpha = 0.6;
-    ring.material = rm;
-    this.objectMats.push(rm);
+    ring.material = this.ringMat(o.team);
     ring.parent = node;
     return { node, kind: 'wheel' as const, ring, seen: performance.now() };
   }

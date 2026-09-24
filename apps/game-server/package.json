@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "load-test": "tsx scripts/load-test.ts"
   },
   "dependencies": {
     "@borrifo/game-content": "workspace:*",

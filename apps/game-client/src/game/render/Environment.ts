@@ -13,8 +13,13 @@ export class Environment {
   private root: TransformNode;
   private sky: Mesh;
   private skyMat: ShaderMaterial;
-  private smoke: Mesh | null = null;
-  private smokeData: Array<{ age: number; seed: number }> = [];
+  /** Uma coluna de fumaça por chaminé; buffers pré-alocados (sem alocação por quadro). */
+  private smokes: Array<{ mesh: Mesh; buf: Float32Array; puffs: Array<{ age: number; seed: number }> }> = [];
+  private smokeMat: StandardMaterial | null = null;
+  private tmpScale = new Vector3();
+  private tmpPos = new Vector3();
+  private tmpMat = new Matrix();
+  private tmpQuat = Quaternion.Identity();
   private time = 0;
   private lamps: StandardMaterial[] = [];
   private toon = new Map<string, ToonMaterial>();
@@ -72,11 +77,44 @@ export class Environment {
       mt.parent = this.root;
     }
     for (const d of map.decor) this.addDecor(d);
+    this.mergeStatic();
     this.root.getChildMeshes().forEach((m) => {
       m.isPickable = false;
-      if (m !== this.sky && m !== this.smoke) m.freezeWorldMatrix();
+      if (m !== this.sky && !this.smokes.some((f) => f.mesh === m)) m.freezeWorldMatrix();
     });
     for (const s of this.spinners) s.getChildMeshes().forEach((m) => m.unfreezeWorldMatrix());
+  }
+
+  /**
+   * Funde a decoração estática que compartilha material numa única malha
+   * (menos chamadas de desenho). Ficam de fora: céu, fumaça, peças que giram,
+   * malhas com instâncias finas e o que tem contorno próprio.
+   */
+  private mergeStatic() {
+    const spinning = new Set<Mesh>();
+    for (const sp of this.spinners) for (const m of sp.getChildMeshes()) spinning.add(m as Mesh);
+    const groups = new Map<number, Mesh[]>();
+    for (const m of this.root.getChildMeshes()) {
+      if (!(m instanceof Mesh) || !m.material || m === this.sky || spinning.has(m) || m.hasThinInstances || m.renderOutline) continue;
+      if (this.smokes.some((f) => f.mesh === m)) continue;
+      const k = m.material.uniqueId;
+      let g = groups.get(k);
+      if (!g) groups.set(k, (g = []));
+      g.push(m);
+    }
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      let merged: Mesh | null = null;
+      try {
+        merged = Mesh.MergeMeshes(g, true, true);
+      } catch {
+        merged = null; // atributos de vértice incompatíveis: mantém as malhas separadas
+      }
+      if (merged) {
+        merged.name = `entorno-${g[0].material!.name}`;
+        merged.parent = this.root;
+      }
+    }
   }
 
   private tm(name: string, rgb: [number, number, number], gloss = 0.1): ToonMaterial {
@@ -219,18 +257,23 @@ export class Environment {
         break;
       }
       case 'fumaca': {
-        this.smoke = MeshBuilder.CreateSphere('fumaca', { diameter: 0.9, segments: 8 }, s);
-        const m = new StandardMaterial('mat-fumaca', s);
-        m.diffuseColor = new Color3(0.98, 0.97, 1.0);
-        m.emissiveColor = new Color3(0.6, 0.6, 0.66);
-        m.specularColor = new Color3(0, 0, 0);
-        m.alpha = 0.6;
-        this.std.push(m);
-        this.smoke.material = m;
-        this.smoke.parent = node;
-        for (let i = 0; i < 12; i++) this.smokeData.push({ age: i * 0.5, seed: i * 13.7 });
-        this.smoke.thinInstanceSetBuffer('matrix', new Float32Array(this.smokeData.length * 16), 16, false);
-        this.smoke.alwaysSelectAsActiveMesh = true;
+        if (!this.smokeMat) {
+          const m = new StandardMaterial('mat-fumaca', s);
+          m.diffuseColor = new Color3(0.98, 0.97, 1.0);
+          m.emissiveColor = new Color3(0.6, 0.6, 0.66);
+          m.specularColor = new Color3(0, 0, 0);
+          m.alpha = 0.6;
+          this.std.push(m);
+          this.smokeMat = m;
+        }
+        const mesh = MeshBuilder.CreateSphere('fumaca', { diameter: 0.9, segments: 8 }, s);
+        mesh.material = this.smokeMat;
+        mesh.parent = node;
+        const puffs = Array.from({ length: 12 }, (_, i) => ({ age: i * 0.5, seed: i * 13.7 + this.smokes.length * 5.1 }));
+        const buf = new Float32Array(puffs.length * 16);
+        mesh.thinInstanceSetBuffer('matrix', buf, 16, false);
+        mesh.alwaysSelectAsActiveMesh = true;
+        this.smokes.push({ mesh, buf, puffs });
         break;
       }
       case 'estatua': {
@@ -368,16 +411,17 @@ export class Environment {
     const flicker = 0.9 + Math.sin(this.time * 9) * 0.05 + Math.sin(this.time * 23.3) * 0.04;
     for (const l of this.lamps) l.emissiveColor.set(1 * flicker, 0.78 * flicker, 0.4 * flicker);
     for (const sp of this.spinners) sp.rotation.y += dt * (sp.name === 'estatua-giro' ? 0.35 : 1.6);
-    if (this.smoke) {
-      const buf = new Float32Array(this.smokeData.length * 16);
-      this.smokeData.forEach((p, i) => {
+    for (const f of this.smokes) {
+      f.puffs.forEach((p, i) => {
         p.age = (p.age + dt) % 6;
         const t = p.age / 6;
         const sc = (0.6 + t * 2.6) * Math.min(1, (1 - t) * 4);
-        const pos = new Vector3(Math.sin(p.seed + this.time * 0.3) * t * 1.2 + t * 2.5, t * 9, Math.cos(p.seed) * t * 0.8);
-        Matrix.Compose(new Vector3(sc, sc, sc), Quaternion.Identity(), pos).copyToArray(buf, i * 16);
+        this.tmpScale.setAll(sc);
+        this.tmpPos.set(Math.sin(p.seed + this.time * 0.3) * t * 1.2 + t * 2.5, t * 9, Math.cos(p.seed) * t * 0.8);
+        Matrix.ComposeToRef(this.tmpScale, this.tmpQuat, this.tmpPos, this.tmpMat);
+        this.tmpMat.copyToArray(f.buf, i * 16);
       });
-      this.smoke.thinInstanceSetBuffer('matrix', buf, 16, false);
+      f.mesh.thinInstanceBufferUpdated('matrix');
     }
   }
 
