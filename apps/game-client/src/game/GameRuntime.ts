@@ -1050,7 +1050,10 @@ export class GameRuntime {
           pl.name0 = lp.displayName;
         }
         pl.el.classList.toggle('enemy', !ally);
-        pl.el.classList.toggle('speaking', lp.userId ? !!this.hooks.voiceOf(lp.userId)?.speaking : false);
+        const speaking = lp.userId ? !!this.hooks.voiceOf(lp.userId)?.speaking : false;
+        pl.el.classList.toggle('speaking', speaking);
+        pl.el.dataset.speaking = speaking ? 'true' : 'false';
+        pl.el.dataset.player = String(id);
         pl.el.style.color = `var(--team${lp.team})`;
         pl.el.style.opacity = String(Math.max(0.35, Math.min(1, 1.25 - d / (ally ? NAMEPLATE.allyRange : NAMEPLATE.enemyRange))));
         pl.el.style.transform = `translate(${sp[0].toFixed(1)}px, ${sp[1].toFixed(1)}px) translate(-50%, -100%)`;

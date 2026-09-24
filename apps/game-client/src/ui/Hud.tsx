@@ -53,7 +53,7 @@ export function Hud() {
       <div className="hud-top">
         <div className="roster" aria-label={`Turma ${teams[0].name}`}>
           {t0.map((r) => (
-            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team0)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
+            <div key={r.playerId} data-player={r.playerId} data-speaking={r.speaking ? 'true' : 'false'} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team0)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
               {teams[0].symbol}
             </div>
           ))}
@@ -63,7 +63,7 @@ export function Hud() {
         </div>
         <div className="roster" aria-label={`Turma ${teams[1].name}`}>
           {t1.map((r) => (
-            <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team1)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
+            <div key={r.playerId} data-player={r.playerId} data-speaking={r.speaking ? 'true' : 'false'} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team1)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
               {teams[1].symbol}
             </div>
           ))}

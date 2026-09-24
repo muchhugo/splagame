@@ -29,6 +29,9 @@ export const LAB_ROSTER: readonly LabUser[] = Object.freeze([
   { id: 'elis', username: 'elis', displayName: 'Elis', nickname: 'Elis <b>negrito</b>' },
   { id: 'fabio', username: 'fabio_22', displayName: '' },
   { id: 'gabi', username: 'gabi', displayName: 'Gabriela', nickname: 'Gabi' },
+  // duas contas diferentes com o MESMO nome: tudo deve ser ligado por id, nunca pelo texto
+  { id: 'joao-silva', username: 'joao.silva', displayName: 'João' },
+  { id: 'joao-souza', username: 'joao.souza', displayName: 'João' },
   { id: 'hugo', username: 'hugo', displayName: 'Hugo' },
 ]);
 

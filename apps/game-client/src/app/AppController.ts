@@ -9,7 +9,7 @@ import { hudStore } from '../game/hud';
 import { deviceStore } from '../game/input/device';
 import { pushNotice, showError, uiStore } from './uiStore';
 import { maybeAutoStartTutorial } from './tutorial';
-import { voiceByUser, type VoiceInfo } from './profiles';
+import { SpeakingSmoother, voiceViewStore } from './profiles';
 
 const MAP = MAPS[DEFAULT_MAP_ID];
 const MAP_HASH = computeMapHash(MAP);
@@ -27,8 +27,9 @@ export class AppController {
   private closed = false;
   private rejoinAttempts = 0;
   private lastLobby: LobbyState | null = null;
-  /** userId → voz, recalculado quando o host publica um novo estado da chamada. */
-  private voiceMap = new Map<string, VoiceInfo>();
+  /** userId → voz (suavizada), recalculada quando o host publica um novo estado da chamada. */
+  private speaking = new SpeakingSmoother();
+  private voiceTimer: ReturnType<typeof setTimeout> | null = null;
   private currentRound = 0;
 
   constructor(private readonly bridge: ActivityClient) {
@@ -43,12 +44,21 @@ export class AppController {
     const b = this.bridge;
     uiStore.set({ context: b.context, voice: b.voice });
     this.voice = new HostVoiceAdapter(b);
-    this.voiceMap = voiceByUser(b.voice);
+    const publishVoice = () => {
+      voiceViewStore.set({ map: this.speaking.view() });
+      if (this.voiceTimer) clearTimeout(this.voiceTimer);
+      const next = this.speaking.nextChangeIn();
+      this.voiceTimer = next === null ? null : setTimeout(publishVoice, next + 5);
+    };
+    this.speaking.update(b.voice);
+    publishVoice();
     this.offs.push(
       this.voice.subscribe((v) => {
-        this.voiceMap = voiceByUser(v);
+        this.speaking.update(v);
+        publishVoice();
         uiStore.set({ voice: v });
       }),
+      () => this.voiceTimer && clearTimeout(this.voiceTimer),
     );
     this.offs.push(b.on('ACTIVITY_CONTEXT_UPDATED', (p) => uiStore.set({ context: p.context })));
     this.offs.push(b.on('ACTIVITY_VISIBILITY_CHANGED', (p) => this.runtime?.setVisible(p.visible)));
@@ -84,7 +94,7 @@ export class AppController {
         },
         onUserGesture: () => void this.unlockAudio(),
         playerName: (id) => this.lastLobby?.players.find((p) => p.playerId === id)?.displayName ?? `#${id}`,
-        voiceOf: (userId) => this.voiceMap.get(userId),
+        voiceOf: (userId) => voiceViewStore.get().map.get(userId),
         requestPaintResync: (roundId, reason) => this.conn?.send(C2S.PAINT_RESYNC, { roundId, reason: reason.slice(0, 40) }),
       }, progress);
       // o controle só move o personagem com a partida visível e sem menu por cima

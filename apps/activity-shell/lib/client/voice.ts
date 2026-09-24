@@ -36,6 +36,18 @@ export class LabVoiceController {
     },
   ) {
     this.state = opts.configured ? IDLE : VOICE_NOT_CONFIGURED;
+    // FIXTURE de teste SOMENTE em desenvolvimento: publica um VoiceState escolhido pelo teste pelo
+    // bridge real, para verificar contrato e interface de forma determinística. Não substitui o teste
+    // com mídia (não prova detecção de fala nem áudio). Não é ativável por URL.
+    if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+      (window as unknown as { __labVoiceFixture?: (v: VoiceState | null) => void }).__labVoiceFixture = (v) => this.setFixture(v);
+    }
+  }
+
+  private fixture: VoiceState | null = null;
+  private setFixture(v: VoiceState | null) {
+    this.fixture = v;
+    this.subs.forEach((s) => s());
   }
 
   readonly subscribe = (cb: () => void): (() => void) => {
@@ -44,7 +56,7 @@ export class LabVoiceController {
       this.subs.delete(cb);
     };
   };
-  readonly getState = (): VoiceState => this.state;
+  readonly getState = (): VoiceState => this.fixture ?? this.state;
   readonly getExtras = (): VoiceUiExtras => this.extras;
 
   get configured() {
@@ -148,6 +160,9 @@ export class LabVoiceController {
           this.opts.log('Voz: desconectado da chamada.');
         });
       this.room = room;
+      // diagnóstico SOMENTE em desenvolvimento (e2e/voz-diagnostico.mjs): níveis e estado de fala,
+      // sem tokens, URLs ou dados além de identidade de laboratório
+      if (process.env.NODE_ENV !== 'production') (window as unknown as { __labVoiceDiag?: () => Promise<unknown> }).__labVoiceDiag = () => this.diagnostics();
       await room.connect(url, token, { autoSubscribe: true });
       this.reason = 'ok';
       this.opts.log('Voz: conectado à chamada (microfone desligado).');
@@ -170,6 +185,46 @@ export class LabVoiceController {
     } finally {
       this.setExtras({ busy: false });
     }
+  }
+
+  /** Níveis de áudio e estado de fala (diagnóstico de laboratório). */
+  private async diagnostics() {
+    const room = this.room;
+    if (!room) return null;
+    const pub = [...room.localParticipant.audioTrackPublications.values()][0];
+    let localLevel: number | null = null;
+    let bytesSent: number | null = null;
+    try {
+      const stats = await pub?.track?.getRTCStatsReport?.();
+      stats?.forEach((r: { type: string; kind?: string; audioLevel?: number; bytesSent?: number }) => {
+        if (r.type === 'media-source' && r.kind === 'audio' && typeof r.audioLevel === 'number') localLevel = r.audioLevel;
+        if (r.type === 'outbound-rtp' && r.kind === 'audio' && typeof r.bytesSent === 'number') bytesSent = r.bytesSent;
+      });
+    } catch {
+      /* stats indisponíveis */
+    }
+    // nível RECEBIDO (depois do processamento de áudio e do codec do remetente)
+    const received: Record<string, number | null> = {};
+    for (const rp of room.remoteParticipants.values()) {
+      const t = [...rp.audioTrackPublications.values()][0]?.track;
+      let lvl: number | null = null;
+      try {
+        const st = await t?.getRTCStatsReport?.();
+        st?.forEach((r: { type: string; kind?: string; audioLevel?: number }) => {
+          if (r.type === 'inbound-rtp' && r.kind === 'audio' && typeof r.audioLevel === 'number') lvl = r.audioLevel;
+        });
+      } catch {
+        /* sem stats */
+      }
+      received[rp.identity] = lvl;
+    }
+    const all: Participant[] = [room.localParticipant, ...room.remoteParticipants.values()];
+    return {
+      received,
+      localLevel,
+      bytesSent,
+      participants: all.map((p) => ({ id: p.identity, local: p.isLocal, speaking: p.isSpeaking, level: p.audioLevel, mic: p.isMicrophoneEnabled })),
+    };
   }
 
   /** Sair da chamada — somente pelo botão explícito do host. */

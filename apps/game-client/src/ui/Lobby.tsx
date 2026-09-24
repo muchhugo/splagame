@@ -130,7 +130,7 @@ function TeamColumn(props: { team: TeamId; players: LobbyPlayer[]; myId: number;
       </div>
       {slots.map((p, i) =>
         p ? (
-          <div key={p.playerId} className={`slot ${p.playerId === myId ? 'me' : ''}`}>
+          <div key={p.playerId} data-player={p.playerId} data-speaking={voiceOf(p)?.speaking ? 'true' : 'false'} data-muted={voiceOf(p)?.muted ? 'true' : 'false'} className={`slot ${p.playerId === myId ? 'me' : ''}`}>
             <span aria-hidden="true">{info.symbol}</span>
             <Avatar player={p} voice={voiceOf(p)} />
             <span className="name">
