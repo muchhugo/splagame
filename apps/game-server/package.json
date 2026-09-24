@@ -1,0 +1,26 @@
+{
+  "name": "@borrifo/game-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@borrifo/game-content": "workspace:*",
+    "@borrifo/game-contracts": "workspace:*",
+    "@borrifo/game-simulation": "workspace:*",
+    "@colyseus/core": "0.18.16",
+    "@colyseus/ws-transport": "0.18.3",
+    "express": "^5.2.1",
+    "jose": "6.2.12",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@borrifo/test-utils": "workspace:*",
+    "@types/express": "^5.0.6",
+    "tsx": "4.23.15"
+  }
+}

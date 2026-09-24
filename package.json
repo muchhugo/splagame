@@ -1,0 +1,25 @@
+{
+  "name": "borrifo-lab",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Laboratório de Atividades — jogo de arena e tinta (Borrifo). Projeto separado do Trivo principal.",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client,shell -c magenta,cyan,yellow \"pnpm --filter @borrifo/game-server dev\" \"pnpm --filter @borrifo/game-client dev\" \"pnpm --filter @borrifo/activity-shell dev\"",
+    "dev:game": "concurrently -k -n server,client -c magenta,cyan \"pnpm --filter @borrifo/game-server dev\" \"pnpm --filter @borrifo/game-client dev\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.5",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1",
+    "@types/node": "^22.10.0"
+  }
+}

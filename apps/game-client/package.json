@@ -1,0 +1,29 @@
+{
+  "name": "@borrifo/game-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5173 --strictPort",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.28.0",
+    "@borrifo/activity-sdk": "workspace:*",
+    "@borrifo/game-contracts": "workspace:*",
+    "@borrifo/game-content": "workspace:*",
+    "@borrifo/game-simulation": "workspace:*",
+    "@borrifo/voice-adapter": "workspace:*",
+    "@colyseus/sdk": "0.18.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.1"
+  }
+}

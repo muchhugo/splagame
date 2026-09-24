@@ -1,0 +1,15 @@
+{
+  "name": "@borrifo/game-simulation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@borrifo/game-contracts": "workspace:*",
+    "@borrifo/game-content": "workspace:*",
+    "@dimforge/rapier3d-compat": "0.20.0"
+  }
+}
