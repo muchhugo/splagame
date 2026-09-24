@@ -125,6 +125,33 @@ vec3 surfaceAlbedo(int m, vec2 uv, vec3 base, out float gloss){
     return base * (0.82 + 0.28*smoothstep(0.0, 0.6, fract(p.y)) - sc*0.18);
   }
   if (m == 6) { gloss = 0.6; return base; }
+  if (m == 8) { // reboco pintado: liso, leve ondulação de desempenadeira
+    float n = vnoise(uv * 1.7) * 0.06 + vnoise(uv * 7.0) * 0.03;
+    return base * (0.95 + n);
+  }
+  if (m == 9) { // ladrilho hidráulico: placas de 0,5 m com quarto de círculo em dois tons
+    vec2 g = fract(uv / 0.5); vec2 id = floor(uv / 0.5);
+    float flip = mod(id.x + id.y, 2.0);
+    vec2 q = flip > 0.5 ? g : 1.0 - g;
+    float arc = smoothstep(0.02, 0.0, abs(length(q) - 0.62) - 0.07);
+    float dotc = smoothstep(0.16, 0.13, length(g - 0.5));
+    float grout = smoothstep(0.0, 0.03, min(min(g.x, 1.0-g.x), min(g.y, 1.0-g.y)));
+    vec3 accent = vec3(0.86, 0.42, 0.32);
+    vec3 c = mix(base, accent, arc * 0.85);
+    c = mix(c, vec3(0.2, 0.48, 0.5), dotc * 0.8);
+    return mix(base * 0.72, c, grout);
+  }
+  if (m == 10) { // pastilha de piscina: grade miúda clara, brilho de esmalte
+    vec2 g = fract(uv / 0.2); vec2 id = floor(uv / 0.2);
+    float grout = smoothstep(0.0, 0.08, min(min(g.x, 1.0-g.x), min(g.y, 1.0-g.y)));
+    vec3 tile = base * (0.93 + 0.12 * hash21(id));
+    gloss = 0.55;
+    return mix(vec3(0.94, 0.97, 0.98), tile, grout);
+  }
+  if (m == 11) { // cimento queimado: liso com pintas
+    float sp = step(0.94, hash21(floor(uv * 14.0)));
+    return base * (0.97 + vnoise(uv * 2.2) * 0.05 - sp * 0.06);
+  }
   // 7: muro caiado com faixa de mural colorida
   vec3 lime = base;
   float band = step(vPos.y, 0.9) * step(0.02, vPos.y);
@@ -164,11 +191,59 @@ vec3 styleFinish(vec3 col, int sty, int face, inout float gloss){
     float slat = smoothstep(0.02, 0.06, abs(fract(m.x / 0.5) - 0.5));
     col *= mix(0.78, 1.0, slat);
   }
+  if (sty == 18 && face == 1) { // cobogó: relevo de blocos vazados (sombreado, sem transparência)
+    vec2 c = fract(m / 0.4) - 0.5;
+    float hole = smoothstep(0.2, 0.17, max(abs(c.x), abs(c.y)));
+    float ring = smoothstep(0.03, 0.0, abs(length(c) - 0.13) - 0.02);
+    col = mix(col, col * 0.62, hole * 0.8);
+    col = mix(col, col * 1.08, ring * hole);
+  }
+  if (sty == 19 && face == 1) { // oficina/prédio: rodapé e friso no alto
+    float foot = step(m.y, 0.35);
+    float trim = smoothstep(0.12, 0.1, abs(m.y - (vFx.w - 0.3)));
+    col = mix(col, col * 0.7, foot * 0.7);
+    col = mix(col, vec3(0.98, 0.95, 0.88), trim * 0.8);
+  }
+  if (sty == 20) { // jardineira: terra/folhas no topo, borda clara na lateral
+    if (face == 0) col = mix(vec3(0.34, 0.6, 0.32), vec3(0.46, 0.72, 0.36), vnoise(m * 3.0));
+    else col *= mix(0.85, 1.0, smoothstep(0.0, 0.1, vFx.w - m.y));
+  }
+  if (sty == 21 && face == 1) col *= 0.9; // degrau: espelho mais escuro que o piso
+  if (sty == 22 && face == 1) { // torre: faixas verticais
+    float st = step(0.5, fract(m.x / 0.75));
+    col = mix(col, vec3(0.36, 0.78, 0.82), st * 0.55);
+  }
+  if ((sty == 23 || sty == 25) && face == 1) { // balcão/espreguiçadeira: tábuas
+    float slat = smoothstep(0.02, 0.05, abs(fract(m.x / 0.3) - 0.5));
+    col *= mix(0.8, 1.0, slat);
+  }
+  if (sty == 24 && face == 1) { // geladeira: porta e puxador
+    float seam = smoothstep(0.02, 0.0, abs(m.y - vFx.w * 0.62));
+    float handle = step(abs(m.x - 0.15), 0.03) * step(abs(m.y - vFx.w * 0.75), 0.18);
+    col = mix(col, col * 0.7, max(seam, handle));
+  }
+  if (sty == 26 && face == 1) { // engradado plástico: vazados
+    vec2 c = fract(m / vec2(0.18, 0.2)) - 0.5;
+    col = mix(col, col * 0.6, smoothstep(0.3, 0.26, max(abs(c.x), abs(c.y))));
+  }
+  if (sty == 27 && face == 1) { // toboágua: ondas
+    float w = smoothstep(0.08, 0.0, abs(fract(m.y / 0.6 + sin(m.x * 1.6) * 0.12) - 0.5) - 0.1);
+    col = mix(col, vec3(0.98, 0.97, 0.94), w * 0.7);
+  }
+  if (sty == 28 && face == 0) { // fundo da piscina: raias escuras a cada 2,5 m
+    float lane = smoothstep(0.12, 0.08, abs(mod(vPos.z + 1.25, 2.5) - 1.25));
+    col = mix(col, vec3(0.1, 0.34, 0.5), lane * 0.7);
+  }
+  if (sty == 29 && face == 0) col = vec3(0.97, 0.97, 0.95); // borda da piscina (pedra clara)
+  if (sty == 30) { // boia: listras
+    float st = step(0.5, fract((m.x + m.y) / 0.8));
+    col = mix(col, vec3(0.98, 0.97, 0.94), st * 0.8);
+  }
   return col;
 }
 
 void main(void){
-  int m = int(floor(vColor.a * 8.0 + 0.5));
+  int m = int(floor(vColor.a * 16.0 + 0.5));
   int sty = int(floor(vSt.x + 0.5));
   int face = int(floor(vSt.y + 0.5));
   float gloss;

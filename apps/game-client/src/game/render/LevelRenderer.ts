@@ -5,7 +5,7 @@ import { facePoint } from '@borrifo/game-simulation';
 import { RenderAtlas } from './RenderAtlas';
 import './shaders';
 
-export const MATERIAL_CODE: Record<MaterialId, number> = { terracota: 0, tijolo: 1, madeira: 2, azulejo: 3, pedra: 4, barro: 5, latao: 6, muro: 7 };
+export const MATERIAL_CODE: Record<MaterialId, number> = { terracota: 0, tijolo: 1, madeira: 2, azulejo: 3, pedra: 4, barro: 5, latao: 6, muro: 7, reboco: 8, ladrilho: 9, piscina: 10, cimento: 11 };
 /** Cores-base foscas e claras: o cenário dá espaço para a tinta e os personagens. */
 export const MATERIAL_BASE: Record<MaterialId, [number, number, number]> = {
   terracota: [0.9, 0.85, 0.76],
@@ -16,10 +16,18 @@ export const MATERIAL_BASE: Record<MaterialId, [number, number, number]> = {
   barro: [0.86, 0.5, 0.34],
   latao: [0.92, 0.74, 0.36],
   muro: [0.98, 0.95, 0.89],
+  reboco: [0.96, 0.9, 0.8],
+  ladrilho: [0.93, 0.86, 0.74],
+  piscina: [0.55, 0.84, 0.9],
+  cimento: [0.84, 0.83, 0.8],
 };
 
 /** Estilos de peça (acabamento no shader). */
-export const STYLE_CODE: Record<string, number> = { crate: 1, rack: 2, kiln: 3, deck: 4, plaza: 5, platform: 5, balcony: 6, bridge: 6, lowwall: 7, pillar: 8, roof: 9, boundary: 10, ground: 11, ramp: 12, tiles: 13, post: 14, chimney: 15, pedestal: 15, parapet: 16, wall: 17 };
+export const STYLE_CODE: Record<string, number> = {
+  crate: 1, bench: 1, rack: 2, toolrack: 2, kiln: 3, deck: 4, plaza: 5, platform: 5, balcony: 6, bridge: 6, lowwall: 7, pillar: 8, roof: 9, thatch: 9,
+  boundary: 10, ground: 11, ramp: 12, tiles: 13, post: 14, chimney: 15, pedestal: 15, parapet: 16, wall: 17,
+  cobogo: 18, workshop: 19, building: 19, planter: 20, bleacher: 21, tower: 22, counter: 23, fridge: 24, lounger: 25, cratePlastic: 26, slide: 27, pool: 28, poolwall: 29, float: 30,
+};
 
 /**
  * Malha do cenário gerada do MapSpec (mesma fonte dos colisores e da tinta).
@@ -54,7 +62,7 @@ export class LevelRenderer {
       const offU = f.origin[0] * f.axisU[0] + f.origin[1] * f.axisU[1] + f.origin[2] * f.axisU[2];
       const offV = f.origin[0] * f.axisV[0] + f.origin[1] * f.axisV[1] + f.origin[2] * f.axisV[2];
       const code = MATERIAL_CODE[f.material];
-      const baseColor = MATERIAL_BASE[f.material];
+      const baseColor = f.tint ?? MATERIAL_BASE[f.material];
       const rect = r.surface ? this.atlas.rectUv(r) : this.atlas.rectUv(r).map((v, i) => (i === 0 ? -1 : v));
       for (const [u, v] of corners) {
         const p = facePoint(f, u, v);
@@ -63,7 +71,7 @@ export class LevelRenderer {
         uvs.push(u + offU, v + offV);
         const a = this.atlas.uvFor(r, u, v);
         uvs2.push(a[0], a[1]);
-        colors.push(baseColor[0], baseColor[1], baseColor[2], code / 8);
+        colors.push(baseColor[0], baseColor[1], baseColor[2], code / 16);
         rects.push(rect[0], rect[1], rect[2], rect[3]);
         tangs.push(f.axisU[0], f.axisU[1], f.axisU[2]);
         bitangs.push(f.axisV[0], f.axisV[1], f.axisV[2]);

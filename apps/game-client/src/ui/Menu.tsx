@@ -42,7 +42,7 @@ export function Menu() {
             </button>
           </div>
         ) : (
-          <button className="btn ghost" onClick={() => restartTutorial()}>
+          <button className="btn ghost" onClick={() => restartTutorial(getController()?.tutorialContext())}>
             {screen === 'match' ? 'Refazer o treino rápido' : 'Refazer o treino na próxima rodada'}
           </button>
         )}

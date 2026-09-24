@@ -28,6 +28,11 @@ export interface CharacterVisual {
   travel: number;
   /** 1 = comemora (vitória), -1 = desanima (derrota), 0 = nada. */
   celebrate?: number;
+  /** Informação pública dos modos: portador da cápsula e buffs/Mutirão ativos. */
+  carrier?: boolean;
+  embalo?: boolean;
+  folego?: boolean;
+  mutirao?: boolean;
 }
 
 /** Tons de pele escolhidos pelo jogador (nunca deduzidos). */
@@ -128,6 +133,9 @@ export class CharacterView {
   private swirlT = 0;
   private lastForm = 0;
   private marker: Mesh | null = null;
+  /** Aura de buff/Mutirão nos pés (material compartilhado por tipo). */
+  private aura: Mesh;
+  private auraMats: Record<'embalo' | 'folego' | 'mutirao', ToonMaterial>;
 
   constructor(
     private readonly scene: Scene,
@@ -400,6 +408,18 @@ export class CharacterView {
       this.outlined.push(m);
     }
 
+    // aura de modo: anel baixo nos pés, cor e pulso por efeito (não parece ataque nem cobertura)
+    this.auraMats = {
+      embalo: sharedToon(scene, 'aura-embalo', new Color3(1.0, 0.6, 0.18), 1),
+      folego: sharedToon(scene, 'aura-folego', new Color3(0.3, 0.8, 0.98), 1),
+      mutirao: sharedToon(scene, 'aura-mutirao', new Color3(1.0, 0.86, 0.34), 1),
+    };
+    for (const m of Object.values(this.auraMats)) m.setEmissive(m.color.scale(0.5));
+    this.aura = MeshBuilder.CreateTorus('aura', { diameter: 0.95, thickness: 0.06, tessellation: 20 }, scene);
+    this.aura.parent = this.root;
+    this.aura.position.y = 0.08;
+    this.aura.setEnabled(false);
+
     // sombra de contato suave
     this.shadow = MeshBuilder.CreateGround('sombra', { width: 1.0, height: 1.0 }, scene);
     const sm = new StandardMaterial(`sombra-${playerId}`, scene);
@@ -612,6 +632,15 @@ export class CharacterView {
     const translucent = this.visibleFactor < 0.98;
     for (const m of this.meshes) if (m !== this.swirl) m.visibility = this.visibleFactor;
     for (const m of this.outlined) m.renderOutline = !translucent;
+    // aura de modo (prioridade: Mutirão > Embalo > Fôlego); o portador é marcado pela cápsula
+    const auraKind = v.mutirao ? 'mutirao' : v.embalo ? 'embalo' : v.folego ? 'folego' : null;
+    this.aura.setEnabled(auraKind !== null && this.visibleFactor > 0.3);
+    if (auraKind) {
+      this.aura.material = this.auraMats[auraKind];
+      const pulse = auraKind === 'embalo' ? 9 : auraKind === 'mutirao' ? 5 : 3;
+      this.aura.scaling.setAll(1 + Math.sin(this.idleT * pulse) * 0.08 + (v.carrier ? 0.15 : 0));
+      this.aura.rotation.y += dt * (auraKind === 'embalo' ? 6 : 1.5);
+    }
     // LOD: detalhes pequenos do rosto e da ferramenta somem de longe (menos desenho)
     const near = this.camDist < 26;
     for (const m of this.detail) m.setEnabled(near);

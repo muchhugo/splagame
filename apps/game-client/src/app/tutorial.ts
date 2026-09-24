@@ -9,13 +9,33 @@ import { createStore } from './store';
 import { settingsStore } from './settings';
 import { pushNotice } from './uiStore';
 
-export const TUTORIAL_VERSION = 1;
+/** v2: buffs, Mutirão e Correio do Ara. Quem concluiu a v1 faz só as etapas novas. */
+export const TUTORIAL_VERSION = 2;
 
-export type StepId = 'andar' | 'camera' | 'disparar' | 'pintar' | 'forma' | 'recarregar' | 'mapa' | 'moringa' | 'especial';
+export type StepId = 'andar' | 'camera' | 'disparar' | 'pintar' | 'forma' | 'recarregar' | 'mapa' | 'moringa' | 'especial' | 'buff' | 'mutirao' | 'capsula' | 'entrega';
+/** Etapas básicas (qualquer modo). */
 export const STEPS: readonly StepId[] = ['andar', 'camera', 'disparar', 'pintar', 'forma', 'recarregar', 'mapa', 'moringa', 'especial'];
+
+export interface TutorialContext {
+  mode: 'territorio' | 'correio';
+  /** Há aliado na equipe (Mutirão não se aplica em 1 × 1). */
+  allies: boolean;
+  /** Só as etapas acrescentadas depois da versão já concluída. */
+  onlyNew?: boolean;
+}
+
+/** Sequência do treino para o contexto da rodada: básicas + mecânicas do modo que se aplicam. */
+export function stepsFor(ctx?: TutorialContext): StepId[] {
+  if (!ctx) return [...STEPS];
+  const extra: StepId[] = ['buff'];
+  if (ctx.allies) extra.push('mutirao');
+  if (ctx.mode === 'correio') extra.push('capsula', 'entrega');
+  return ctx.onlyNew ? extra : [...STEPS, ...extra];
+}
 
 export interface TutorialState {
   active: boolean;
+  steps: StepId[];
   step: number;
   /** 0..1 da etapa atual. */
   progress: number;
@@ -24,7 +44,7 @@ export interface TutorialState {
   stepTime: number;
 }
 
-export const tutorialStore = createStore<TutorialState>({ active: false, step: 0, progress: 0, skipped: [], stepTime: 0 });
+export const tutorialStore = createStore<TutorialState>({ active: false, steps: [...STEPS], step: 0, progress: 0, skipped: [], stepTime: 0 });
 
 /** Uma leitura do jogo (a cada ~66 ms, vinda do runtime). */
 export interface TutorialSample {
@@ -41,6 +61,11 @@ export interface TutorialSample {
   /** Contadores monotônicos do próprio jogador. */
   thrown: number;
   specials: number;
+  buffs?: number;
+  mutiroes?: number;
+  capsules?: number;
+  deliveries?: number;
+  mode?: string;
 }
 
 interface Acc {
@@ -60,6 +85,10 @@ const NEEDED: Record<StepId, number> = {
   mapa: 1,
   moringa: 1,
   especial: 1,
+  buff: 1,
+  mutirao: 1,
+  capsula: 1,
+  entrega: 1,
 };
 
 /** Soma o avanço da etapa com a leitura nova. Pura quanto ao `acc` recebido (testável). */
@@ -87,6 +116,14 @@ export function stepGain(step: StepId, prev: TutorialSample, cur: TutorialSample
       return cur.thrown > base.thrown ? 1 : 0;
     case 'especial':
       return cur.specials > base.specials ? 1 : 0;
+    case 'buff':
+      return (cur.buffs ?? 0) > (base.buffs ?? 0) ? 1 : 0;
+    case 'mutirao':
+      return (cur.mutiroes ?? 0) > (base.mutiroes ?? 0) ? 1 : 0;
+    case 'capsula':
+      return (cur.capsules ?? 0) > (base.capsules ?? 0) ? 1 : 0;
+    case 'entrega':
+      return (cur.deliveries ?? 0) > (base.deliveries ?? 0) ? 1 : 0;
   }
 }
 
@@ -96,7 +133,7 @@ export function tutorialTick(sample: TutorialSample, dt: number) {
     acc.last = null;
     return;
   }
-  const step = STEPS[st.step];
+  const step = st.steps[st.step];
   if (!acc.last || !acc.base) {
     acc.last = sample;
     acc.base = sample;
@@ -115,9 +152,9 @@ function nextStep(skipped: boolean) {
   acc.last = null;
   acc.base = null;
   acc.value = 0;
-  const skippedList = skipped ? [...st.skipped, STEPS[st.step]] : st.skipped;
-  if (st.step + 1 >= STEPS.length) {
-    tutorialStore.set({ active: false, step: STEPS.length, progress: 1, skipped: skippedList, stepTime: 0 });
+  const skippedList = skipped ? [...st.skipped, st.steps[st.step]] : st.skipped;
+  if (st.step + 1 >= st.steps.length) {
+    tutorialStore.set({ active: false, step: st.steps.length, progress: 1, skipped: skippedList, stepTime: 0 });
     onFinished?.(skippedList.length === 0);
     return;
   }
@@ -127,12 +164,12 @@ function nextStep(skipped: boolean) {
 let onFinished: ((allDone: boolean) => void) | null = null;
 
 /** Começa (ou recomeça) o treino. `finished` é chamado ao terminar ou encerrar. */
-export function startTutorial(finished: (allDone: boolean) => void) {
+export function startTutorial(finished: (allDone: boolean) => void, ctx?: TutorialContext) {
   onFinished = finished;
   acc.last = null;
   acc.base = null;
   acc.value = 0;
-  tutorialStore.set({ active: true, step: 0, progress: 0, skipped: [], stepTime: 0 });
+  tutorialStore.set({ active: true, steps: stepsFor(ctx), step: 0, progress: 0, skipped: [], stepTime: 0 });
 }
 
 export function skipStep() {
@@ -148,16 +185,18 @@ export function endTutorial() {
 let autoStarted = false;
 
 /** Primeira rodada de quem ainda não fez o treino desta versão: começa sozinho (uma vez por sessão). */
-export function maybeAutoStartTutorial() {
-  if (autoStarted || tutorialStore.get().active || settingsStore.get().tutorialDone >= TUTORIAL_VERSION) return;
+export function maybeAutoStartTutorial(ctx: TutorialContext) {
+  const done = settingsStore.get().tutorialDone;
+  if (autoStarted || tutorialStore.get().active || done >= TUTORIAL_VERSION) return;
   autoStarted = true;
-  startTutorial(saveTutorialDone);
+  // quem já fez a v1 não repete o básico: só buffs, Mutirão e o que o modo trouxer
+  startTutorial(saveTutorialDone, { ...ctx, onlyNew: done >= 1 });
 }
 
-/** Pelo menu: refazer quando quiser. */
-export function restartTutorial() {
+/** Pelo menu: refazer quando quiser (sequência completa do modo atual). */
+export function restartTutorial(ctx?: TutorialContext) {
   autoStarted = true;
-  startTutorial(saveTutorialDone);
+  startTutorial(saveTutorialDone, ctx);
 }
 
 function saveTutorialDone(allDone: boolean) {

@@ -1,4 +1,4 @@
-import type { LobbyState, RoundResult, WelcomeMessage } from '@borrifo/game-contracts';
+import type { GameModeId, LobbyState, RoundResult, WelcomeMessage } from '@borrifo/game-contracts';
 import type { ActivityContext, VoiceState } from '@borrifo/activity-sdk';
 import { VOICE_NOT_CONFIGURED } from '@borrifo/activity-sdk';
 import { createStore } from './store';
@@ -36,6 +36,10 @@ export interface UiState {
   pointerLocked: boolean;
   sceneReady: boolean;
   audioState: string;
+  /** Troca de mapa entre rodadas (tela de carregamento com nome e variante). */
+  mapLoading: { name: string; variant: string; progress: number } | null;
+  /** Modo da rodada atual (vem do round.loading). */
+  roundMode: GameModeId;
 }
 
 export const uiStore = createStore<UiState>({
@@ -56,6 +60,8 @@ export const uiStore = createStore<UiState>({
   pointerLocked: false,
   sceneReady: false,
   audioState: 'locked',
+  mapLoading: null,
+  roundMode: 'territorio',
 });
 
 let noticeId = 1;

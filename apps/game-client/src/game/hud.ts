@@ -1,4 +1,4 @@
-import type { RoomPhase, TeamId, WeaponId } from '@borrifo/game-contracts';
+import type { BuffKind, CapsuleState, GameModeId, RoomPhase, TeamId, WeaponId } from '@borrifo/game-contracts';
 import { createStore } from '../app/store';
 
 export interface KillfeedEntry {
@@ -50,6 +50,27 @@ export interface HudState {
   fps: number;
   corrections: number;
   pendingInputs: number;
+  mode: GameModeId;
+  /** Buff ativo do jogador local e tempo restante. */
+  buff: BuffKind | null;
+  buffLeft: number;
+  /** Mutirão ativo (s restantes) e recarga (s). */
+  mutirao: number;
+  mutiraoCooldown: number;
+  /** Correio do Ara (null fora do modo). */
+  objective: {
+    state: CapsuleState;
+    carrier: { id: number; name: string; team: TeamId } | null;
+    iCarry: boolean;
+    station: number;
+    stationShare: [number, number];
+    progress: number;
+    deliveries: [number, number];
+    timer: number;
+    /** Direção da estação na tela, em graus (0 = à frente). */
+    stationBearing: number;
+    stationDistance: number;
+  } | null;
 }
 
 export const hudStore = createStore<HudState>({
@@ -79,6 +100,12 @@ export const hudStore = createStore<HudState>({
   fps: 0,
   corrections: 0,
   pendingInputs: 0,
+  mode: 'territorio',
+  buff: null,
+  buffLeft: 0,
+  mutirao: 0,
+  mutiraoCooldown: 0,
+  objective: null,
 });
 
 /** Elementos atualizados direto no DOM a cada frame (sem React). */

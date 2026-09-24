@@ -4,7 +4,8 @@ import { useStore } from '../app/store';
 import { settingsStore } from '../app/settings';
 import { uiStore } from '../app/uiStore';
 import { keyName, pressText, useHints, type HintAction } from '../app/hints';
-import { STEPS, endTutorial, skipStep, tutorialStore, type StepId } from '../app/tutorial';
+import { endTutorial, skipStep, tutorialStore, type StepId } from '../app/tutorial';
+import { BUFFS, CORREIO } from '@borrifo/game-content';
 import { hudStore } from '../game/hud';
 
 const TITLES: Record<StepId, string> = {
@@ -17,6 +18,10 @@ const TITLES: Record<StepId, string> = {
   mapa: 'Mapa tático',
   moringa: MORINGA.name,
   especial: RODA_DE_OLEIRO.name,
+  buff: 'Embalo e Fôlego',
+  mutirao: 'Mutirão',
+  capsula: 'Pegar a cápsula',
+  entrega: 'Entregar na estação',
 };
 
 /**
@@ -33,7 +38,7 @@ export function Tutorial() {
   const ink = useStore(hudStore, (s) => s.ink);
   const weapon = WEAPONS[useStore(hudStore, (s) => s.weaponId)].name;
   if (!t.active) return null;
-  const step = STEPS[t.step];
+  const step = t.steps[t.step];
   const k = (a: HintAction) => <kbd>{hints.label(a)}</kbd>;
   const d = hints.device;
   const hold = flowMode === 'hold' ? 'Segure' : 'Aperte';
@@ -81,12 +86,24 @@ export function Tutorial() {
           Pintar enche a {RODA_DE_OLEIRO.name} ({Math.floor(special)}%). Quando encher, use com {k('special')}.
         </>
       ),
+    buff: (
+      <>
+        Passe por um pickup: Embalo (setas laranja) dá +{Math.round((BUFFS.embalo.speedMul - 1) * 100)}% de velocidade por {BUFFS.embalo.duration} s; Fôlego (gota azul) acelera a recarga por {BUFFS.folego.duration} s. Um de cada vez.
+      </>
+    ),
+    mutirao: <>Pinte áreas novas perto de um companheiro, ao mesmo tempo: os dois ganham o Mutirão (recarga mais rápida por alguns segundos).</>,
+    capsula: <>Encoste na cápsula dourada (o feixe mostra onde ela está). Com ela, o {'Pião-Guia'} fica indisponível e todos veem você.</>,
+    entrega: (
+      <>
+        Pinte a estação ativa (anel no chão) até {Math.round(CORREIO.stationPaintShare * 100)}% com a sua cor e fique dentro dela com a cápsula por {CORREIO.deliverSeconds} s.
+      </>
+    ),
   };
   return (
     <aside className="tutorial" aria-live="polite" aria-label="Treino rápido">
       <div className="tut-head">
         <span>
-          Treino rápido · {t.step + 1}/{STEPS.length}
+          Treino rápido · {t.step + 1}/{t.steps.length}
         </span>
         <span className="tut-bar" aria-hidden="true">
           <i style={{ width: `${Math.round(t.progress * 100)}%` }} />

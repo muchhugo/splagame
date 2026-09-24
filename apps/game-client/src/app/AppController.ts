@@ -1,7 +1,7 @@
 import { GAME_ID, GAME_VERSION, C2S, paintContextTag, type AppearanceId, type LobbyState, type TeamId, type WeaponId } from '@borrifo/game-contracts';
 import { ActivityRequestError, MatchCredentialResponseSchema, type ActivityClient } from '@borrifo/activity-sdk';
 import { HostVoiceAdapter, type VoiceAdapter } from '@borrifo/voice-adapter';
-import { DEFAULT_MAP_ID, MAPS, computeMapHash } from '@borrifo/game-content';
+import { CATALOG_HASH, DEFAULT_MAP_ID, MAPS, computeMapHash } from '@borrifo/game-content';
 import { CLIENT_CONFIG } from '../config';
 import { GameRuntime, WebGL2UnavailableError, detectWebGL2 } from '../game/GameRuntime';
 import { MatchConnection } from '../net/MatchConnection';
@@ -12,8 +12,8 @@ import { maybeAutoStartTutorial } from './tutorial';
 import { settingsStore } from './settings';
 import { SpeakingSmoother, voiceViewStore } from './profiles';
 
-const MAP = MAPS[DEFAULT_MAP_ID];
-const MAP_HASH = computeMapHash(MAP);
+/** Mapa de fundo antes da primeira rodada; a partir daí vale o mapa que o servidor escolher. */
+const INITIAL_MAP = MAPS[DEFAULT_MAP_ID];
 
 /**
  * Cola entre host (bridge da Atividade), servidor de partidas e runtime 3D.
@@ -81,7 +81,19 @@ export class AppController {
     };
     b.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'loading' });
     try {
-      this.runtime = await GameRuntime.create(this.canvas, MAP, {
+      this.runtime = await GameRuntime.create(this.canvas, INITIAL_MAP, this.runtimeHooks(), progress);
+      this.afterRuntime();
+    } catch (e) {
+      const webgl = e instanceof WebGL2UnavailableError;
+      b.send('ACTIVITY_ERROR', { code: webgl ? 'webgl2_unavailable' : 'runtime_init_failed', message: String((e as Error).message).slice(0, 300), fatal: true });
+      showError({ title: 'Não foi possível preparar a arena', message: webgl ? 'Este jogo precisa de WebGL2.' : `Falha ao iniciar o jogo: ${(e as Error).message}`, actions: ['reload', 'close'] });
+      return;
+    }
+    await this.connect();
+  }
+
+  private runtimeHooks(): import('../game/GameRuntime').RuntimeHooks {
+    return {
         sendInput: (w) => this.conn?.sendInput(w),
         onMapToggle: (open) => uiStore.set({ mapOpen: open }),
         onMenuRequested: () => {
@@ -97,20 +109,53 @@ export class AppController {
         playerName: (id) => this.lastLobby?.players.find((p) => p.playerId === id)?.displayName ?? `#${id}`,
         voiceOf: (userId) => voiceViewStore.get().map.get(userId),
         requestPaintResync: (roundId, reason) => this.conn?.send(C2S.PAINT_RESYNC, { roundId, reason: reason.slice(0, 40) }),
-      }, progress);
-      // o controle só move o personagem com a partida visível e sem menu por cima
-      this.runtime.input.padAllowed = () => {
-        const u = uiStore.get();
-        return u.screen === 'match' && !u.menuOpen && !u.settingsOpen;
-      };
-      uiStore.set({ sceneReady: true });
-    } catch (e) {
-      const webgl = e instanceof WebGL2UnavailableError;
-      b.send('ACTIVITY_ERROR', { code: webgl ? 'webgl2_unavailable' : 'runtime_init_failed', message: String((e as Error).message).slice(0, 300), fatal: true });
-      showError({ title: 'Não foi possível preparar a arena', message: webgl ? 'Este jogo precisa de WebGL2.' : `Falha ao iniciar o jogo: ${(e as Error).message}`, actions: ['reload', 'close'] });
-      return;
+    };
+  }
+
+  private afterRuntime() {
+    const rt = this.runtime!;
+    // o controle só move o personagem com a partida visível e sem menu por cima
+    rt.input.padAllowed = () => {
+      const u = uiStore.get();
+      return u.screen === 'match' && !u.menuOpen && !u.settingsOpen;
+    };
+    uiStore.set({ sceneReady: true });
+  }
+
+  /** Troca de mapa em curso: mensagens que dependem do runtime esperam na fila e são reaplicadas depois. */
+  private switching: Promise<boolean> | null = null;
+  private deferred: Array<() => void> = [];
+
+  /**
+   * Carrega o mapa escolhido pelo servidor ANTES de confirmar o carregamento da rodada.
+   * Confere a versão (hash) da variante; recria só a cena (o áudio continua desbloqueado).
+   */
+  private async ensureMap(mapId: string, mapHash: string): Promise<boolean> {
+    const spec = MAPS[mapId];
+    if (!spec || computeMapHash(spec) !== mapHash) {
+      showError({ title: 'Versão incompatível', message: 'O mapa escolhido pelo servidor é diferente do seu. Recarregue a Atividade.', actions: ['reload', 'close'] });
+      return false;
     }
-    await this.connect();
+    if (this.runtime?.map.id === mapId) return true;
+    const old = this.runtime;
+    if (!old) return false;
+    uiStore.set({ mapLoading: { name: spec.name, variant: spec.variant, progress: 0 } });
+    const audio = old.audio;
+    old.dispose(true);
+    this.runtime = null;
+    try {
+      this.runtime = await GameRuntime.create(this.canvas, spec, this.runtimeHooks(), (p) => uiStore.set({ mapLoading: { name: spec.name, variant: spec.variant, progress: p } }), audio);
+      this.afterRuntime();
+      const lobby = this.lastLobby;
+      if (lobby) this.runtime.setRoster(lobby.players, uiStore.get().welcome?.playerId ?? 0);
+      this.runtime.setVisible(!document.hidden);
+      return true;
+    } catch (e) {
+      showError({ title: 'Não foi possível preparar a arena', message: `Falha ao carregar ${spec.name}: ${(e as Error).message}`, actions: ['reload', 'close'] });
+      return false;
+    } finally {
+      uiStore.set({ mapLoading: null });
+    }
   }
 
   private async connect() {
@@ -121,7 +166,7 @@ export class AppController {
       const cred = MatchCredentialResponseSchema.parse(raw);
       this.conn?.leave();
       this.conn = new MatchConnection(cred.gameServerUrl || CLIENT_CONFIG.gameServerUrl, this.handlers());
-      await this.conn.join(ctx.activitySessionId, cred.credential, MAP_HASH);
+      await this.conn.join(ctx.activitySessionId, cred.credential, CATALOG_HASH);
       this.rejoinAttempts = 0;
       this.bridge.send('ACTIVITY_READY', { gameId: GAME_ID, version: GAME_VERSION });
     } catch (e) {
@@ -144,10 +189,12 @@ export class AppController {
 
   private handlers() {
     const rt = () => this.runtime!;
+    // durante a troca de mapa, o que depende da cena espera e é reaplicado em ordem
+    const later = (f: () => void) => (this.switching || !this.runtime ? this.deferred.push(f) : f());
     return {
       onWelcome: (m: import('@borrifo/game-contracts').WelcomeMessage) => {
         uiStore.set({ welcome: m });
-        if (m.map.hash !== MAP_HASH) showError({ title: 'Versão incompatível', message: 'O mapa do servidor é diferente do seu. Recarregue a Atividade.', actions: ['reload', 'close'] });
+        if (m.catalogHash !== CATALOG_HASH) showError({ title: 'Versão incompatível', message: 'Os mapas do servidor são diferentes dos seus. Recarregue a Atividade.', actions: ['reload', 'close'] });
         if (m.resumed) pushNotice('Conexão recuperada', 'good');
         // aparência escolhida neste aparelho; o servidor valida e distribui a todos
         this.conn?.send(C2S.SET_APPEARANCE, { appearance: settingsStore.get().appearance });
@@ -155,36 +202,67 @@ export class AppController {
       onLobby: (l: LobbyState) => this.onLobby(l),
       onRoundLoading: (m: import('@borrifo/game-contracts').RoundLoadingMessage) => {
         this.currentRound = m.roundId;
-        const lobby = this.lastLobby;
-        const me = uiStore.get().welcome?.playerId ?? 0;
-        if (lobby) rt().setRoster(lobby.players, me);
-        rt().setTeamPair(m.teamPairId);
-        rt().beginRound(m.roundId, paintContextTag(m.matchId, m.mapHash));
-        uiStore.set({ result: null, menuOpen: false });
-        this.conn?.send(C2S.LOADED, { roundId: m.roundId, mapHash: MAP_HASH });
+        uiStore.set({ result: null, menuOpen: false, roundMode: m.mode });
+        const run = async () => {
+          const ok = await this.ensureMap(m.mapId, m.mapHash);
+          if (!ok || !this.runtime || m.roundId !== this.currentRound) return false;
+          const lobby = this.lastLobby;
+          const me = uiStore.get().welcome?.playerId ?? 0;
+          if (lobby) rt().setRoster(lobby.players, me);
+          rt().setTeamPair(m.teamPairId);
+          rt().beginRound(m.roundId, paintContextTag(m.matchId, m.mapHash));
+          rt().setMode(m.mode);
+          this.conn?.send(C2S.LOADED, { roundId: m.roundId, mapHash: m.mapHash });
+          return true;
+        };
+        const p = (this.switching ?? Promise.resolve(true)).then(run);
+        this.switching = p;
+        void p.finally(() => {
+          if (this.switching !== p) return;
+          this.switching = null;
+          const q = this.deferred;
+          this.deferred = [];
+          for (const f of q) f();
+        });
       },
-      onRoundCountdown: () => {
-        rt().setPhase('countdown', 3000);
-      },
-      onRoundStart: (m: import('@borrifo/game-contracts').RoundStartMessage) => {
+      onRoundCountdown: () => later(() => rt().setPhase('countdown', 3000)),
+      onRoundStart: (m: import('@borrifo/game-contracts').RoundStartMessage) => later(() => {
         rt().setPhase('running', m.durationMs);
         // quem ainda não fez o treino desta versão ganha o treino rápido (não bloqueia; dá para pular)
-        if (uiStore.get().screen === 'match') maybeAutoStartTutorial();
+        if (uiStore.get().screen === 'match') maybeAutoStartTutorial(this.tutorialContext());
         this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'in_match', matchId: this.lastLobby?.matchId });
-      },
+      }),
       onRoundResult: (r: import('@borrifo/game-contracts').RoundResult) => {
         uiStore.set({ result: r });
-        rt().setPhase('finishing', null);
-        rt().playRoundResult(r.roundId, r.winner);
+        later(() => {
+          rt().setPhase('finishing', null);
+          rt().playRoundResult(r.roundId, r.winner);
+        });
         this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'results', matchId: r.matchId });
       },
-      onSnapshot: (m: import('@borrifo/game-contracts').SnapshotMessage, at: number) => rt().onSnapshot(m, at),
-      onPaintSnapshot: (s: import('@borrifo/game-contracts').PaintSnapshotWire) => rt().onPaintSnapshot(s),
-      onPaintDelta: (d: import('@borrifo/game-contracts').PaintDeltaWire) => rt().onPaintDelta(d),
-      onNotice: (n: import('@borrifo/game-contracts').NoticeMessage) => pushNotice(n.message, n.code === 'late_join_waiting' ? 'info' : 'warn', 4500),
+      // snapshots de posição são descartáveis durante a troca (o próximo chega em ~66 ms); tinta não
+      onSnapshot: (m: import('@borrifo/game-contracts').SnapshotMessage, at: number) => {
+        if (!this.switching && this.runtime) rt().onSnapshot(m, at);
+      },
+      onPaintSnapshot: (s: import('@borrifo/game-contracts').PaintSnapshotWire) => later(() => rt().onPaintSnapshot(s)),
+      onPaintDelta: (d: import('@borrifo/game-contracts').PaintDeltaWire) => later(() => rt().onPaintDelta(d)),
+      onNotice: (n: import('@borrifo/game-contracts').NoticeMessage) => pushNotice(n.message, n.code === 'late_join_waiting' || n.code === 'queued' ? 'info' : 'warn', 4500),
       onConnectionState: (s: 'connected' | 'reconnecting' | 'lost', detail?: string) => this.onConnectionState(s, detail),
       onRtt: (ms: number) => uiStore.set({ rttMs: ms }),
     };
+  }
+
+  /** Contexto do treino: modo da rodada e se há aliado (o Mutirão não vale em 1 × 1). */
+  tutorialContext(): import('./tutorial').TutorialContext {
+    const l = this.lastLobby;
+    const me = uiStore.get().welcome?.playerId ?? 0;
+    const myTeam = l?.players.find((p) => p.playerId === me)?.team;
+    const allies = !!l && l.players.filter((p) => p.inRound && p.team === myTeam).length > 1;
+    return { mode: uiStore.get().roundMode, allies };
+  }
+
+  setOptions(o: { mode?: import('@borrifo/game-contracts').GameModeId; map?: string; formation?: import('@borrifo/game-contracts').FormationOption }) {
+    this.conn?.send(C2S.SET_OPTIONS, o);
   }
 
   private onLobby(l: LobbyState) {
@@ -203,7 +281,7 @@ export class AppController {
     if (l.phase === 'lobby' || l.phase === 'results') this.runtime?.input.releaseLock();
     uiStore.set({ lobby: l, screen });
     if (l.lastResult && l.phase === 'results' && !uiStore.get().result) uiStore.set({ result: l.lastResult });
-    this.runtime?.setPhase(l.phase, l.phaseRemainingMs);
+    if (!this.switching) this.runtime?.setPhase(l.phase, l.phaseRemainingMs);
   }
 
   private onConnectionState(s: 'connected' | 'reconnecting' | 'lost', detail?: string) {

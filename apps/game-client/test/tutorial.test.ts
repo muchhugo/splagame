@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STEPS, endTutorial, skipStep, startTutorial, tutorialStore, tutorialTick, type TutorialSample } from '../src/app/tutorial';
+import { STEPS, endTutorial, skipStep, startTutorial, stepsFor, tutorialStore, tutorialTick, type TutorialSample } from '../src/app/tutorial';
 
 const base: TutorialSample = { pos: [0, 0, 0], yaw: 0, pitch: 0, ink: 100, form: 0, submerged: false, firing: false, alive: true, mapOpen: false, thrown: 0, specials: 0 };
 const dt = 1 / 15;
@@ -65,5 +65,34 @@ describe('treino rápido', () => {
     run(40, (i) => ({ pos: [i * 0.3, 0, 0], alive: false }));
     expect(STEPS[tutorialStore.get().step]).toBe('andar');
     endTutorial();
+  });
+});
+
+describe('treino das mecânicas novas', () => {
+  it('sequência depende do modo e de haver aliado (Mutirão não entra em 1 × 1)', () => {
+    expect(stepsFor({ mode: 'territorio', allies: false })).toEqual([...STEPS, 'buff']);
+    expect(stepsFor({ mode: 'territorio', allies: true })).toEqual([...STEPS, 'buff', 'mutirao']);
+    expect(stepsFor({ mode: 'correio', allies: true, onlyNew: true })).toEqual(['buff', 'mutirao', 'capsula', 'entrega']);
+  });
+
+  it('buff, Mutirão, cápsula e entrega avançam só com o evento real correspondente', () => {
+    let finished: boolean | null = null;
+    startTutorial((all) => (finished = all), { mode: 'correio', allies: true, onlyNew: true });
+    const cur = () => tutorialStore.get().steps[tutorialStore.get().step];
+    tutorialTick(base, dt);
+    run(10, () => ({ mutiroes: 1 }));
+    expect(cur()).toBe('buff');
+    run(2, () => ({ buffs: 1 }));
+    expect(cur()).toBe('mutirao');
+    tutorialTick({ ...base, buffs: 1 }, dt);
+    run(2, () => ({ buffs: 1, mutiroes: 1 }));
+    expect(cur()).toBe('capsula');
+    tutorialTick({ ...base, buffs: 1, mutiroes: 1 }, dt);
+    run(2, () => ({ buffs: 1, mutiroes: 1, capsules: 1 }));
+    expect(cur()).toBe('entrega');
+    tutorialTick({ ...base, buffs: 1, mutiroes: 1, capsules: 1 }, dt);
+    run(2, () => ({ buffs: 1, mutiroes: 1, capsules: 1, deliveries: 1 }));
+    expect(tutorialStore.get().active).toBe(false);
+    expect(finished).toBe(true);
   });
 });

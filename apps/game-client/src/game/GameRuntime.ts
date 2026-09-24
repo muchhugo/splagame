@@ -1,9 +1,15 @@
 import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
-import type { GameEvent, LobbyPlayer, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
+import type { BuffKind, GameEvent, GameModeId, LobbyPlayer, ObjectiveSnapshot, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
+
+const BUFF_NAME: Record<BuffKind, string> = { embalo: 'Embalo', folego: 'Fôlego' };
 import {
   Buttons,
   FORM_FLOW,
   PFLAG_ALIVE,
+  PFLAG_CARRIER,
+  PFLAG_EMBALO,
+  PFLAG_FOLEGO,
+  PFLAG_MUTIRAO,
   PFLAG_CHARGING,
   PFLAG_CLIMBING,
   PFLAG_DRAGGING,
@@ -25,6 +31,7 @@ import { PaintLayout, PaintReplica, PhysicsWorld, aimDirection, buildFaces, init
 import { settingsStore, teamColorsFor, type Settings } from '../app/settings';
 import { AudioEngine, type SfxId } from './audio';
 import { CharacterView, type CharacterVisual } from './render/CharacterView';
+import { ModeView } from './render/ModeView';
 import { setToonLight } from './render/ToonMaterial';
 import { CameraRig } from './render/CameraRig';
 import { Environment } from './render/Environment';
@@ -38,7 +45,7 @@ import { tutorialTick } from '../app/tutorial';
 import { NAMEPLATE, nameplateVisible } from './nameplates';
 import { LocalPredictor } from './prediction/LocalPredictor';
 import { RemoteInterpolator } from './prediction/RemoteInterpolator';
-import { hudDom, hudStore, type KillfeedEntry } from './hud';
+import { hudDom, hudStore, type HudState, type KillfeedEntry } from './hud';
 
 export class WebGL2UnavailableError extends Error {}
 
@@ -54,7 +61,7 @@ export function detectWebGL2(): boolean {
   }
 }
 
-interface RuntimeHooks {
+export interface RuntimeHooks {
   sendInput(wire: ReturnType<typeof encodeInput>): void;
   onMapToggle(open: boolean): void;
   onMenuRequested(): void;
@@ -62,6 +69,8 @@ interface RuntimeHooks {
   onUserGesture(): void;
   playerName(id: number): string;
   requestPaintResync(roundId: number, reason: string): void;
+  /** Aviso curto de modo (buff, Mutirão, cápsula) para a interface. */
+  onModeNotice?(text: string, kind: 'info' | 'warn' | 'good'): void;
   /** Estado de voz (da chamada do host) de um userId, se ele estiver na chamada. */
   voiceOf(userId: string): { speaking: boolean; muted: boolean } | undefined;
 }
@@ -79,9 +88,14 @@ export class GameRuntime {
   level!: LevelRenderer;
   env!: Environment;
   effects!: Effects;
+  modeView!: ModeView;
+  private mode: GameModeId = 'territorio';
+  private lastObj: ObjectiveSnapshot | null = null;
+  /** Buff/Mutirão do jogador local (do snapshot próprio). */
+  private myMode: { bf: BuffKind | null; bt: number; mt: number; mc: number } = { bf: null, bt: 0, mt: 0, mc: 0 };
   rig!: CameraRig;
   input: InputManager;
-  audio = new AudioEngine({ baseUrl: import.meta.env.BASE_URL });
+  audio: AudioEngine;
   replica: PaintReplica;
   private pipeline: DefaultRenderingPipeline | null = null;
   private interp = new RemoteInterpolator();
@@ -129,8 +143,10 @@ export class GameRuntime {
     readonly canvas: HTMLCanvasElement,
     readonly map: MapSpec,
     hooks: RuntimeHooks,
+    audio: AudioEngine,
   ) {
     this.hooks = hooks;
+    this.audio = audio;
     this.engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: true, powerPreference: 'high-performance', antialias: true }, true);
     if (this.engine.webGLVersion < 2) {
       this.engine.dispose();
@@ -159,10 +175,14 @@ export class GameRuntime {
     this.settingsUnsub = settingsStore.subscribe(() => this.applySettings(settingsStore.get()));
   }
 
-  static async create(canvas: HTMLCanvasElement, map: MapSpec, hooks: RuntimeHooks, onProgress: (p: number, label: string) => void): Promise<GameRuntime> {
+  /**
+   * Cria o runtime de um mapa. Na troca de mapa entre rodadas, o AudioEngine anterior é
+   * reaproveitado (o contexto de áudio já desbloqueado pelo gesto do jogador continua valendo).
+   */
+  static async create(canvas: HTMLCanvasElement, map: MapSpec, hooks: RuntimeHooks, onProgress: (p: number, label: string) => void, audio?: AudioEngine): Promise<GameRuntime> {
     onProgress(0.05, 'Acordando a física…');
     await initPhysics();
-    const rt = new GameRuntime(canvas, map, hooks);
+    const rt = new GameRuntime(canvas, map, hooks, audio ?? new AudioEngine({ baseUrl: import.meta.env.BASE_URL }));
     onProgress(0.15, 'Montando o pátio…');
     rt.physics = new PhysicsWorld(map);
     const Lt = map.lighting;
@@ -178,6 +198,7 @@ export class GameRuntime {
     rt.level.setTeamColors(colors[0], colors[1]);
     rt.env = new Environment(rt.scene, map);
     rt.effects = new Effects(rt.scene, rt.physics, colors);
+    rt.modeView = new ModeView(rt.scene, map, colors);
     rt.rig = new CameraRig(rt.scene, rt.physics);
     rt.scene.activeCamera = rt.rig.camera;
     // luzes para personagens e objetos (o cenário usa shader próprio com a mesma luz)
@@ -222,6 +243,7 @@ export class GameRuntime {
     this.level?.setTeamColors(colors[0], colors[1]);
     this.level?.setPatterns(s.paintPatterns);
     this.effects?.setTeamColors(colors);
+    this.modeView?.setTeamColors(colors);
     if (this.effects) this.effects.reduceFlashes = s.reduceFlashes;
     for (const v of this.views.values()) v.setTeamColor(colors[v.team]);
     if (this.rig) {
@@ -292,6 +314,15 @@ export class GameRuntime {
     this.replica.receiveDelta(d);
   }
 
+  /** Modo da rodada (vem do round.loading): liga cápsula/estações e o HUD do objetivo. */
+  setMode(mode: GameModeId) {
+    this.mode = mode;
+    this.lastObj = null;
+    this.myMode = { bf: null, bt: 0, mt: 0, mc: 0 };
+    this.modeView.setSnapshot(undefined, undefined);
+    hudStore.set({ mode, objective: null, buff: null, buffLeft: 0, mutirao: 0, mutiraoCooldown: 0 });
+  }
+
   setPhase(phase: RoomPhase, remainingMs: number | null) {
     const prev = this.phase;
     this.phase = phase;
@@ -340,6 +371,9 @@ export class GameRuntime {
     }
     this.effects.syncObjects(m.ob);
     this.syncWheelAudio(m.ob);
+    this.lastObj = m.obj ?? null;
+    this.modeView.setSnapshot(m.obj, m.pk);
+    if (m.me) this.myMode = { bf: m.me.bf ?? null, bt: m.me.bt ?? 0, mt: m.me.mt ?? 0, mc: m.me.mc ?? 0 };
     for (const e of m.ev) this.handleEvent(e);
   }
 
@@ -421,6 +455,49 @@ export class GameRuntime {
         ];
         const id = this.kfId - 1;
         setTimeout(() => (this.killfeed = this.killfeed.filter((k) => k.id !== id)), 5000);
+        return;
+      }
+      case 'buff': {
+        const p = this.lastPos.get(e.pid);
+        if (e.pid === this.myId) {
+          this.tutorialCounters.buffs++;
+          this.play('refill_done');
+          this.hooks.onModeNotice?.(e.replaced ? `${BUFF_NAME[e.kind]} substituiu ${BUFF_NAME[e.replaced]}` : `${BUFF_NAME[e.kind]}!`, 'good');
+        } else if (p) this.play('refill_done', p, teamOf(e.pid), 0.4);
+        if (p) this.effects.respawn(p, teamOf(e.pid));
+        return;
+      }
+      case 'buffEnd':
+        if (e.pid === this.myId) this.hooks.onModeNotice?.(`${BUFF_NAME[e.kind]} acabou`, 'info');
+        return;
+      case 'pickupSpawn': {
+        const pk = this.map.objectives.pickups[e.pickup];
+        if (pk) this.play('ui_confirm', pk.pos, undefined, 0.5);
+        return;
+      }
+      case 'mutirao': {
+        this.effects.wave(e.p, e.team, 3);
+        if (e.a === this.myId || e.b === this.myId) {
+          this.play('special_ready');
+          const other = this.hooks.playerName(e.a === this.myId ? e.b : e.a);
+          this.hooks.onModeNotice?.(`Mutirão! com ${other}`, 'good');
+          this.tutorialCounters.mutiroes++;
+        }
+        return;
+      }
+      case 'capsule': {
+        const who = e.pid !== null ? this.hooks.playerName(e.pid) : null;
+        const mine = e.team === this.myTeam;
+        if (e.st === 'carregada' && who) {
+          this.play('ui_confirm', undefined, undefined, 0.7);
+          this.hooks.onModeNotice?.(e.pid === this.myId ? 'Você está com a cápsula: leve até a estação!' : `${who} pegou a cápsula`, mine ? 'good' : 'warn');
+          if (e.pid === this.myId) this.tutorialCounters.capsules++;
+        } else if (e.st === 'caida') this.hooks.onModeNotice?.('A cápsula caiu!', 'warn');
+        else if (e.st === 'entregue' && who) {
+          this.play(mine ? 'special_activate' : 'denied');
+          this.hooks.onModeNotice?.(`Entrega de ${who}!`, mine ? 'good' : 'warn');
+          if (e.pid === this.myId) this.tutorialCounters.deliveries++;
+        } else if (e.st === 'retornando') this.hooks.onModeNotice?.('A cápsula voltou para o centro', 'info');
         return;
       }
       case 'respawn': {
@@ -588,6 +665,10 @@ export class GameRuntime {
         ink: s.ink,
         inEnemyInk: s.groundState === GROUND_ENEMY,
         travel: s.travelPhase,
+        carrier: this.lastObj?.c === this.myId,
+        embalo: this.myMode.bf === 'embalo' && this.myMode.bt > 0,
+        folego: this.myMode.bf === 'folego' && this.myMode.bt > 0,
+        mutirao: this.myMode.mt > 0,
       }, dt);
       this.localAudio(pred);
       this.emptyTankAudio(pred, dt);
@@ -623,6 +704,10 @@ export class GameRuntime {
         ink: 100,
         inEnemyInk: (f & PFLAG_IN_ENEMY_INK) !== 0,
         travel: f & PFLAG_TRAVEL_FLY ? 2 : f & PFLAG_TRAVEL_PREP ? 1 : 0,
+        carrier: (f & PFLAG_CARRIER) !== 0,
+        embalo: (f & PFLAG_EMBALO) !== 0,
+        folego: (f & PFLAG_FOLEGO) !== 0,
+        mutirao: (f & PFLAG_MUTIRAO) !== 0,
       };
       this.updateView(id, vis, dt);
       this.remoteCosmetics(id, vis, dt);
@@ -630,6 +715,16 @@ export class GameRuntime {
 
     this.effects.cameraPos = [this.rig.camera.position.x, this.rig.camera.position.y, this.rig.camera.position.z];
     this.effects.update(dt);
+    const modeActive = this.phase === 'countdown' || this.phase === 'running' || this.phase === 'finishing';
+    this.modeView.update(
+      dt,
+      modeActive,
+      (id) => {
+        const v = this.views.get(id);
+        return v ? [v.root.position.x, v.root.position.y, v.root.position.z] : null;
+      },
+      (id) => this.roster.get(id)?.team ?? null,
+    );
     this.env.update(dt);
     this.level.setTime(now / 1000);
     this.level.flushTexture();
@@ -1087,7 +1182,7 @@ export class GameRuntime {
   }
 
   /** Contadores do próprio jogador para o treino rápido. */
-  private tutorialCounters = { thrown: 0, specials: 0 };
+  private tutorialCounters = { thrown: 0, specials: 0, mutiroes: 0, capsules: 0, deliveries: 0, buffs: 0 };
 
   private publishHud() {
     const pred = this.predictor;
@@ -1106,6 +1201,11 @@ export class GameRuntime {
           mapOpen: this.input.mapOpen,
           thrown: this.tutorialCounters.thrown,
           specials: this.tutorialCounters.specials,
+          buffs: this.tutorialCounters.buffs,
+          mutiroes: this.tutorialCounters.mutiroes,
+          capsules: this.tutorialCounters.capsules,
+          deliveries: this.tutorialCounters.deliveries,
+          mode: this.mode,
         },
         1 / 15,
       );
@@ -1159,8 +1259,33 @@ export class GameRuntime {
       fps: this.fps,
       corrections: pred?.corrections ?? 0,
       pendingInputs: pred?.pendingInputs ?? 0,
+      mode: this.mode,
+      buff: this.myMode.bt > 0 ? this.myMode.bf : null,
+      buffLeft: this.myMode.bt,
+      mutirao: this.myMode.mt,
+      mutiraoCooldown: this.myMode.mc,
+      objective: this.objectiveHud(s?.pos ?? null),
     });
     void w;
+  }
+
+  private objectiveHud(me: Vec3 | null): HudState['objective'] {
+    const o = this.lastObj;
+    if (!o || this.mode !== 'correio') return null;
+    const st = this.map.objectives.stations[o.s];
+    let bearing = 0,
+      distance = 0;
+    if (me && st) {
+      const dx = st[0] - me[0],
+        dz = st[2] - me[2];
+      distance = Math.hypot(dx, dz);
+      const cam = this.rig.camera;
+      const fwd = cam.getDirection(new Vector3(0, 0, 1));
+      const a = Math.atan2(dx, dz) - Math.atan2(fwd.x, fwd.z);
+      bearing = (((a * 180) / Math.PI + 540) % 360) - 180;
+    }
+    const carrier = o.c !== null ? { id: o.c, name: this.hooks.playerName(o.c), team: this.roster.get(o.c)?.team ?? 0 } : null;
+    return { state: o.st, carrier, iCarry: o.c === this.myId, station: o.s, stationShare: o.sp, progress: o.pr, deliveries: o.d, timer: o.t, stationBearing: bearing, stationDistance: distance };
   }
 
   /** Dados para o mapa tático: aliados (nunca adversários) e minha posição. */
@@ -1178,7 +1303,8 @@ export class GameRuntime {
     return out;
   }
 
-  dispose() {
+  /** Libera GPU, cena, física e entrada. `keepAudio` preserva o motor de áudio para o próximo mapa. */
+  dispose(keepAudio = false) {
     if (this.disposed) return;
     this.disposed = true;
     if (this.resultTimer) clearTimeout(this.resultTimer);
@@ -1193,13 +1319,17 @@ export class GameRuntime {
     this.roundWinner = null;
     this.predictor?.dispose();
     this.effects?.dispose();
+    this.modeView?.dispose();
     this.env?.dispose();
     this.level?.dispose();
     this.pipeline?.dispose();
     this.scene.dispose();
     this.engine.dispose();
     this.physics?.dispose();
-    void this.audio.dispose();
+    if (keepAudio) {
+      this.audio.stopMusic(0);
+      for (const k of this.remoteLoops) this.audio.setLoop(k, 'charge', false, { pos: [0, 0, 0] });
+    } else void this.audio.dispose();
     hudStore.set({ active: false });
   }
 }
