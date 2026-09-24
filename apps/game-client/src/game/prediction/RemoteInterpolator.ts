@@ -13,19 +13,38 @@ export interface RemoteSample {
 }
 
 /**
- * Interpolação de jogadores remotos com pequeno buffer (render atrasado em
- * `delayTicks`). Sem extrapolação ilimitada: segura a última amostra.
+ * Interpolação de jogadores remotos com buffer ADAPTATIVO: o atraso de render
+ * (`delayTicks`) acompanha o jitter medido na chegada dos snapshots (sobe rápido
+ * quando os pacotes atrasam, desce devagar quando a rede acalma), entre 3 e 9 ticks.
+ * Se ainda assim faltar amostra, extrapola pela velocidade por no máximo 100 ms e
+ * depois segura a última pose (nunca extrapolação ilimitada).
  */
+const MIN_DELAY = 3;
+const MAX_DELAY = 9;
+const MAX_EXTRAPOLATION = 3;
+
 export class RemoteInterpolator {
   private buf = new Map<number, RemoteSample[]>();
   private tickOffset: number | null = null;
-  delayTicks = 3;
+  delayTicks = MIN_DELAY;
+  /** Atraso típico (ticks) dos pacotes em relação ao mais rápido: pico com decaimento. */
+  private late = 0;
+  /** Medição: amostras pedidas; extrapoladas (buffer vazio, até 100 ms); congeladas (além disso). */
+  sampled = 0;
+  extrapolated = 0;
+  starved = 0;
 
   push(serverTick: number, receivedAt: number, tuples: RemotePlayerTuple[]) {
     const est = serverTick - (receivedAt / 1000) * 30;
     // maior estimativa = menor atraso observado; deriva lenta para acompanhar o relógio
     if (this.tickOffset === null || est > this.tickOffset) this.tickOffset = est;
     else this.tickOffset = this.tickOffset * 0.995 + est * 0.005;
+    // jitter: quanto este pacote chegou depois do mais rápido; o buffer cobre esse atraso
+    const lateNow = Math.max(0, this.tickOffset - est);
+    this.late = Math.max(lateNow, this.late * 0.97);
+    // intervalo entre snapshots (2 ticks) + 1 de margem + atraso típico
+    const target = Math.min(MAX_DELAY, Math.max(MIN_DELAY, 3 + this.late));
+    this.delayTicks += (target - this.delayTicks) * (target > this.delayTicks ? 0.3 : 0.02);
     for (const t of tuples) {
       const s: RemoteSample = {
         tick: serverTick,
@@ -53,6 +72,16 @@ export class RemoteInterpolator {
   sample(playerId: number, tick: number): RemoteSample | null {
     const arr = this.buf.get(playerId);
     if (!arr || arr.length === 0) return null;
+    this.sampled++;
+    const last = arr[arr.length - 1];
+    if (tick > last.tick) {
+      // sem amostra nova: extrapola pela velocidade por até 3 ticks (100 ms), depois segura
+      const ahead = tick - last.tick;
+      if (ahead > MAX_EXTRAPOLATION) this.starved++;
+      else this.extrapolated++;
+      const dt = Math.min(ahead, MAX_EXTRAPOLATION) / 30;
+      return { ...last, pos: [last.pos[0] + last.vel[0] * dt, last.pos[1], last.pos[2] + last.vel[1] * dt] };
+    }
     if (tick <= arr[0].tick) return arr[0];
     for (let i = arr.length - 1; i >= 0; i--) {
       const a = arr[i];
@@ -88,6 +117,8 @@ export class RemoteInterpolator {
   clear() {
     this.buf.clear();
     this.tickOffset = null;
+    this.late = 0;
+    this.delayTicks = MIN_DELAY;
   }
 }
 

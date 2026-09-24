@@ -221,6 +221,53 @@ describe('reconexão e identidade', () => {
   });
 });
 
+describe('janela de reconexão expirada', () => {
+  it('durante a rodada, o slot vira bot da mesma turma; ao voltar, a pessoa retoma o slot', async () => {
+    const local = await startTestServer({ ROUND_DURATION_SECONDS: '30', RECONNECT_WINDOW_SECONDS: '1', JOIN_RATE_BURST: '100', JOIN_RATE_PER_SECOND: '50' });
+    const sid = newSid();
+    const joinL = async (u: string) => {
+      const c = new HeadlessClient(local.url);
+      await c.join({ activitySessionId: sid, credential: await cred(u, sid), mapHash: MAP_HASH });
+      await c.waitFor(() => c.welcome && c.lobby, 5000, `welcome ${u}`);
+      return c;
+    };
+    try {
+      const a = await joinL('exp1');
+      const b = await joinL('exp2');
+      const host = [a, b].find((c) => c.welcome!.playerId === c.lobby!.hostPlayerId)!;
+      const guest = host === a ? b : a;
+      const gid = guest.welcome!.playerId;
+      guest.send(C2S.SET_READY, { ready: true });
+      await host.waitFor(() => host.lobby!.players.find((p) => p.playerId === gid)?.ready, 3000, 'pronto');
+      host.send(C2S.START, {});
+      await host.waitFor(() => host.lobby!.phase === 'running', 25000, 'running');
+      const team = host.lobby!.players.find((p) => p.playerId === gid)!.team;
+      // queda sem volta automática: a janela (1 s) expira
+      (guest as unknown as { room: { reconnection: { enabled: boolean } } }).room.reconnection.enabled = false;
+      guest.simulateNetworkDrop();
+      await host.waitFor(() => host.lobby!.players.find((p) => p.playerId === gid)?.connection === 'replaced_by_bot', 8000, 'slot vira bot');
+      const slot = host.lobby!.players.find((p) => p.playerId === gid)!;
+      expect(slot.team).toBe(team);
+      expect(host.lobby!.players.filter((p) => !p.isBot).length).toBe(2);
+      // o bot joga: a posição do slot muda nos snapshots
+      const posOf = () => host.lastSnapshot?.pl.find((t) => t[0] === gid);
+      const p0 = await host.waitFor(() => posOf(), 3000, 'slot no snapshot');
+      await new Promise((r) => setTimeout(r, 2500));
+      const p1 = posOf()!;
+      expect(Math.hypot(p1[1] - p0[1], p1[3] - p0[3])).toBeGreaterThan(50); // centímetros
+      // a pessoa volta com nova credencial e retoma o mesmo slot, na mesma turma
+      const back = await joinL(guest === a ? 'exp1' : 'exp2');
+      expect(back.welcome!.playerId).toBe(gid);
+      expect(back.welcome!.resumed).toBe(true);
+      await host.waitFor(() => host.lobby!.players.find((p) => p.playerId === gid)?.connection === 'connected', 5000, 'retomou');
+      expect(host.lobby!.players.find((p) => p.playerId === gid)!.team).toBe(team);
+      await Promise.all([host.leave(), back.leave()]);
+    } finally {
+      await local.s.shutdown();
+    }
+  }, 60000);
+});
+
 describe('entradas adversariais', () => {
   it('NaN, Infinity, payload enorme, tipos errados e comandos inventados não derrubam a sala', async () => {
     const sid = newSid();

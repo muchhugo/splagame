@@ -114,6 +114,8 @@ export interface ArenaDeps {
   sink: ResultSink;
   roundDurationSeconds: number;
   correioDurationSeconds: number;
+  /** Padrão: RECONNECT_WINDOW_SECONDS. */
+  reconnectWindowSeconds?: number;
 }
 
 const BOT_NAMES = ['Bibelô Jarra', 'Bibelô Vaso', 'Bibelô Cuia', 'Bibelô Tacho', 'Bibelô Pote', 'Bibelô Bule', 'Bibelô Caneca', 'Bibelô Moringa'];
@@ -259,7 +261,7 @@ export class ArenaRoom extends Room {
     p.connection = 'reconnecting';
     // Correio do Ara: quem cai da conexão solta a cápsula (o slot segue na rodada)
     this.sim?.dropObjective(p.playerId);
-    const def = this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
+    const def = this.allowReconnection(client, ArenaRoom.deps.reconnectWindowSeconds ?? RECONNECT_WINDOW_SECONDS);
     p.reconnect = def;
     def.catch(() => {
       /* expiração tratada em onLeave */

@@ -1,3 +1,4 @@
+import { RECONNECT_WINDOW_SECONDS } from '@borrifo/game-contracts';
 /**
  * Configuração do servidor de partidas a partir do ambiente.
  * Credenciais de desenvolvimento NUNCA são aceitas com NODE_ENV=production.
@@ -18,6 +19,8 @@ export interface ServerConfig {
   roundDurationSeconds: number;
   /** Duração do Correio do Ara (s); padrão do modo, ajustável para testes. */
   correioDurationSeconds: number;
+  /** Janela de reconexão (s); ao expirar durante a rodada, o slot vira bot. Ajustável para testes. */
+  reconnectWindowSeconds: number;
   joinRateBurst: number;
   joinRatePerSecond: number;
   /** Hosts de onde avatares podem vir (https). Vazio = ninguém tem avatar por URL; a interface usa iniciais. */
@@ -53,6 +56,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     maxRooms: Number(env.MAX_ROOMS ?? 50),
     roundDurationSeconds: Number(env.ROUND_DURATION_SECONDS ?? 180),
     correioDurationSeconds: Number(env.CORREIO_DURATION_SECONDS ?? 240),
+    reconnectWindowSeconds: Math.max(1, Math.min(120, Number(env.RECONNECT_WINDOW_SECONDS ?? RECONNECT_WINDOW_SECONDS) || RECONNECT_WINDOW_SECONDS)),
     joinRateBurst: Number(env.JOIN_RATE_BURST ?? 10),
     joinRatePerSecond: Number(env.JOIN_RATE_PER_SECOND ?? 1),
     avatarAllowedHosts: (env.AVATAR_ALLOWED_HOSTS ?? '')

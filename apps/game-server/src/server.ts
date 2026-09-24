@@ -28,6 +28,7 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
     sink: opts.sink ?? new JsonlResultSink(cfg.resultsFile),
     roundDurationSeconds: cfg.roundDurationSeconds,
     correioDurationSeconds: cfg.correioDurationSeconds,
+    reconnectWindowSeconds: cfg.reconnectWindowSeconds,
   };
   const allowed = new Set(cfg.allowedOrigins);
   // CORS do matchmaking: só origens permitidas (a credencial vai no corpo do POST).

@@ -278,3 +278,84 @@ describe('Pião-Guia (deslocamento tático)', () => {
     void MOVEMENT;
   });
 });
+
+describe('Roda de Oleiro: ondas, dano, linha de visão e destruição', () => {
+  /** Lança a roda de `a` mirando o chão à frente e espera ela pousar. */
+  const deploy = (h: ReturnType<typeof makeSim>, a: SimPlayer, others: SimPlayer[]) => {
+    a.state.special = RODA_DE_OLEIRO.pointsRequired;
+    h.input(a, { ...h.aimAt(a, [a.state.pos[0] + 3, 0, a.state.pos[2]]), actions: [{ kind: 'special' }] });
+    for (const o of others) h.input(o, {});
+    h.sim.step();
+    expect(a.state.specialActive).toBe(true);
+    for (let t = 0; t < 90; t++) {
+      const w = h.sim.objects.find((o) => o.kind === 'wheel') as { deployed: boolean; pos: Vec3 } | undefined;
+      if (w?.deployed) return w;
+      h.input(a, {});
+      for (const o of others) h.input(o, {});
+      h.sim.step();
+    }
+    throw new Error('a roda não pousou');
+  };
+
+  it('pousa, solta 4 ondas que pintam o chão, fere adversários visíveis e poupa aliados e quem está atrás de parede', () => {
+    const h = makeSim();
+    const a = h.add(1, 0, [-5, 0, -3]);
+    const ally = h.add(2, 0, [-8, 0, -6]);
+    const foe = h.add(3, 1, [-8, 0, 3]);
+    const hidden = h.add(4, 1, [8, 0, 8]);
+    h.sim.step();
+    const units0 = h.sim.paint.teamUnits[0];
+    const w = deploy(h, a, [ally, foe, hidden]);
+    // em volta da roda: aliado e adversário a 2,5 m (do mesmo lado da parede); outro adversário atrás da parede central
+    ally.state.pos = [w.pos[0] - 2.5, w.pos[1], w.pos[2]];
+    foe.state.pos = [w.pos[0], w.pos[1], w.pos[2] + 2.5];
+    hidden.state.pos = [0.8, 0, w.pos[2]];
+    expect(Math.hypot(hidden.state.pos[0] - w.pos[0], hidden.state.pos[2] - w.pos[2])).toBeLessThan(RODA_DE_OLEIRO.waveRadius);
+    const waves: number[] = [];
+    for (let t = 0; t < Math.ceil((RODA_DE_OLEIRO.lifetime + 0.5) / TICK_DT); t++) {
+      for (const p of [a, ally, foe, hidden]) h.input(p, {});
+      h.sim.step();
+      for (const e of h.sim.drainEvents()) if (e.ev.k === 'wave') waves.push(e.ev.n);
+      // o adversário fica parado no alcance das ondas (reaparece longe se for eliminado)
+      if (foe.state.alive) foe.state.pos = [w.pos[0], w.pos[1], w.pos[2] + 2.5];
+    }
+    expect(waves).toEqual([0, 1, 2, 3]);
+    expect(h.sim.paint.teamUnits[0]).toBeGreaterThan(units0 + 100);
+    expect(ally.state.hp).toBe(HEALTH.maxHp);
+    expect(hidden.state.hp).toBe(HEALTH.maxHp);
+    // 40 por onda: o adversário exposto cai na terceira
+    expect(foe.state.alive === false || foe.stats.deaths >= 1).toBe(true);
+    expect(a.stats.eliminations).toBeGreaterThanOrEqual(1);
+    // depois do tempo de vida: some e libera o especial
+    expect(h.sim.objects.some((o) => o.kind === 'wheel')).toBe(false);
+    expect(a.state.specialActive).toBe(false);
+  });
+
+  it('adversário quebra a roda com tiros antes de todas as ondas', () => {
+    const h = makeSim();
+    const a = h.add(1, 0, [-8, 0, -3]);
+    const foe = h.add(3, 1, [-8, 0, 6]);
+    h.sim.step();
+    const w = deploy(h, a, [foe]);
+    // a 3,5 m, com linha de tiro até a roda (a vida é reposta: o teste é sobre a roda)
+    foe.state.pos = [w.pos[0] + 3.5, w.pos[1], w.pos[2]];
+    let waves = 0;
+    let destroyed = false;
+    for (let t = 0; t < Math.ceil(RODA_DE_OLEIRO.lifetime / TICK_DT); t++) {
+      foe.state.ink = 100;
+      foe.state.hp = HEALTH.maxHp;
+      h.input(foe, { ...h.aimAt(foe, [w.pos[0], w.pos[1] + 0.4, w.pos[2]]), heldButtons: Buttons.FIRE });
+      h.input(a, {});
+      h.sim.step();
+      for (const e of h.sim.drainEvents()) {
+        if (e.ev.k === 'wave') waves++;
+        if (e.ev.k === 'objectDestroyed') destroyed = true;
+      }
+      if (destroyed) break;
+    }
+    expect(destroyed).toBe(true);
+    expect(waves).toBeLessThan(RODA_DE_OLEIRO.waveCount);
+    expect(a.state.specialActive).toBe(false);
+    expect(h.sim.objects.some((o) => o.kind === 'wheel')).toBe(false);
+  });
+});
