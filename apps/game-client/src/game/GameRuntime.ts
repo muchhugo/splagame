@@ -134,6 +134,9 @@ export class GameRuntime {
   private lastRenderAt = 0;
   private hooks: RuntimeHooks;
   private lastPos = new Map<number, Vec3>();
+  /** Relógio da previsão local (s), avança um passo fixo por passo previsto. */
+  private predClock = 0;
+  private lastShotSimAt = -Infinity;
   pendingTravelTarget: number | null = null;
   /** Câmera de inspeção (somente testes/diagnóstico em dev): segue um ponto fixo em vez do jogador. */
   debugView: { pos: Vec3; yaw: number; pitch: number } | null = null;
@@ -635,6 +638,7 @@ export class GameRuntime {
         this.hooks.sendInput(encodeInput(res.input));
         // passos atrasados de um quadro lento soam espaçados pela cadência real
         this.stepDelay = (steps - 1) * TICK_DT;
+        this.predClock += TICK_DT;
         this.localCosmetics(pred, res.intents, aim.dir);
       }
       this.stepDelay = 0;
@@ -833,8 +837,10 @@ export class GameRuntime {
       const d = aimDirection(yawFromDir(dir) + (Math.random() - 0.5) * sp, pitchFromDir(dir) + (Math.random() - 0.5) * sp * 0.5);
       this.effects.shot(muzzle, [d[0] * w.projectileSpeed, d[1] * w.projectileSpeed, d[2] * w.projectileSpeed], w.straightTime, w.gravity, w.maxLife, team);
       this.play('shot_esguicho', undefined, team, 0.7, this.stepDelay + i * w.fireInterval);
-      // rajada contínua: vibra só no começo, nunca a cada gota
-      if (performance.now() - (this.lastLocalShotAt.get('shot_esguicho') ?? -Infinity) > 260) this.rumble('disparo');
+      // rajada contínua: vibra só no começo, nunca a cada gota. A pausa é medida no tempo
+      // SIMULADO (passos previstos), não no relógio: um quadro travado não "reinicia" a rajada
+      if (this.predClock - this.lastShotSimAt > 0.26) this.rumble('disparo');
+      this.lastShotSimAt = this.predClock;
       this.lastLocalShotAt.set('shot_esguicho', performance.now());
     }
     if (intents.flick && w.kind === 'contact') {

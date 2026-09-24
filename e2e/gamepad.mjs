@@ -122,6 +122,7 @@ await page.evaluate(() => window.__padSet(7, 0));
 const s3 = await st();
 const rumbles = await page.evaluate(() => window.__rumbles.slice());
 check(s3.ink < 95, `RT dispara (pigmento ${s3.ink.toFixed(0)}%)`);
+console.log(`     pulsos: ${rumbles.map((r) => `${r.duration} ms @${Math.round(r.t - rumbles[0].t)}`).join(', ')}`);
 check(rumbles.length >= 1 && rumbles.length <= 2, `vibração curta ao começar a rajada, não a cada gota (${rumbles.length} pulso(s), ${rumbles[0]?.duration ?? '-'} ms)`);
 check(rumbles.every((r) => r.type === 'dual-rumble' && r.duration <= 400 && r.strongMagnitude <= 1 && r.weakMagnitude <= 1), 'vibração usa dual-rumble com duração e intensidade limitadas');
 check((await page.textContent('.equip kbd')) === 'RB', 'HUD mostra RB para a Moringa');

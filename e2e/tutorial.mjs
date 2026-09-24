@@ -22,7 +22,8 @@ await page.waitForFunction(() => window.__borrifo.uiStore.get().lobby?.phase ===
 await page.waitForSelector('.tutorial', { timeout: 15000 });
 const card = async () => (await page.textContent('.tutorial')).replace(/\s+/g, ' ');
 const title = () => page.textContent('.tutorial strong');
-check(/Treino rápido · 1\/9/.test(await card()) && (await title()) === 'Andar', 'treino começa sozinho na primeira rodada (1/9: Andar)');
+// 1 × 1 com bot no território: 9 etapas básicas + buffs (Mutirão não se aplica sem aliado)
+check(/Treino rápido · 1\/10/.test(await card()) && (await title()) === 'Andar', 'treino começa sozinho na primeira rodada (1/10: Andar; sem Mutirão em 1 × 1)');
 check(/W A S D/.test(await card()), 'teclado: "Ande com W A S D"');
 check((await page.evaluate(() => window.__borrifo.uiStore.get().lobby.phase)) === 'running', 'a partida segue enquanto o treino aparece');
 
@@ -73,7 +74,7 @@ await page.click('.tutorial >> text=Encerrar treino');
 await page.waitForTimeout(300);
 check(!(await page.$('.tutorial')), 'encerrar some com o cartão');
 const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('borrifo.settings.v2')).tutorialDone);
-check(saved === 1, 'conclusão salva por versão (tutorialDone = 1)');
+check(saved === 2, 'conclusão salva por versão (tutorialDone = 2)');
 check((await page.evaluate(() => window.__borrifo.uiStore.get().notices.map((n) => n.text))).some((t) => t.startsWith('Treino encerrado')), 'aviso de treino encerrado');
 check(errs.length === 0, `sem erros de página${errs.length ? `: ${errs.slice(0, 3).join(' | ')}` : ''}`);
 await ctx.close();
