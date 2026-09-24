@@ -88,6 +88,16 @@ SwiftShader:
   - a causa da falha única da carga **não foi identificada**. Ela fica registrada aqui, e
     não como "intermitente".
 - `capturas.mjs`: sem falhas; as capturas estão em `e2e/out/capturas/menus/`.
+- `pnpm validar` (worktree isolada do commit `1e6fd69`, pilha própria em portas livres,
+  sem voz nem desempenho): **19 de 19 etapas**. Inclui 212 testes, typecheck, build e as
+  verificações de segurança do bundle. No navegador:
+  - shell: 9 verificações;
+  - partida: 10;
+  - controle: 33;
+  - treino: 22;
+  - **menus: 48**;
+  - voz pelo bridge: 11;
+  - capturas: sem erros.
 
 
 Resultados:
