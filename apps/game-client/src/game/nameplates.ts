@@ -4,7 +4,7 @@
  * só com linha de visão livre e fora da tinta: o nome — e o indicador de fala
  * junto dele — nunca revela quem está escondido atrás de parede ou submerso.
  */
-export const NAMEPLATE = { allyRange: 45, enemyRange: 28 } as const;
+export const NAMEPLATE = { allyRange: 32, enemyRange: 28 } as const;
 
 export interface PlateCheck {
   ally: boolean;

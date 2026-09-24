@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { TEAMS } from '@borrifo/game-contracts';
 import { INK, MORINGA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
 import { hudDom, hudStore } from '../game/hud';
 import { pressText, useHints } from '../app/hints';
+import { useTeams } from '../app/teams';
 import { VoiceChip } from './VoiceChip';
 
 function fmtTime(ms: number) {
@@ -20,6 +20,7 @@ export function Hud() {
   const rtt = useStore(uiStore, (s) => s.rttMs);
   const result = useStore(uiStore, (s) => s.result);
   const hints = useHints();
+  const teams = useTeams();
   const reticle = useRef<HTMLDivElement>(null);
   const blocked = useRef<HTMLDivElement>(null);
   const hit = useRef<HTMLDivElement>(null);
@@ -50,20 +51,20 @@ export function Hud() {
       <div className="damage-vignette" ref={dmg} />
       <div className="nameplates" ref={plates} aria-hidden="true" />
       <div className="hud-top">
-        <div className="roster" aria-label={`Turma ${TEAMS[0].name}`}>
+        <div className="roster" aria-label={`Turma ${teams[0].name}`}>
           {t0.map((r) => (
             <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team0)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
-              {TEAMS[0].symbol}
+              {teams[0].symbol}
             </div>
           ))}
         </div>
         <div className={`timer ${urgent ? 'urgent' : ''}`} aria-label="Tempo restante">
           {h.phase === 'countdown' ? '3:00' : fmtTime(h.timeLeftMs)}
         </div>
-        <div className="roster" aria-label={`Turma ${TEAMS[1].name}`}>
+        <div className="roster" aria-label={`Turma ${teams[1].name}`}>
           {t1.map((r) => (
             <div key={r.playerId} className={`dot ${r.alive ? '' : 'dead'} ${r.isMe ? 'me' : ''} ${r.specialReady ? 'ready' : ''} ${r.speaking ? 'speaking' : ''}`} style={{ background: 'var(--team1)' }} title={r.speaking ? `${r.name} (falando)` : r.name}>
-              {TEAMS[1].symbol}
+              {teams[1].symbol}
             </div>
           ))}
         </div>

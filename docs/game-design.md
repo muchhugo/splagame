@@ -128,8 +128,51 @@ Cartoon vibrante e amigável, cômico sem ser infantil, com identidade própria 
   limitadas e reduzidas perto da câmera, tremor de câmera leve e desligável, e personagem colado
   na câmera esmaecido para não tapar a mira.
 
+## Cores das equipes por rodada
+
+O servidor escolhe um par de apresentação a cada rodada (Urucum × Anil, Açaí × Mate, Pitanga
+× Jenipapo, em rotação a partir de uma semente da sala). Tinta, roupa, efeitos, placar, mapa
+e resultado mudam juntos. Os nomes das turmas acompanham o par. Ver
+[identity.md](identity.md#turmas-equipes).
+
+## Controles e treino
+
+- **Teclado e mouse**, **controle** e **toque** funcionam juntos. Trocar no meio da partida não
+  pausa nada, e as dicas na tela passam a mostrar a tecla, o botão ("Y", "△", "X" no
+  Nintendo) ou o gesto.
+- **Controle, layout padrão pela posição física:**
+
+  | Entrada | Ação |
+  |---|---|
+  | L (analógico esquerdo) | move |
+  | R (analógico direito) | câmera |
+  | RT | usa a ferramenta |
+  | LB | Forma Pião |
+  | LT | ação contextual: Moringa; no mapa, confirma o Pião-Guia |
+  | A | pula |
+  | RB | Moringa |
+  | Y | Roda de Oleiro |
+  | View | mapa |
+  | Menu | menu |
+  | R3 | recentraliza a câmera |
+
+  Tudo é remapeável, e remapear para um botão ocupado troca as duas ações. No mapa, o
+  direcional escolhe o companheiro.
+- **Mira assistida (só controle):** leve e desligável. Ela desacelera a câmera perto de um
+  adversário visível e puxa a mira um pouco enquanto o jogador mira ou anda; nunca mira
+  sozinha.
+- **Vibração:** curta, em disparo (no começo da rajada), dano, Moringa, especial, aterrissagem
+  forte e eliminação. Tem intensidade ajustável e nunca é contínua.
+- **Treino rápido:** 9 etapas dentro da primeira partida: andar, olhar, usar a ferramenta,
+  pintar o chão, Forma Pião, recarregar, mapa, Moringa e Roda.
+  - Cada etapa é detectada pelo próprio jogo, e o texto segue o dispositivo em uso.
+  - Não pausa nem bloqueia; dá para pular a etapa ou encerrar.
+  - Pode ser refeito pelo menu, e a conclusão fica salva por versão.
+
 ## Acessibilidade
 
-Paletas alternativas (alto contraste e daltonismo), padrões na tinta, redução de tremor e de
-flashes, escala do HUD, `prefers-reduced-motion` no HUD, remapeamento de teclas, modos segurar
-ou alternar para o fluxo e o mapa, sensibilidade, inversão de eixo e FOV.
+Paletas alternativas (alto contraste e daltonismo, com nomes próprios, remapeando o par da
+rodada só neste aparelho), padrões na tinta, redução de tremor e de flashes, escala do HUD,
+`prefers-reduced-motion` no HUD e no treino, remapeamento de teclas e de botões do controle,
+modos segurar ou alternar para o fluxo e o mapa, sensibilidade (mouse e controle, por eixo),
+inversão de eixo e FOV.

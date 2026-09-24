@@ -46,6 +46,7 @@ import {
   type GameEvent,
   type LobbyPlayer,
   type LobbyState,
+  type RoundLoadingMessage,
   type NoticeCode,
   type RemotePlayerTuple,
   type RoomPhase,
@@ -55,7 +56,7 @@ import {
   type WeaponId,
   type WorldObjectState,
 } from '@borrifo/game-contracts';
-import { DEFAULT_MAP_ID, MATCH, MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
+import { DEFAULT_MAP_ID, DEFAULT_TEAM_PAIR_ID, MATCH, MORINGA, RODA_DE_OLEIRO, pickTeamPair } from '@borrifo/game-content';
 import { BotBrain, MatchSimulation, PhysicsWorld, toSelfSnapshot, type SimPlayer } from '@borrifo/game-simulation';
 import type { ZodType } from 'zod';
 import { AuthError, sanitizeDisplayName, type CredentialVerifier, type VerifiedIdentity } from '../auth';
@@ -106,6 +107,10 @@ export class ArenaRoom extends Room {
 
   activitySessionId = '';
   matchId = '';
+  /** Semente da partida para a rotação dos pares de cores (fixa enquanto a sala vive). */
+  private readonly paletteSeed = (Math.random() * 2 ** 31) | 0;
+  /** Par de apresentação da rodada atual; só muda quando uma rodada nova carrega. */
+  private teamPairId = DEFAULT_TEAM_PAIR_ID;
   phase: RoomPhase = 'lobby';
   roundId = 0;
   private world!: StaticWorld;
@@ -456,7 +461,12 @@ export class ArenaRoom extends Room {
       phaseRemainingMs: this.phaseRemainingMs(),
       rematchVotes: [...this.players.values()].filter((p) => p.vote === 'rematch').map((p) => p.playerId),
       lastResult: this.lastResult,
+      teamPairId: this.teamPairId,
     };
+  }
+
+  private roundLoading(): RoundLoadingMessage {
+    return { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, teamPairId: this.teamPairId, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 };
   }
 
   private phaseRemainingMs(): number | null {
@@ -491,7 +501,7 @@ export class ArenaRoom extends Room {
     client.send(S2C.LOBBY, this.lobbyState());
     if (!this.sim || !p.inRound) return;
     if (this.phase === 'loading' || this.phase === 'countdown' || this.phase === 'running') {
-      client.send(S2C.ROUND_LOADING, { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 });
+      client.send(S2C.ROUND_LOADING, this.roundLoading());
       if (this.phase !== 'loading' && p.loaded) this.sendPaintSnapshot(client);
       if (this.phase === 'running') client.send(S2C.ROUND_START, { roundId: this.roundId, durationMs: this.sim.phaseRemainingMs, startTick: this.sim.startTick });
     }
@@ -545,6 +555,7 @@ export class ArenaRoom extends Room {
       }
     }
     const seed = (Math.random() * 2 ** 31) | 0;
+    this.teamPairId = pickTeamPair(this.paletteSeed, this.roundId).id;
     this.sim = new MatchSimulation({
       map: this.world.map,
       layout: this.world.layout,
@@ -561,7 +572,7 @@ export class ArenaRoom extends Room {
       if (p.isBot || p.connection === 'replaced_by_bot') sp.bot = new BotBrain(this.world.nav, this.botSeed++);
     }
     log('info', 'round.loading', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, players: this.players.size });
-    this.broadcast(S2C.ROUND_LOADING, { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 });
+    this.broadcast(S2C.ROUND_LOADING, this.roundLoading());
     this.broadcastLobby();
   }
 

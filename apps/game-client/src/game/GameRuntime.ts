@@ -22,7 +22,7 @@ import {
 } from '@borrifo/game-contracts';
 import { ESTILINGUE, INK, MORINGA, MOVEMENT, RODA_DE_OLEIRO, WEAPONS, type MapSpec } from '@borrifo/game-content';
 import { PaintLayout, PaintReplica, PhysicsWorld, aimDirection, buildFaces, initPhysics, lerp, muzzlePosition, pitchFromDir, segmentCapsuleHit, yawFromDir, type MapFace } from '@borrifo/game-simulation';
-import { PALETTES, settingsStore, type Settings } from '../app/settings';
+import { settingsStore, teamColorsFor, type Settings } from '../app/settings';
 import { AudioEngine, type SfxId } from './audio';
 import { CharacterView, type CharacterVisual } from './render/CharacterView';
 import { setToonLight } from './render/ToonMaterial';
@@ -35,7 +35,7 @@ import { AIM_ASSIST_TUNING, NO_ASSIST, aimAssist, type AimAssistResult, type Aim
 import { RUMBLE, RumbleGate, gamepadHub, type RumbleKind } from './input/gamepad';
 import { deviceStore } from './input/device';
 import { tutorialTick } from '../app/tutorial';
-import { nameplateVisible } from './nameplates';
+import { NAMEPLATE, nameplateVisible } from './nameplates';
 import { LocalPredictor } from './prediction/LocalPredictor';
 import { RemoteInterpolator } from './prediction/RemoteInterpolator';
 import { hudDom, hudStore, type KillfeedEntry } from './hud';
@@ -201,9 +201,19 @@ export class GameRuntime {
     return rt;
   }
 
+  /** Par de apresentação da rodada (escolhido pelo servidor). */
+  private teamPairId: string | null = null;
+
   teamColors(): [Color3, Color3] {
-    const p = PALETTES[settingsStore.get().palette].team;
+    const p = teamColorsFor(settingsStore.get().palette, this.teamPairId);
     return [Color3.FromHexString(p[0]), Color3.FromHexString(p[1])];
+  }
+
+  /** Troca o par de cores (nova rodada ou reconexão): tinta, roupa, efeitos e marcadores juntos. */
+  setTeamPair(id: string) {
+    if (id === this.teamPairId) return;
+    this.teamPairId = id;
+    this.applySettings(settingsStore.get());
   }
 
   private applySettings(s: Settings) {
@@ -1042,7 +1052,7 @@ export class GameRuntime {
         pl.el.classList.toggle('enemy', !ally);
         pl.el.classList.toggle('speaking', lp.userId ? !!this.hooks.voiceOf(lp.userId)?.speaking : false);
         pl.el.style.color = `var(--team${lp.team})`;
-        pl.el.style.opacity = String(Math.max(0.35, Math.min(1, 1.25 - d / (ally ? 45 : 28))));
+        pl.el.style.opacity = String(Math.max(0.35, Math.min(1, 1.25 - d / (ally ? NAMEPLATE.allyRange : NAMEPLATE.enemyRange))));
         pl.el.style.transform = `translate(${sp[0].toFixed(1)}px, ${sp[1].toFixed(1)}px) translate(-50%, -100%)`;
         pl.el.style.display = '';
       }

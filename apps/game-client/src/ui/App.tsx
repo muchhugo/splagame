@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GAME_NAME } from '@borrifo/game-contracts';
 import { AppController } from '../app/AppController';
-import { settingsStore, PALETTES } from '../app/settings';
+import { settingsStore, teamColorsFor } from '../app/settings';
 import { useStore } from '../app/store';
 import { pushNotice, showError, uiStore } from '../app/uiStore';
 import { connectEmbedded, connectStandaloneDev, isEmbedded, readHandshakeFragment } from '../boot/host';
@@ -37,16 +37,17 @@ export function App() {
   const menuOpen = useStore(uiStore, (s) => s.menuOpen);
   const mapOpen = useStore(uiStore, (s) => s.mapOpen);
   const palette = useStore(settingsStore, (s) => s.palette);
+  const teamPairId = useStore(uiStore, (s) => s.lobby?.teamPairId);
   const hudScale = useStore(settingsStore, (s) => s.hudScale);
   const [booted, setBooted] = useState(false);
 
   // variáveis de cor das equipes (apresentação) e escala do HUD
   useEffect(() => {
-    const [c0, c1] = PALETTES[palette].team;
+    const [c0, c1] = teamColorsFor(palette, teamPairId);
     document.documentElement.style.setProperty('--team0', c0);
     document.documentElement.style.setProperty('--team1', c1);
     document.documentElement.style.setProperty('--hud-scale', String(hudScale));
-  }, [palette, hudScale]);
+  }, [palette, teamPairId, hudScale]);
 
   // sons de interface num só lugar: todo botão confirma; data-sfx="back" cancela/sai;
   // controles de toque e o mapa tático são gameplay e ficam de fora

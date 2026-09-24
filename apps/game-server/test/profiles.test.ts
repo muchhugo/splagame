@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { HeadlessClient, issueDevCredential, TEST_DEV_SECRET } from '@borrifo/test-utils';
+import { TEAM_PAIRS } from '@borrifo/game-content';
 import { MAP_HASH, startTestServer } from './helpers';
 import type { StartedServer } from '../src/server';
 import type { MemoryResultSink } from '../src/results';
@@ -18,6 +19,19 @@ async function join(sid: string, claims: { userId: string; name: string; nick?: 
   await c.waitFor(() => c.welcome && c.lobby, 5000, 'welcome');
   return c;
 }
+
+describe('par de cores da rodada (servidor real)', () => {
+  it('o servidor escolhe um par válido e todos na sala recebem o mesmo, inclusive quem entra depois', async () => {
+    const sid = 'sessao-par-1';
+    const a = await join(sid, { userId: 'u-p1', name: 'P1' });
+    const b = await join(sid, { userId: 'u-p2', name: 'P2' });
+    await b.waitFor(() => b.lobby?.players.length === 2, 5000, 'dois');
+    expect(TEAM_PAIRS.map((p) => p.id)).toContain(a.lobby!.teamPairId);
+    expect(b.lobby!.teamPairId).toBe(a.lobby!.teamPairId);
+    a.leave();
+    b.leave();
+  });
+});
 
 describe('perfis do Trivo no lobby (servidor real)', () => {
   it('nome: apelido da comunidade → nome de exibição → usuário; texto limpo e limitado; avatar só de host permitido', async () => {

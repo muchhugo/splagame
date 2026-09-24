@@ -10,11 +10,17 @@ principal, não substitui o Arapark e não publica nada. O "host" daqui é um ho
 desenvolvimento fictício (`apps/activity-shell`), que implementa o mesmo contrato que um host
 real precisaria implementar.
 
-> Estado resumido: partida jogável de ponta a ponta com servidor autoritativo, 2 navegadores
-> reais e 8 conexões headless validados na mesma sala. O contrato de Atividade e o host de
-> laboratório foram testados no Chromium. **A voz via LiveKit está implementada no host, mas
-> não foi testada com um servidor LiveKit real** (não havia servidor nem credenciais). Detalhes
-> em [docs/implementation-status.md](docs/implementation-status.md).
+> Estado resumido:
+> - Partida jogável de ponta a ponta com servidor autoritativo. 2 navegadores reais e 8
+>   conexões headless foram validados na mesma sala.
+> - O contrato de Atividade e o host de laboratório foram testados no Chromium.
+> - A voz pelo host foi testada com um **servidor LiveKit local e mídia simulada do
+>   Chromium**. Não houve microfone físico nem LiveKit Cloud.
+> - Controle (gamepad), treino rápido, perfis com apelido e indicador de fala foram testados
+>   com **controle simulado e toque emulado**.
+>
+> O plano do briefing mestre está em [docs/plano-evolucao.md](docs/plano-evolucao.md). Os
+> detalhes estão em [docs/implementation-status.md](docs/implementation-status.md).
 
 ## Requisitos
 
@@ -81,17 +87,57 @@ de URL.
 | Menu e configurações | Esc |
 
 Todas as teclas são remapeáveis no menu. Também há paletas de acessibilidade, padrões na
-tinta, redução de tremor e flashes, escala do HUD, sensibilidade, FOV e volume. Há controles
-de toque, mas **não foram verificados em dispositivo móvel real**.
+tinta, redução de tremor e flashes, escala do HUD, sensibilidade, FOV e volume.
+
+### Controle (gamepad)
+
+Xbox, PlayStation, Nintendo e genéricos (Web Gamepad API, USB ou Bluetooth): conecte e aperte
+qualquer botão. As dicas na tela passam a mostrar os botões do seu controle.
+
+| Ação | Botão padrão (posição física) |
+|---|---|
+| Mover / câmera | analógico esquerdo / direito |
+| Usar a ferramenta | RT |
+| Forma Pião | LB |
+| Ação contextual (Moringa; no mapa, confirma o Pião-Guia) | LT |
+| Pular | A (✕ no PlayStation) |
+| Moringa | RB |
+| Roda de Oleiro | Y (△) |
+| Mapa tático (direcional escolhe o companheiro) | View / Create |
+| Menu | Menu / Options |
+| Recentralizar a câmera | R3 |
+
+A aba **Configurações › Controle** tem:
+- sensibilidade por eixo, inversão, zonas mortas e curva de resposta;
+- vibração com intensidade;
+- mira assistida leve, que pode ser desligada;
+- ícones por família e remapeamento;
+- leitura ao vivo dos botões.
+
+Os menus são navegados com o direcional (A confirma, B volta, LB/RB trocam de aba). Foi testado
+só com um **controle simulado** no Chromium.
+
+### Toque
+
+Analógico virtual, arrastar à direita para a câmera, e botões para usar a ferramenta, Pião,
+pular, Moringa, Roda, Mapa e Menu. Foi verificado só num **contexto móvel emulado**, **não em
+aparelho real**.
+
+### Treino rápido
+
+Na primeira partida, um cartão no canto ensina 9 gestos, detectados pelo próprio jogo, com o
+texto do dispositivo em uso. Não pausa; pode ser pulado e refeito pelo menu.
 
 ## Testes e verificações
 
 ```bash
-pnpm test                                        # 80 testes (vitest): simulação, rede real, contrato, host
+pnpm test                                        # vitest: simulação, rede real, contrato, host, controle, perfis, cores
 pnpm typecheck                                   # TypeScript estrito em todos os pacotes
-pnpm e2e                                         # Playwright (com `pnpm dev` rodando): host ⇄ Atividade e 2 navegadores
+pnpm e2e                                         # Playwright (com `pnpm dev`): host ⇄ Atividade, 2 navegadores, controle e treino
 E2E_SWIFTSHADER=1 pnpm e2e                       # o mesmo, sem GPU (containers/CI)
 pnpm e2e:audio                                   # efeitos sonoros numa partida real + cobertura (≈8 min)
+pnpm e2e:voz                                     # voz pelo host com LiveKit LOCAL + mídia simulada (ver docs/testing.md)
+pnpm --filter @borrifo/bench-transport bench     # benchmark isolado LiveKit Data × Colyseus (ver docs/livekit-transporte.md)
 pnpm --filter @borrifo/game-server load-test     # carga local: servidor real + 8 clientes WebSocket
 CLIENTS=1 pnpm --filter @borrifo/game-server load-test   # 1 humano + 7 bots
 pnpm build                                       # builds de produção
@@ -134,6 +180,8 @@ docs/               arquitetura, integração, rede, tinta, design, testes, dese
 ## Documentação
 
 - [docs/implementation-status.md](docs/implementation-status.md): o que está implementado, testado, parcial ou não iniciado.
+- [docs/plano-evolucao.md](docs/plano-evolucao.md): fases do briefing mestre, dependências e estado.
+- [docs/livekit-transporte.md](docs/livekit-transporte.md): LiveKit como transporte? Documentação, benchmark e decisão.
 - [docs/architecture.md](docs/architecture.md): componentes, autoridade, máquina de estados.
 - [docs/activity-integration.md](docs/activity-integration.md): contrato host ⇄ Atividade, credenciais, voz.
 - [docs/networking.md](docs/networking.md): protocolo, previsão, reconciliação, reconexão.
@@ -149,7 +197,10 @@ docs/               arquitetura, integração, rede, tinta, design, testes, dese
 - Efeitos sonoros: gravações CC0 reais, ligadas aos eventos e testadas por instrumentação, mas
   **ainda não ouvidas por uma pessoa** (o ambiente não tem saída de som). Ouça
   `e2e/out/audio-partida.wav` depois de rodar `pnpm e2e:audio`.
-- LiveKit: implementado no host e no adaptador, **não testado com servidor real**.
+- LiveKit: testado com servidor **local** e mídia **simulada**. Faltam microfone físico,
+  pessoas ouvindo e LiveKit Cloud. O gameplay continua no Colyseus
+  ([ADR 0012](docs/decisions/0012-transporte-colyseus-voz-livekit.md)).
+- Controle: só simulado. Faltam controles físicos, Electron e celular.
 - Integração com o Trivo real: não feita. Este repositório não tem acesso ao Trivo, e o host
   aqui é fictício.
 - Persistência: resultados vão para um arquivo JSONL idempotente, não para PostgreSQL/Drizzle

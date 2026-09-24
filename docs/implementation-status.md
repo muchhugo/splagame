@@ -1,6 +1,6 @@
 # Estado da implementação
 
-Atualizado em 24/09/2026. Nome do jogo: **Borrifo** (provisório; não renomeie sem atualizar
+Atualizado em 24/09/2026 (controle, treino, perfis e voz, tokens, revisão LiveKit). Nome do jogo: **Borrifo** (provisório; não renomeie sem atualizar
 `packages/game-contracts/src/identity.ts` e [identity.md](identity.md)).
 
 Legenda:
@@ -44,7 +44,14 @@ Legenda:
 | Credencial de partida (backend, ACL, TTL, jti, recusa em produção) | Testado | `credential.test.ts` (21) e `network.test.ts` |
 | Modo `jwks` (host real) | Não verificado | Implementado em `auth.ts`; sem JWKS real para testar |
 | Voz: `VoiceAdapter` e estado "não configurada" | Testado | E2E: o chip mostra "Voz não configurada neste ambiente" |
-| Voz: LiveKit no host (token no backend, só microfone, consentimento explícito) | **Não verificado** | Código em `apps/activity-shell/lib/client/voice.ts`; **sem servidor LiveKit** neste ambiente |
+| Voz: LiveKit no host (token no backend, só microfone, consentimento explícito) | Laboratório | `e2e/voz.mjs` com **servidor LiveKit local** (`--dev`, v1.13.7) e mídia **simulada** do Chromium. Duas pessoas entram na chamada. O microfone só liga com o clique no host, o `userId` chega ao jogo e o indicador de fala aparece no lobby e no placar. Fechar a Atividade mantém a chamada. **Sem microfone físico nem LiveKit Cloud.** O indicador no placar falhou em 2 de 5 execuções: a detecção de fala sobre o bipe do dispositivo falso é intermitente |
+| Perfis: apelido da comunidade → nome de exibição → usuário; avatar só de host permitido | Testado | `profile.test.ts` (contrato), `profiles.test.ts` (servidor real: prioridade, texto limpo, 24 caracteres, avatar filtrado, apelido novo ao reconectar sem duplicar o jogador) e `e2e/voz.mjs` ("Aninha") |
+| Nomes sobre os personagens e indicador de fala discreto | Testado (regra) / Laboratório | A regra de visibilidade tem teste unitário: adversário atrás de parede ou submerso não mostra nome nem fala. Nomes vistos em captura; o anel de fala no placar foi visto no `e2e/voz.mjs` |
+| Controle (gamepad): detecção, glifos Xbox/PlayStation/Nintendo/genérico, troca de dispositivo sem pausa, remapeamento, zonas mortas, curva, vibração limitada, mira assistida leve, menus pelo direcional | Laboratório | 14 testes unitários e `e2e/gamepad.mjs` (31 verificações numa partida real) com controle **simulado** (`navigator.getGamepads` falso). **Nenhum controle físico, Electron ou celular** |
+| Treino rápido (9 etapas, pulável, refeito pelo menu, salvo por versão) | Laboratório | `tutorial.test.ts` e `e2e/tutorial.mjs`: teclado, controle simulado e toque **emulado** (contexto móvel do Playwright) |
+| Preferências v2 (esquema validado, migração da v1, armazenamento indisponível) | Testado | `gamepad.test.ts` (valores fora de faixa, JSON quebrado, migração, remapeamento sem conflito) |
+| Tokens do Trivo (SVG), pares de cores escolhidos pelo servidor, cenário separado | Testado | `palette.test.ts`: valores exatos do SVG, distância OKLab entre equipes, daltonismo simulado, cenário e marca. `profiles.test.ts`: mesmo par para toda a sala |
+| Benchmark LiveKit Data × Colyseus (2/4/8/16) | Laboratório (loopback) | [livekit-transporte.md](livekit-transporte.md); decisão: manter o Colyseus |
 | Integração com o Trivo real | **Não implementado** | Sem acesso ao Trivo; ver [ADR 0001](decisions/0001-laboratorio-independente.md) |
 | Persistência do resultado | Parcial | JSONL idempotente testado; **PostgreSQL/Drizzle não implementado** ([ADR 0006](decisions/0006-persistencia-jsonl.md)) |
 | Renderização WebGL2, shader de tinta, atlas parcial | Testado | Capturas pela câmera de gameplay; só SwiftShader |
@@ -73,9 +80,9 @@ Legenda:
 | 8 | 3 ferramentas, 1 dispositivo e 1 especial funcionando | Atendido (a Roda de Oleiro tem teste parcial) |
 | 9 | Resultado territorial consistente entre clientes | Atendido (8 clientes com o mesmo resultado; réplica confere) |
 | 10 | Lobby, HUD, resultado, revanche, erro e reconexão | Atendido |
-| 11 | Voice adapter respeita a conexão LiveKit do host | Implementado; **LiveKit real não verificado** |
-| 12 | Abrir e fechar liberam recursos sem encerrar a chamada | Liberação testada (10×); **"sem encerrar a chamada" não verificado com mídia real** |
-| 13 | Testes de simulação, rede, contrato e entradas maliciosas | Atendido (80 testes + E2E) |
+| 11 | Voice adapter respeita a conexão LiveKit do host | Laboratório: LiveKit local com mídia simulada (`e2e/voz.mjs`); falta chamada real |
+| 12 | Abrir e fechar liberam recursos sem encerrar a chamada | Liberação testada (10×); "sem encerrar a chamada" verificado com LiveKit **local** e mídia **simulada** |
+| 13 | Testes de simulação, rede, contrato e entradas maliciosas | Atendido (105 testes + E2E) |
 | 14 | README permite rodar e testar | Atendido |
 | 15 | Itens não testados identificados | Esta página e [testing.md](testing.md) |
 
@@ -93,37 +100,38 @@ Legenda:
 
 ## Próximo ponto de continuação
 
-Em ordem sugerida, cada item com o critério para considerá-lo feito:
+O plano por fases do briefing mestre está em [plano-evolucao.md](plano-evolucao.md). Na
+infraestrutura existente, em ordem sugerida:
 
-1. **Validar a voz com LiveKit real.** Subir `livekit-server --dev` (documentação oficial do
-   LiveKit), preencher `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` no `.env`, e abrir
-   duas janelas do host com Chromium usando `--use-fake-device-for-media-stream` (dispositivo
-   **simulado**, identificar como tal). *Feito quando:* os dois entram na chamada, o indicador de
-   fala chega ao jogo, fechar a Atividade mantém a chamada e só existe uma publicação de
-   microfone. Arquivos: `apps/activity-shell/lib/client/voice.ts`, novo `e2e/voice.mjs`.
-2. **Persistência de produção.** Implementar `ResultSink` sobre PostgreSQL com Drizzle
+1. **Voz com microfone físico e LiveKit de teste real.** O fluxo já passa com LiveKit local e
+   mídia simulada (`pnpm e2e:voz`, com o host iniciado com `LIVEKIT_*`). *Feito quando:* duas
+   pessoas se ouvem, o indicador aponta quem fala no lobby, no placar e sobre o personagem, e
+   fechar o jogo mantém a chamada.
+2. **Controle físico** (Xbox, DualSense e genérico) no Chrome, no Electron e no celular:
+   glifos, vibração e destravamento de áudio pelo botão.
+3. **Persistência de produção.** Implementar `ResultSink` sobre PostgreSQL com Drizzle
    (`apps/game-server/src/results.ts`), com constraint única `(match_id, round_id)`, e testar a
    idempotência (PGlite no teste). *Feito quando:* gravar duas vezes o mesmo resultado resulta
    em uma linha, e uma falha do banco gera o log `result.persist_failed` sem derrubar a sala.
-3. **Medir numa GPU real.** Rodar `pnpm e2e` sem `E2E_SWIFTSHADER` numa máquina com GPU e
+4. **Medir numa GPU real.** Rodar `pnpm e2e` sem `E2E_SWIFTSHADER` numa máquina com GPU e
    registrar FPS e tempo de quadro por qualidade em `docs/performance.md`. Se preciso: importar o
    Babylon por subcaminhos (`@babylonjs/core/...`) para reduzir os 1,5 MB gzip e fundir as peças
    estáticas de cada personagem.
-4. **Rede sob latência.** Emular 80 a 150 ms, jitter e perda (`tc netem` ou proxy) entre cliente
+5. **Rede sob latência.** Emular 80 a 150 ms, jitter e perda (`tc netem` ou proxy) entre cliente
    e servidor. *Feito quando:* as correções de previsão forem medidas e a interpolação não
    travar; revisar o [ADR 0004](decisions/0004-sem-compensacao-de-latencia.md) com dados.
-5. **Testes que faltam:** Roda de Oleiro (ondas, dano, destruição) em `match.test.ts`; slot que
+6. **Testes que faltam:** Roda de Oleiro (ondas, dano, destruição) em `match.test.ts`; slot que
    vira bot após a janela de reconexão em `network.test.ts`.
-6. **Integração com o Trivo** (exige acesso e autorização): o host real implementa o
+7. **Integração com o Trivo** (exige acesso e autorização): o host real implementa o
    `ActivityHost` e o endpoint de credencial com JWKS; o servidor de partidas roda em
    `MATCH_AUTH_MODE=jwks`. Seguir [activity-integration.md](activity-integration.md#como-um-host-real-integraria).
    Não fazer merge automático nem tocar produção.
-7. **Playtest com pessoas** e ajuste de `packages/game-content/src/tuning.ts` e
+8. **Playtest com pessoas** e ajuste de `packages/game-content/src/tuning.ts` e
    `equipment.ts`, registrando as mudanças em `docs/game-design.md`.
-8. **Mobile:** verificar `TouchControls` e desempenho num dispositivo real antes de declarar
+9. **Mobile:** verificar `TouchControls` e desempenho num dispositivo real antes de declarar
    suporte.
-9. **Fase 6:** um segundo modo (§26) reaproveitando `MatchSimulation`, só depois dos itens
-   acima.
+10. **Briefing mestre, fases 1, 2, 4 e 5:** redesign das telas, personagens, mapas Toca do Ara e
+    Clube da Maré, formação flexível e Correio do Ara ([plano-evolucao.md](plano-evolucao.md)).
 
 ## Observações para quem continuar
 

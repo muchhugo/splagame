@@ -1,6 +1,7 @@
 export * from './tuning';
 export * from './equipment';
 export * from './mapSpec';
+export * from './palette';
 export { PATIO_DA_OLARIA } from './maps/patioDaOlaria';
 import { PATIO_DA_OLARIA } from './maps/patioDaOlaria';
 import type { MapSpec } from './mapSpec';

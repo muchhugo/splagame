@@ -40,13 +40,37 @@ da sua turma. Quem manchar mais chão quando o sino tocar leva a fornada.
 
 ### Turmas (equipes)
 
-A identidade lógica é o `TeamId` (0 ou 1). Nome, símbolo e cor são apresentação: a
-paleta de acessibilidade troca as cores, mas nunca o dono lógico.
+A identidade lógica é o `TeamId` (0 ou 1). Nome, cor e padrão são apresentação. O **servidor
+escolhe um par por rodada**, e a paleta de acessibilidade pode remapear localmente cores e
+nomes, sem mudar o dono lógico da tinta. O símbolo acompanha o `TeamId` em todos os pares
+(▲ para 0, ● para 1).
 
-| TeamId | Nome | Símbolo | Cor padrão | Origem do nome |
-|---|---|---|---|---|
-| 0 | Urucum | ▲ triângulo | laranja (`#ff6414`) | pigmento natural da semente do urucum |
-| 1 | Anil | ● círculo | azul-índigo (`#4a3dff`) | pigmento natural do anil (índigo) |
+| Par (`TEAM_PAIRS`) | TeamId 0 | TeamId 1 | Origem dos nomes |
+|---|---|---|---|
+| `urucum-anil` | Urucum `#ff6414` | Anil `#4a3dff` | pigmentos naturais: semente do urucum, índigo do anil |
+| `acai-mate` | Açaí `#9b3df2` | Mate `#35c46a` | fruto do açaí, erva-mate |
+| `pitanga-jenipapo` | Pitanga `#c81e3c` | Jenipapo `#5fe6ea` | fruto da pitanga; o jenipapo dá tinta azul-esverdeada |
+
+Os pares foram escolhidos por medição, não a olho (`palette.test.ts`). As duas equipes ficam
+a mais de 0,3 no OKLab (> 0,2 sob protanopia, deuteranopia e tritanopia simuladas), e cada cor
+de equipe fica a mais de 0,08 do cenário e da marca.
+
+### Marca: referência ao Trivo
+
+O logo chegou como `trivo logo.svg` (commit 4e77adc). É a arara do Trivo, e serve de
+**referência de paleta e de forma, não de carimbo**: o logo não é repetido pelo cenário. Os
+tokens ficam em `packages/game-content/src/palette.ts` (`TRIVO_SVG`, `UI_TOKENS`,
+`SCENERY_TOKENS`), em três conjuntos separados:
+
+| Conjunto | Uso | Valores |
+|---|---|---|
+| Marca e interface | Destaque dos botões principais, barra de carga, foco | Os preenchimentos **exatos do arquivo**: `#003fcc`, `#002ba0`, `#0034b4`, `#008e32`, `#febd00`, `#fbfaf9`. **Não foram confirmados como paleta oficial do Trivo**; são o que o SVG recebido contém |
+| Equipes | Tinta, roupa, efeitos, marcadores, placar, mapa, resultado | `TEAM_PAIRS` (acima) |
+| Cenário | Bandeirinhas, toldos, madeira e a futura arara ambiental | Tons dessaturados (`SCENERY_TOKENS`), para não parecer tinta nem jogador |
+
+A primeira medição mostrou que as bandeirinhas antigas tinham quase a cor da tinta
+(ΔE ≈ 0,045); agora usam os tokens de cenário. O botão principal usa o amarelo da marca com
+texto escuro, porque as cores de equipe mudam por rodada e não servem de cor de interface.
 
 ### Nomes de equipamentos (todos originais)
 
@@ -80,7 +104,7 @@ própria: as referências externas serviram só para cor, luz e atmosfera.
 - **Cor intensa onde importa:** tinta, personagens e destaques. O cenário usa terracota, madeira,
   pedra clara, tijolo e azulejo branco e azul, com materiais foscos, não plásticos.
 - **Tinta molhada estilizada:** bordas orgânicas, leve relevo, brilhos pequenos e contidos,
-  respingos com gotas satélites. Um padrão opcional (listras para Urucum, pontos para Anil)
+  respingos com gotas satélites. Um padrão opcional (listras para o ▲, pontos para o ●)
   atende quem não diferencia cores.
 - **Bibelôs:** cabeça grande, olhos com pupila e sobrancelhas, tanque de vidro nas costas que
   mostra o nível de tinta, botas na cor da turma e ferramentas com reservatórios exagerados.
@@ -90,7 +114,8 @@ própria: as referências externas serviram só para cor, luz e atmosfera.
   desligável, nada sobre a mira, personagem colado na câmera esmaecido e cores de turma sempre
   distinguíveis do chão sem tinta.
 - Interface em português brasileiro, com tipografia arredondada (Fredoka, OFL), cantos
-  generosos, contorno de "adesivo" nos elementos do HUD e cores de barro e anil.
+  generosos, contorno de "adesivo" nos elementos do HUD, superfícies de barro e destaque no
+  amarelo da arara (marca). As cores de equipe só aparecem onde há equipe.
 
 ### Som
 

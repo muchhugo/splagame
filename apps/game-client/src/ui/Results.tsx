@@ -1,7 +1,7 @@
-import { TEAMS } from '@borrifo/game-contracts';
 import { WEAPONS } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
+import { useTeams } from '../app/teams';
 import { getController } from './App';
 import { Logo } from './Logo';
 
@@ -9,13 +9,14 @@ export function Results() {
   const r = useStore(uiStore, (s) => s.result ?? s.lobby?.lastResult ?? null);
   const lobby = useStore(uiStore, (s) => s.lobby);
   const welcome = useStore(uiStore, (s) => s.welcome);
+  const teams = useTeams();
   if (!r || !lobby || !welcome) return null;
   const c = getController();
   const myId = welcome.playerId;
   const me = r.players.find((p) => p.playerId === myId);
   const isHost = lobby.hostPlayerId === myId;
   const votes = new Set(lobby.rematchVotes);
-  const title = r.winner === 'draw' ? 'Empate!' : `Vitória da Turma ${TEAMS[r.winner].name}`;
+  const title = r.winner === 'draw' ? 'Empate!' : `Vitória da Turma ${teams[r.winner].name}`;
   const mine = r.winner !== 'draw' && me ? (me.team === r.winner ? 'Sua turma venceu!' : 'Não foi desta vez.') : '';
   const humans = lobby.players.filter((p) => !p.isBot && p.connection === 'connected');
   const secs = lobby.phaseRemainingMs !== null ? Math.ceil(lobby.phaseRemainingMs / 1000) : null;
@@ -30,11 +31,11 @@ export function Results() {
         {r.status === 'interrupted' ? <div className="chip warn">Rodada interrompida — sem vencedor oficial</div> : null}
         <div className="bigbar" aria-label="Território final">
           <div style={{ width: `${r.percent[0]}%`, background: 'var(--team0)' }}>
-            {TEAMS[0].symbol} {r.percent[0].toFixed(1)}%
+            {teams[0].symbol} {r.percent[0].toFixed(1)}%
           </div>
           <div style={{ width: `${r.neutralPercent}%`, background: 'rgba(255,244,230,.18)' }}>neutro {r.neutralPercent.toFixed(1)}%</div>
           <div style={{ width: `${r.percent[1]}%`, background: 'var(--team1)' }}>
-            {TEAMS[1].symbol} {r.percent[1].toFixed(1)}%
+            {teams[1].symbol} {r.percent[1].toFixed(1)}%
           </div>
         </div>
         <div className="muted" style={{ textAlign: 'center', fontSize: 13 }}>
@@ -57,7 +58,7 @@ export function Results() {
               .map((p) => (
                 <tr key={p.playerId} style={p.playerId === myId ? { outline: '2px solid var(--ouro)' } : undefined}>
                   <td style={{ color: `var(--team${p.team})`, fontWeight: 700 }}>
-                    {TEAMS[p.team].symbol} {p.displayName}
+                    {teams[p.team].symbol} {p.displayName}
                     {p.isBot ? ' · bot' : ''}
                     {votes.has(p.playerId) && !p.isBot ? ' ✓' : ''}
                   </td>

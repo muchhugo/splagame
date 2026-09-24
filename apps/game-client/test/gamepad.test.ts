@@ -187,6 +187,7 @@ describe('nomes sobre os personagens e indicador de fala', () => {
     expect(nameplateVisible({ ...base, los: false })).toBe(false);
     expect(nameplateVisible({ ...base, submerged: true })).toBe(false);
     expect(nameplateVisible({ ...base, dist: 60 })).toBe(false);
+    expect(nameplateVisible({ ...base, ally: true, dist: 40 })).toBe(false);
     // aliado: a posição já é pública no mapa tático
     expect(nameplateVisible({ ...base, ally: true, los: false, submerged: true })).toBe(true);
     expect(nameplateVisible({ ...base, ally: true, alive: false })).toBe(false);
@@ -209,5 +210,17 @@ describe('nomes sobre os personagens e indicador de fala', () => {
       const h = avatarHue(k);
       expect((h >= 80 && h < 170) || (h >= 290 && h < 340)).toBe(true);
     }
+  });
+});
+
+import { teamColorsFor, teamNamesFor } from '../src/app/settings';
+
+describe('cores das equipes no cliente', () => {
+  it('"padrão" usa o par da rodada; acessibilidade remapeia localmente (cores e nomes juntos)', () => {
+    expect(teamColorsFor('padrao', 'acai-mate')).toEqual(['#9b3df2', '#35c46a']);
+    expect(teamNamesFor('padrao', 'acai-mate')).toEqual(['Açaí', 'Mate']);
+    expect(teamColorsFor('daltonismo', 'acai-mate')).toEqual(['#e69f00', '#0072b2']);
+    expect(teamNamesFor('daltonismo', 'acai-mate')).toEqual(['Laranja', 'Azul']);
+    expect(teamColorsFor('padrao', undefined)).toEqual(['#ff6414', '#4a3dff']);
   });
 });

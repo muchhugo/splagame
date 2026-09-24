@@ -56,8 +56,8 @@ A banda de voz do LiveKit é separada e **não foi medida**.
 |---|---|---|
 | `babylon-*.js` | 7.068 KB | 1.548 KB |
 | `rapier-*.js` (WASM embutido) | 2.852 KB | 1.094 KB |
-| `index-*.js` (jogo, UI, rede, áudio) | 689 KB | 217 KB |
-| CSS | 15 KB | 4 KB |
+| `index-*.js` (jogo, UI, rede, áudio, controle, treino, perfis) | 725 KB | 230 KB |
+| CSS | 18 KB | 5 KB |
 | Fontes Fredoka (3 pesos, woff2) | 49 KB | — |
 | **Total do carregamento inicial** | ≈ 10,7 MB | **≈ 2,9 MB** |
 | Efeitos sonoros (`public/audio/sfx`, baixados depois da abertura) | ≈ 1,3 MB (62 MP3 + 4 WAV de loop) | — (MP3 já é comprimido) |
@@ -103,6 +103,25 @@ Correções feitas a partir destas medições:
 - Atualização **parcial** da textura de tinta (só os chunks alterados).
 - Sombras e oclusão do cenário são pré-calculadas no carregamento (sem shadow map em tempo real).
 - Limite de FPS configurável (30/60/120) e qualidade baixa/média/alta.
+
+## Transporte: LiveKit Data × Colyseus (benchmark isolado)
+
+Medido em loopback, com o mesmo tráfego sintético do jogo. Com 16 jogadores, o atraso do
+snapshot ficou em p50 0,25 / p99 0,53 ms no Colyseus e p50 6,15 / p99 20,06 ms no LiveKit
+Data (com o salto pelo SFU e a pilha WebRTC). A banda de descida é a mesma (136 kbit/s por
+cliente). Nenhum dos dois perdeu mensagens, e a voz no mesmo SFU não teve buracos acima de
+40 ms. Tabelas, método e limites em [livekit-transporte.md](livekit-transporte.md).
+
+## Custos das entradas e dos nomes (nesta entrega)
+
+- **Controle:** `navigator.getGamepads()` a cada ~8 ms só com controle conectado (500 ms sem
+  controle). A leitura é um *snapshot* de alguns números por controle; não foi medida
+  separadamente, mas não aparece acima do ruído no CPU da página em SwiftShader.
+- **Nomes sobre os personagens:**
+  - até 15 elementos DOM posicionados com `transform` a cada quadro, sem layout;
+  - raycast de linha de visão só para adversários, no máximo 10 vezes por segundo cada.
+- **Mira assistida:** até 8 raycasts por quadro (um por adversário a ≤ 36 m), só com controle
+  e na forma de combate.
 
 ## Próximas medições necessárias
 

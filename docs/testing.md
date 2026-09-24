@@ -10,8 +10,9 @@ núcleos, Chromium 141 (Playwright 1.56.1) com renderização por CPU (SwiftShad
 pnpm test          # vitest: unidade + integração pelo transporte real (≈18 s)
 pnpm typecheck     # tsc estrito em todos os pacotes
 pnpm dev           # (outro terminal) necessário para os testes de navegador
-pnpm e2e           # Playwright: host ⇄ Atividade e partida com dois navegadores
+pnpm e2e           # Playwright: host ⇄ Atividade, 2 navegadores, controle (simulado) e treino rápido
 pnpm e2e:audio     # Playwright: efeitos sonoros numa partida real (≈5 min) e cobertura por ferramenta
+pnpm e2e:voz       # Playwright: voz pelo host com LiveKit LOCAL e mídia simulada (ver abaixo)
 E2E_SWIFTSHADER=1 pnpm e2e   # sem GPU (containers/CI)
 pnpm --filter @borrifo/game-server load-test   # carga local, ver performance.md
 ```
@@ -19,10 +20,24 @@ pnpm --filter @borrifo/game-server load-test   # carga local, ver performance.md
 Os testes de navegador usam o build de desenvolvimento (que expõe `window.__borrifo` para
 inspeção) e gravam capturas em `e2e/out/`.
 
+`pnpm e2e:voz` precisa de um servidor LiveKit local (`livekit-server --dev --bind 127.0.0.1`)
+e do host iniciado com `LIVEKIT_URL=ws://127.0.0.1:7880` e com as chaves de desenvolvimento
+desse modo nas variáveis de ambiente, nunca no repositório. O `pnpm e2e` espera o host **sem**
+LiveKit (verifica "voz não configurada").
+
+O benchmark de transporte fica em `tools/bench-transport`; método e resultados estão em
+[livekit-transporte.md](livekit-transporte.md).
+
 ## Resultado da última execução
 
-`pnpm test`: **80 de 80 passaram**, em 9 arquivos. `pnpm typecheck`: sem erros nos 9 pacotes.
-`pnpm e2e` (com `E2E_SWIFTSHADER=1`): **todas as verificações passaram** nos dois scripts.
+Resultados:
+- `pnpm test`: **119 de 119 passaram**, em 14 arquivos.
+- `pnpm typecheck`: sem erros nos 10 pacotes (inclui `tools/bench-transport`).
+- `pnpm build`: ok.
+- `pnpm e2e` (com `E2E_SWIFTSHADER=1`): **todas as verificações passaram** nos quatro scripts,
+  com 72 verificações (`shell`, `gameplay`, `gamepad`, `tutorial`).
+- `pnpm e2e:audio`: **todas passaram** (40 verificações).
+- `pnpm e2e:voz`: 3 de 5 execuções completas; ver a tabela.
 
 | Arquivo | Testes | O que cobre |
 |---|---|---|
@@ -34,6 +49,11 @@ inspeção) e gravam capturas em `e2e/out/`.
 | `packages/activity-sdk/test/bridge.test.ts` | 8 | handshake (origem, janela pai, nonce); handshake sem resposta expira; pedido de credencial com correlação; capacidade inexistente; erro do backend sem vazar detalhes; mensagens malformadas e tipos desconhecidos descartados; timeout e fechamento limpo; eventos de contexto, visibilidade e voz validados |
 | `apps/activity-shell/test/credential.test.ts` | 21 | claims do JWT de desenvolvimento; `jti` único; expiração de 60 s; outro segredo não valida; recusa `NODE_ENV=production`; ACL do canal (403); usuário fora do roster; segredo ausente ou curto; validade máxima; cookie de sessão (12 h) e separação de credencial; rate limit; configuração (LiveKit parcial, standalone desligado em produção); nonce no fragmento |
 | `apps/game-server/test/room.test.ts` | 1 | 1 humano + 7 bots jogam uma rodada completa **pelo WebSocket real**; a réplica de tinta reconstruída no cliente confere exatamente com o resultado; resultado persistido uma vez |
+| `apps/game-client/test/gamepad.test.ts` | 18 | família pelo `Gamepad.id` (Xbox, PlayStation, Nintendo, genérico); glifos pela posição física; dicas "E"/"Y"/"△"/"Roda"; zona morta radial sem salto e sem "cruz"; curva de resposta; `GamepadHub` (conexão, bordas, gatilho com histerese, Bluetooth caindo sem evento, último controle assume); vibração nunca contínua; mira assistida (sem alvo nada, parado não puxa, fora da zona e do alcance ignora); preferências v2 (valores adulterados, migração da v1, JSON quebrado, remapear troca as ações); nomes sobre personagens não revelam escondidos; voz ligada por `userId`; iniciais e cor neutra; cores e nomes da rodada × acessibilidade |
+| `apps/game-client/test/tutorial.test.ts` | 3 | cada etapa só avança com o gesto certo (disparar na Forma Pião não conta; horizonte não é "pintar o chão"); pular e encerrar; eliminado não avança |
+| `packages/game-contracts/test/profile.test.ts` | 3 | prioridade apelido → nome de exibição → usuário; texto limpo (controle, direção, `<` `>`, 24 caracteres, emoji conta 1); avatar só https de host permitido, sem credencial na URL |
+| `packages/game-content/test/palette.test.ts` | 12 | tokens de marca = preenchimentos exatos do SVG; por par, distância entre equipes (e sob daltonismo simulado), distância do cenário, da marca e do destaque, nomes; a arara do cenário longe de qualquer azul de equipe; rotação determinística do par |
+| `apps/game-server/test/profiles.test.ts` | 3 | pelo servidor real: mesmo par de cores para toda a sala; nome resolvido, limpo e limitado; avatar filtrado (outro host, `javascript:`); apelido novo ao reconectar sem duplicar |
 | `apps/game-server/test/network.test.ts` | 9 | ingressos simultâneos na mesma sala com equipes equilibradas e anfitrião; bloqueio da 9ª pessoa; troca de equipe e comandos de anfitrião; credencial reutilizada, expirada, de outra sessão, de audiência ou emissor errado e sem permissão; rajada de ingresso (429) sem afetar a sala; queda de rede reconecta ao mesmo slot; reabrir com nova credencial retoma o slot; `NaN`, `Infinity`, payload enorme, tipos errados e comandos inventados não derrubam a sala; **8 clientes** jogam, recebem o mesmo resultado, ressincronizam e fazem revanche com tinta zerada; quem chega no meio da rodada espera a próxima |
 
 ### Testes de navegador (`e2e/`)
@@ -43,6 +63,9 @@ inspeção) e gravam capturas em `e2e/out/`.
 | `e2e/shell.mjs` | sandbox do iframe; sem câmera nem microfone; nonce no fragmento; handshake, credencial e lobby (≈4,6 s com SwiftShader); voz "não configurada"; fechar libera host, iframe e ouvintes; **abrir/fechar 10×** sem vazamento; usuário sem acesso vê o erro e o host registra `forbidden`; sem erros de página |
 | `e2e/audio.mjs` | numa partida real: 66 arquivos decodificados sem falha; menus tocam confirmar e voltar; "Silenciar o jogo" zera a saída; contagem soa 3 vezes e o início 1 vez; passos acompanham a animação; cada tiro previsto soa, sem passar da cadência do Esguicho; vozes simultâneas ≤ 24 (medido: 12); loop de nado liga sobre a tinta própria e para ao sair do fluxo; nenhum loop na tela de resultado; sino e jingle de resultado tocam uma vez; revanche segue tocando; ao sair, contexto fechado com 0 loops e 0 vozes; saída mixada **sem clipping** (pico de -2,8 dBFS), gravada em `e2e/out/audio-partida.wav` |
 | `e2e/audio-cobertura.mjs` | todos os 35 efeitos e 5 loops do manifesto tocam a partir dos arquivos; acerto e eliminação próprios (eventos injetados no runtime) tocam o som certo uma vez; vitória, derrota e empate sem repetir; tanque baixo e tanque vazio; Pião-Guia (lançamento e pouso); carga do Estilingue soa e para ao soltar; balanço e arrasto do Rodo |
+| `e2e/gamepad.mjs` | controle **simulado** (`navigator.getGamepads` falso) numa partida real, 31 verificações: "Controle conectado (Xbox)"; lobby com LS/RS/RT/Y; direcional move o foco; Menu e B abrem e fecham o menu; analógico esquerdo move (6,8 m em 1,5 s) e o direito gira a câmera; RT dispara; **1 pulso** de vibração no começo da rajada (45 ms, `dual-rumble`); HUD com RB; View segurado abre e fecha o mapa; teclado no meio da partida troca as dicas para Q sem pausar; desconectar e conectar um DualSense mostra os avisos e R1; Options, ↓ e ✕ abrem Configurações na aba Controle; R1/L1 trocam de aba; remapeamento salvo em `borrifo.settings.v2`, com troca em caso de conflito; restaurar padrão; testar vibração; sem erros |
+| `e2e/tutorial.mjs` | o treino começa sozinho na primeira rodada sem pausar; texto por dispositivo ("W A S D" → "LS" → "Tab"); andar, girar a câmera, disparar, pintar o chão, Forma Pião e mapa concluídos pelo jogo de verdade; pular e encerrar; conclusão salva por versão; contexto **móvel emulado** com toque: "Arraste o Analógico", botão Mapa, mapa cabe na tela deitada, "Fechar" |
+| `e2e/voz.mjs` | LiveKit **local** e mídia **simulada** do Chromium: dois usuários na mesma sala; apelido "Aninha"; o jogo não entra na chamada sozinho; microfone desligado ao entrar; participantes com `userId`; "microfone desligado" no lobby; Bruno liga o microfone e Ana vê o anel de fala **no Bruno**; na partida, o ponto do Bruno no placar indica fala; fechar a Atividade mantém Ana na chamada. Última série: **3 de 5 execuções** passaram tudo; nas outras 2, só o indicador no placar falhou dentro de 25 s, e a detecção de fala sobre o bipe do dispositivo falso é intermitente |
 | `e2e/gameplay.mjs` | dois contextos de navegador (Ana e Bruno) no mesmo lobby; partida iniciada pela anfitriã; **hash de tinta idêntico** nas duas réplicas na mesma sequência (última execução: seq 91, unidades 33.933 e 38.148 nos dois); materiais limitados (154 → 164) e texturas estáveis (4 → 4) após ~30 s de jogo; aba oculta não renderiza e retoma ao voltar; sem erros de página |
 
 ### Verificação visual
@@ -57,10 +80,14 @@ spawn virado para a parede.
 
 ## O que **não** foi verificado
 
-- **LiveKit real:** conexão, publicação e recepção de áudio, fala, reconexão de mídia e "fechar
-  a Atividade mantém a chamada" com mídia real. Não havia servidor nem credenciais.
+- **Chamada real:** só LiveKit **local** com mídia **simulada**. Nenhum microfone físico,
+  ninguém ouvindo, nenhum LiveKit Cloud e nenhuma reconexão de mídia sob rede ruim.
+- **Controle físico:** só o controle simulado. Faltam Xbox, DualSense e genérico reais, a
+  vibração real e o botão como gesto de áudio.
+- **Electron:** não testado.
 - **Trivo real:** nenhum teste contra o host real.
-- **GPU real, FPS real, mobile, touch, Safari e Firefox:** só Chromium com SwiftShader.
+- **GPU real, FPS real, mobile, touch real, Safari e Firefox:** só Chromium com SwiftShader. O
+  toque foi exercitado num contexto móvel **emulado**, não num aparelho.
 - **Latência, jitter e perda de rede:** não houve emulação; cliente e servidor na mesma máquina.
 - **Muitas salas simultâneas e processos múltiplos:** só uma sala por teste de carga.
 - **Pessoas jogando:** o balanceamento foi ajustado só com bots.

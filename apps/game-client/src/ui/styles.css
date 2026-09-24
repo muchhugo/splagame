@@ -1,4 +1,11 @@
 :root {
+  /* marca e interface — preenchimentos exatos de `trivo logo.svg` (fonte única:
+     packages/game-content/src/palette.ts). Não confirmados como paleta oficial. */
+  --trivo-azul: #003fcc;
+  --trivo-azul-profundo: #002ba0;
+  --trivo-verde: #008e32;
+  --trivo-amarelo: #febd00;
+  --trivo-branco: #fbfaf9;
   --barro-900: #1d1411;
   --barro-800: #2a1c17;
   --barro-700: #3a2720;
@@ -8,7 +15,8 @@
   --creme-2: #f2e2cd;
   --anil: #3346e8;
   --urucum: #f24a1c;
-  --ouro: #f6c14b;
+  /* destaque da interface = amarelo da arara do SVG */
+  --ouro: var(--trivo-amarelo);
   --ok: #5fd08a;
   --warn: #ffb347;
   --bad: #ff5c5c;
@@ -94,11 +102,12 @@ button {
   transform: none;
 }
 .btn.primary {
-  background: linear-gradient(180deg, #ff7a3d, var(--urucum));
-  color: var(--creme);
+  /* ação principal no amarelo da marca: não compete com as cores de equipe, que mudam por rodada */
+  background: linear-gradient(180deg, #ffd34d, var(--trivo-amarelo));
+  color: var(--barro-900);
 }
 .btn.secondary {
-  background: linear-gradient(180deg, #5d6cff, var(--anil));
+  background: linear-gradient(180deg, #2f63e0, var(--trivo-azul));
   color: var(--creme);
 }
 .btn.ghost {
@@ -170,7 +179,8 @@ button {
 }
 .progress > div {
   height: 100%;
-  background: linear-gradient(90deg, var(--urucum), var(--ouro), var(--anil));
+  /* barra de carga com as cores da arara (marca), não com as cores de equipe */
+  background: linear-gradient(90deg, var(--trivo-verde), var(--trivo-amarelo), var(--trivo-azul));
   transition: width 0.2s ease;
 }
 .muted {

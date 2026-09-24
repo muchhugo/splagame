@@ -17,6 +17,12 @@ bibliotecas listadas abaixo.
 | Logo do jogo | SVG escrito à mão no código | `apps/game-client/src/ui/Logo.tsx` |
 | Interface | CSS próprio | `apps/game-client/src/ui/styles.css`, `apps/activity-shell/app/globals.css` |
 
+## Referência de marca (não empacotada)
+
+| Recurso | Origem | Como é usado |
+|---|---|---|
+| `trivo logo.svg` (arara do Trivo) | Enviado ao repositório pelo responsável pelo projeto (commit 4e77adc); marca do Trivo, **não é um recurso livre** | Só como **referência de cor e forma**. As cores dos preenchimentos foram copiadas como tokens (`packages/game-content/src/palette.ts`, conferidos por teste). O arquivo **não entra no bundle** do jogo, o markup não é inserido nas páginas, e o logo não é reproduzido no cenário |
+
 ## Som
 
 - **Efeitos sonoros:** 66 arquivos editados a partir de gravações e efeitos prontos

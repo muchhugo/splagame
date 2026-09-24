@@ -1,9 +1,10 @@
-import { TEAMS, type LobbyPlayer, type TeamId, type WeaponId } from '@borrifo/game-contracts';
+import type { LobbyPlayer, TeamId, WeaponId } from '@borrifo/game-contracts';
 import { WEAPONS, MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
 import { useHints, type HintAction } from '../app/hints';
 import { useVoiceByUser, type VoiceInfo } from '../app/profiles';
+import { useTeams } from '../app/teams';
 import { Avatar, VoiceBadge } from './Avatar';
 import { getController } from './App';
 import { Logo } from './Logo';
@@ -113,7 +114,7 @@ function TeamColumn(props: { team: TeamId; players: LobbyPlayer[]; myId: number;
   const { team, players, myId, hostId, fill, max } = props;
   const voices = useVoiceByUser();
   const voiceOf = (p: LobbyPlayer): VoiceInfo | undefined => (p.userId ? voices.get(p.userId) : undefined);
-  const info = TEAMS[team];
+  const info = useTeams()[team];
   const slots = Array.from({ length: max }, (_, i) => players[i] ?? null);
   return (
     <section className={`team-col t${team}`} aria-label={`Turma ${info.name}`}>

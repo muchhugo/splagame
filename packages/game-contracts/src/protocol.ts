@@ -117,6 +117,8 @@ export interface LobbyState {
   phaseRemainingMs: number | null;
   rematchVotes: number[];
   lastResult: RoundResult | null;
+  /** Par de cores/nomes de apresentação da rodada atual (id de TEAM_PAIRS), escolhido pelo servidor. */
+  teamPairId: string;
 }
 
 export interface RoundLoadingMessage {
@@ -124,6 +126,8 @@ export interface RoundLoadingMessage {
   roundId: number;
   mapId: string;
   mapHash: string;
+  /** Par de cores/nomes desta rodada; igual para quem entra ou reconecta. */
+  teamPairId: string;
   timeoutMs: number;
 }
 

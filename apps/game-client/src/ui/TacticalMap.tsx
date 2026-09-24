@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { TEAMS } from '@borrifo/game-contracts';
 import { PIAO_GUIA } from '@borrifo/game-content';
 import { useStore } from '../app/store';
-import { settingsStore, PALETTES } from '../app/settings';
+import { settingsStore, teamColorsFor } from '../app/settings';
+import { useTeams } from '../app/teams';
 import { uiStore } from '../app/uiStore';
 import { hudStore } from '../game/hud';
 import { PAD, gamepadHub } from '../game/input/gamepad';
@@ -23,6 +23,7 @@ export function TacticalMap() {
   const [allies, setAllies] = useState<Array<{ playerId: number; name: string; x: number; y: number; alive: boolean; isMe: boolean }>>([]);
   const [padSel, setPadSel] = useState<number | null>(null);
   const hints = useHints();
+  const teams = useTeams();
   const c = getController();
   const selectable = allies.filter((a) => a.alive && !a.isMe && alive);
   const selRef = useRef({ selectable, padSel });
@@ -80,7 +81,7 @@ export function TacticalMap() {
       g.fillRect(0, 0, cv.width, cv.height);
       const layout = rt.layout;
       const owner = rt.replica.state.owner;
-      const [c0, c1] = PALETTES[palette].team;
+      const [c0, c1] = teamColorsFor(palette, uiStore.get().lobby?.teamPairId);
       const floors = layout.surfaces.filter((s) => s.traversal === 'floor').sort((a, b) => a.aabbMin[1] - b.aabbMin[1]);
       for (const s of floors) {
         const hgt = s.aabbMax[1];
@@ -112,14 +113,14 @@ export function TacticalMap() {
     draw();
     const t = setInterval(draw, 250);
     return () => clearInterval(t);
-  }, [rt, bounds, palette, myTeam]);
+  }, [rt, bounds, palette, myTeam, teams[0].color, teams[1].color]);
 
   if (!rt) return null;
   return (
     <div className="tacmap" role="dialog" aria-label="Mapa tático">
       <div className="frame panel">
         <div className="row" style={{ justifyContent: 'space-between', alignSelf: 'stretch' }}>
-          <strong>Mapa tático · Turma {TEAMS[myTeam].name}</strong>
+          <strong>Mapa tático · Turma {teams[myTeam].name}</strong>
           <button className="btn small ghost" data-sfx="back" onClick={close}>
             Fechar
           </button>

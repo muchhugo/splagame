@@ -48,7 +48,9 @@ Os schemas zod estão em `packages/activity-sdk/src/protocol.ts`. O envelope é
 ### Contexto (`ActivityContext`)
 
 `activityId`, `activitySessionId`, `matchId?`, `channelId?`, `communityId?`,
-`viewer { id, displayName, avatarUrl? }`,
+`viewer { id, displayName, avatarUrl?, username?, communityNickname? }` (o `displayName`
+já vem resolvido pelo host pela regra do Trivo: apelido da comunidade → nome de exibição →
+nome de usuário),
 `capabilities { canCreateMatch, canJoinMatch, canInvite, canUseVoice }`, `locale`, `theme`,
 `hostKind` (`trivo` | `lab-dev` | `standalone-dev`, apenas diagnóstico; **não concede nada**).
 
@@ -61,6 +63,18 @@ partidas (claim `cap.join`).
   verificar a sessão do usuário, se ele pertence ao roster e se é membro do canal.
 - JWT com `sub` (usuário), `sid` (activitySessionId), `name`, `cap { join, create }`, `iss`,
   `aud = borrifo-match-server`, `iat`, `exp` (60 s; o servidor aceita no máximo 120 s) e `jti`.
+- **Perfil** (opcional), na mesma credencial: `nick` (apelido nesta comunidade), `uname`
+  (nome de usuário) e `avatar` (URL https).
+  - O **servidor** resolve o nome exibido a todos (`nick` → `name` → `uname` → "Jogador")
+    e limpa o texto: tira caracteres de controle e de direção, `<` `>` e espaços repetidos,
+    e limita a 24 caracteres.
+  - O avatar só é repassado se o host estiver em `AVATAR_ALLOWED_HOSTS`. O cliente confere
+    de novo com `VITE_AVATAR_HOSTS` e usa `referrerPolicy="no-referrer"`; sem avatar, mostra
+    iniciais.
+  - O `LobbyPlayer` traz `userId` (o `sub` verificado, `null` para bots) para ligar jogador e
+    participante da chamada.
+  - Ao reconectar com uma credencial nova, o apelido atualizado vale, sem criar outro
+    jogador.
 - Vai ao servidor de partidas no **corpo do POST de matchmaking** do Colyseus. Nunca vai na
   URL, e os logs removem campos com nomes como `token`, `credential` e `secret`.
 - O servidor confere assinatura, emissor, audiência, validade, sessão, `cap.join` e `jti`
@@ -87,7 +101,10 @@ desenvolvimento. **Nenhum modo mock é ativado por parâmetro de URL.**
   membros do canal, e permite publicar apenas o **microfone** (sem câmera nem tela).
   `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET` nunca saem do servidor.
 - A Atividade recebe só `VoiceState` (dados puros: disponível, conectado, mudo, participantes
-  falando). O objeto `Room` não atravessa o iframe, e o iframe **não recebe permissão de câmera
+  falando). Cada `VoiceParticipant` pode trazer `userId`, o mesmo `sub` da credencial; sem
+  ele, o jogo usa `id`. É assim que o indicador de fala acha o jogador certo no lobby, no
+  placar e sobre o personagem. Sobre o personagem, adversários atrás de parede ou submersos
+  **não** mostram nome nem fala. O objeto `Room` não atravessa o iframe, e o iframe **não recebe permissão de câmera
   nem de microfone** (`allow="fullscreen; autoplay; gamepad"`).
 - `ACTIVITY_REQUEST_VOICE_ACTION`:
   - `toggle_mute` só é aceito se o usuário já ativou o microfone pelo botão do host
@@ -97,10 +114,26 @@ desenvolvimento. **Nenhum modo mock é ativado por parâmetro de URL.**
 - Sem `LIVEKIT_*`, o estado é `available: false, reason: 'not_configured'`, e o jogo e o host
   mostram "Voz não configurada neste ambiente". **Não há voz simulada.**
 
-**Não verificado:** conexão a um servidor LiveKit, publicação e recepção de áudio, indicadores
-de fala, reconexão de mídia e o comportamento de "fechar a Atividade mantém a chamada" com
-mídia real. O código segue a API instalada (`livekit-client` 2.22.3), mas nada disso foi
-exercitado.
+**Testado no laboratório** (`e2e/voz.mjs`), com um servidor LiveKit **local** (`--dev`) e a
+mídia **simulada** do Chromium, com dois usuários:
+- entrar na chamada pelo host;
+- o microfone continua desligado até o clique;
+- participantes com `userId` chegam ao jogo;
+- o anel de fala aparece na pessoa certa no lobby e no placar;
+- fechar a Atividade mantém a chamada.
+
+**Não verificado:** microfone físico, pessoas ouvindo, LiveKit Cloud e reconexão de mídia sob
+rede ruim.
+
+**Gameplay pelo LiveKit:** avaliado e **não adotado**. Ver
+[livekit-transporte.md](livekit-transporte.md) e o
+[ADR 0012](decisions/0012-transporte-colyseus-voz-livekit.md).
+
+### Controles e permissões do iframe
+
+O iframe declara `allow="fullscreen; autoplay; gamepad"`. `gamepad` é necessário porque a
+Atividade vem de outra origem e a Gamepad API segue a *permissions policy*. Câmera e microfone
+continuam fora.
 
 ## Ciclo de vida
 
@@ -122,6 +155,9 @@ exercitado.
 3. Implementar `ActivityHost` (ou o equivalente) com a mesma verificação de origem, fonte e nonce.
 4. Emitir a credencial no backend com uma chave assimétrica e publicar o JWKS. Rodar o servidor
    de partidas com `MATCH_AUTH_MODE=jwks`.
-5. Reaproveitar a conexão LiveKit existente do host e repassar apenas `VoiceState`.
+5. Reaproveitar a conexão LiveKit existente do host e repassar apenas `VoiceState`, com
+   `userId` em cada participante.
+6. Incluir `nick`, `uname` e `avatar` na credencial e configurar `AVATAR_ALLOWED_HOSTS` (servidor)
+   e `VITE_AVATAR_HOSTS` (cliente) com o host de mídia do Trivo.
 
 Nada disso foi feito contra o Trivo. Os passos acima são o caminho previsto, não verificado.

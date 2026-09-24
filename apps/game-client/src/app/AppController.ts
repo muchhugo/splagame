@@ -145,6 +145,7 @@ export class AppController {
         const lobby = this.lastLobby;
         const me = uiStore.get().welcome?.playerId ?? 0;
         if (lobby) rt().setRoster(lobby.players, me);
+        rt().setTeamPair(m.teamPairId);
         rt().beginRound(m.roundId, paintContextTag(m.matchId, m.mapHash));
         uiStore.set({ result: null, menuOpen: false });
         this.conn?.send(C2S.LOADED, { roundId: m.roundId, mapHash: MAP_HASH });
@@ -178,6 +179,7 @@ export class AppController {
     const myId = uiStore.get().welcome?.playerId ?? 0;
     const me = l.players.find((p) => p.playerId === myId);
     this.runtime?.setRoster(l.players, myId);
+    if (l.teamPairId) this.runtime?.setTeamPair(l.teamPairId);
     let screen = uiStore.get().screen;
     if (screen !== 'error' && screen !== 'closed') {
       if (l.phase === 'lobby') screen = 'lobby';

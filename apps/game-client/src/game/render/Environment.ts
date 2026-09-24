@@ -1,3 +1,4 @@
+import { SCENERY_TOKENS } from '@borrifo/game-content';
 import { Color3, DynamicTexture, Matrix, Mesh, MeshBuilder, Quaternion, Scene, ShaderMaterial, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import type { DecorSpec, MapSpec } from '@borrifo/game-content';
 import { GAME_NAME } from '@borrifo/game-contracts';
@@ -197,7 +198,8 @@ export class Environment {
         this.std.push(fm);
         flag.material = fm;
         flag.parent = node;
-        const palette: Color3[] = [new Color3(0.98, 0.36, 0.3), new Color3(1, 0.84, 0.25), new Color3(0.26, 0.64, 0.96), new Color3(0.36, 0.82, 0.46), new Color3(0.96, 0.5, 0.82)];
+        // bandeirinhas com os tokens de CENÁRIO (dessaturados): não podem ser confundidas com tinta de equipe
+        const palette: Color3[] = SCENERY_TOKENS.bandeirinhas.map((h) => Color3.FromHexString(h));
         const matrices = new Float32Array(n * 16);
         const cols = new Float32Array(n * 4);
         const dir = b.subtract(a);

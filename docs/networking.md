@@ -34,6 +34,14 @@ Servidor → cliente (`S2C`): `welcome`, `lobby`, `round.loading`, `round.countd
 `round.start`, `round.result`, `snap`, `paint.snap` (binário), `paint.delta` (binário), `notice`,
 `pong`.
 
+Campos novos (set/2026):
+- `lobby.players[]` traz `userId` (o `sub` verificado; `null` para bots) e `avatarUrl` (https
+  de host permitido, ou `null`), e `displayName` já vem resolvido pelo servidor.
+- `lobby.teamPairId` e `round.loading.teamPairId` levam o par de cores/nomes da rodada
+  (`TEAM_PAIRS`), igual para quem entra ou reconecta.
+- O LiveKit foi avaliado como transporte e não adotado
+  ([livekit-transporte.md](livekit-transporte.md)).
+
 ### Snapshot (`snap`)
 
 ```text

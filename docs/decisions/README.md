@@ -16,3 +16,6 @@ estão marcados.
 | [0009](0009-fisica-compartilhada-rapier.md) | Rapier compat no servidor e no cliente, com reconciliação | — |
 | [0010](0010-arte-procedural.md) | Arte gerada por código (o som mudou, ver 0011) | — |
 | [0011](0011-efeitos-sonoros-gravados.md) | Efeitos sonoros gravados (CC0) no lugar da síntese | — |
+| [0012](0012-transporte-colyseus-voz-livekit.md) | Gameplay continua no Colyseus; LiveKit só na voz do host (benchmark isolado) | — |
+| [0013](0013-tokens-e-pares-de-cores.md) | Tokens de cor em três conjuntos; par de equipe escolhido pelo servidor por rodada | — |
+| [0014](0014-controle-gamepad.md) | Controle pela Gamepad API, lido a ~8 ms, glifos por família | — |

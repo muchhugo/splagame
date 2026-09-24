@@ -1,3 +1,4 @@
+import { teamPair } from '@borrifo/game-content';
 import { createStore } from './store';
 import { loadSettings, SETTINGS_KEY, type BindableAction, type Settings } from './settingsSchema';
 
@@ -17,11 +18,15 @@ export const ACTION_LABELS: Record<BindableAction, string> = {
   fireAlt: 'Disparo (tecla alternativa)',
 };
 
-/** Paletas de apresentação. A regra lógica continua em TeamId, nunca em RGB. */
-export const PALETTES: Record<Settings['palette'], { name: string; team: [string, string] }> = {
-  padrao: { name: 'Padrão (Urucum × Anil)', team: ['#ff6414', '#4a3dff'] },
-  alto_contraste: { name: 'Alto contraste', team: ['#ffd500', '#6a00ff'] },
-  daltonismo: { name: 'Daltonismo (laranja × azul)', team: ['#e69f00', '#0072b2'] },
+/**
+ * Paletas de ACESSIBILIDADE: remapeiam localmente o par que o servidor escolheu
+ * para a rodada (não mudam o dono lógico da tinta, que é o TeamId). "padrao"
+ * usa o par da rodada (ver packages/game-content/src/palette.ts).
+ */
+export const PALETTES: Record<Settings['palette'], { name: string; team: [string, string] | null; names: [string, string] | null }> = {
+  padrao: { name: 'Cores da rodada (escolhidas pela partida)', team: null, names: null },
+  alto_contraste: { name: 'Alto contraste (amarelo × violeta)', team: ['#ffd500', '#6a00ff'], names: ['Amarela', 'Violeta'] },
+  daltonismo: { name: 'Daltonismo (laranja × azul, Okabe–Ito)', team: ['#e69f00', '#0072b2'], names: ['Laranja', 'Azul'] },
 };
 
 function storage() {
@@ -41,6 +46,18 @@ settingsStore.subscribe(() => {
   }
 });
 
-export function teamColorHex(team: 0 | 1): string {
-  return PALETTES[settingsStore.get().palette].team[team];
+/** Cores efetivas das equipes: a paleta de acessibilidade, se escolhida; senão o par da rodada. */
+export function teamColorsFor(palette: Settings['palette'], pairId: string | null | undefined): [string, string] {
+  const acc = PALETTES[palette].team;
+  if (acc) return acc;
+  const p = teamPair(pairId);
+  return [p.teams[0].color, p.teams[1].color];
+}
+
+/** Nomes de apresentação que combinam com as cores efetivas. */
+export function teamNamesFor(palette: Settings['palette'], pairId: string | null | undefined): [string, string] {
+  const acc = PALETTES[palette].names;
+  if (acc) return acc;
+  const p = teamPair(pairId);
+  return [p.teams[0].name, p.teams[1].name];
 }
