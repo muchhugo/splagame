@@ -49,8 +49,9 @@ function outskirts(L: number, W: number): DecorSpec[] {
 /** Mural, totem, arara e letreiros: únicos (não espelhados). */
 function landmarks(L: number, W: number, totemY: number, muralW: number): DecorSpec[] {
   return [
-    { kind: 'muralAra', pos: [0, 0, W - 0.02], yaw: Math.PI, scale: muralW, variant: 0 },
-    { kind: 'muralAra', pos: [0, 0, -W + 0.02], yaw: 0, scale: muralW, variant: 1 },
+    // plano voltado para dentro da arena (a face da frente do plano aponta para −z)
+    { kind: 'muralAra', pos: [0, 0, W - 0.02], yaw: 0, scale: muralW, variant: 0 },
+    { kind: 'muralAra', pos: [0, 0, -W + 0.02], yaw: Math.PI, scale: muralW, variant: 1 },
     { kind: 'araTotem', pos: [0, totemY, 0], scale: 1 },
     // arara ambiental: voa alto, fora das rotas; pousa em pontos decorativos dos muros
     { kind: 'arara', pos: [0, 10, 0], scale: Math.min(L, W) * 0.9, to: [-L + 2, 4.3, W + 0.4] },

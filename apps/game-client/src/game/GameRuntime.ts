@@ -256,6 +256,7 @@ export class GameRuntime {
     this.frameBudgetMs = s.fpsCap > 0 ? 1000 / s.fpsCap - 0.5 : 0;
     const scaling = s.quality === 'baixa' ? 1.6 : s.quality === 'media' ? 1.15 : 1 / Math.min(1.5, window.devicePixelRatio || 1);
     this.engine.setHardwareScalingLevel(scaling);
+    this.env?.setSimplified(s.quality === 'baixa');
     if (s.quality === 'baixa' || s.reduceFlashes) {
       this.pipeline?.dispose();
       this.pipeline = null;
@@ -672,7 +673,7 @@ export class GameRuntime {
       }, dt);
       this.localAudio(pred);
       this.emptyTankAudio(pred, dt);
-    } else {
+    } else if (!this.debugView) {
       // órbita lenta de apresentação antes da rodada
       const t = now * 0.00005;
       this.rig.camera.position.set(Math.cos(t) * 38, 16, Math.sin(t) * 26);

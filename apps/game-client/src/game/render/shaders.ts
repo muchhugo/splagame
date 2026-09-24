@@ -137,8 +137,9 @@ vec3 surfaceAlbedo(int m, vec2 uv, vec3 base, out float gloss){
     float dotc = smoothstep(0.16, 0.13, length(g - 0.5));
     float grout = smoothstep(0.0, 0.03, min(min(g.x, 1.0-g.x), min(g.y, 1.0-g.y)));
     vec3 accent = vec3(0.86, 0.42, 0.32);
-    vec3 c = mix(base, accent, arc * 0.85);
-    c = mix(c, vec3(0.2, 0.48, 0.5), dotc * 0.8);
+    // contraste baixo: o piso não pode competir com a tinta das equipes
+    vec3 c = mix(base, accent, arc * 0.32);
+    c = mix(c, vec3(0.2, 0.48, 0.5), dotc * 0.28);
     return mix(base * 0.72, c, grout);
   }
   if (m == 10) { // pastilha de piscina: grade miúda clara, brilho de esmalte

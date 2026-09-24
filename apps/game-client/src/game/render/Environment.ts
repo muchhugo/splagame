@@ -4,6 +4,7 @@ import type { DecorSpec, MapSpec } from '@borrifo/game-content';
 import { GAME_NAME } from '@borrifo/game-contracts';
 import { Rng } from '@borrifo/game-simulation';
 import { ToonMaterial } from './ToonMaterial';
+import { AmbientMacaw, buildAraTotem, buildBananeira, buildClubMast, buildHangingSign, buildMural, buildPalmeira, buildUmbrella, buildVasos, type PropCtx } from './props';
 
 /**
  * Céu, entorno e decoração em estilo cartoon (cel shading suave). Decoração
@@ -27,12 +28,17 @@ export class Environment {
   private std: StandardMaterial[] = [];
   private textures: DynamicTexture[] = [];
   private spinners: TransformNode[] = [];
+  /** Nós animados por quadro (fora da fusão estática e do congelamento). */
+  private animated: TransformNode[] = [];
+  private macaws: AmbientMacaw[] = [];
+  private ctx: PropCtx;
 
   constructor(
     private readonly scene: Scene,
     private readonly map: MapSpec,
   ) {
     this.root = new TransformNode('entorno', scene);
+    this.ctx = { scene, tm: (n, rgb, g) => this.tm(n, rgb, g), std: this.std, textures: this.textures };
     const L = map.lighting;
     this.sky = MeshBuilder.CreateSphere('ceu', { diameter: 900, segments: 24, sideOrientation: Mesh.BACKSIDE }, scene);
     this.skyMat = new ShaderMaterial('mat-ceu', scene, { vertex: 'borrifoSky', fragment: 'borrifoSky' }, { attributes: ['position'], uniforms: ['worldViewProjection', 'skyTop', 'skyHorizon', 'sunDir', 'sunColor', 'time'] });
@@ -48,11 +54,22 @@ export class Environment {
     this.sky.isPickable = false;
     this.sky.parent = this.root;
 
-    // gramado e caminho de terra fora do pátio
-    const ground = MeshBuilder.CreateGround('gramado', { width: 500, height: 500, subdivisions: 2 }, scene);
-    ground.position.y = -0.03;
-    ground.material = this.tm('grama', [0.46, 0.72, 0.36], 0.05);
-    ground.parent = this.root;
+    // gramado AO REDOR da arena (não por baixo): o piso pode ter recortes, como a piscina
+    const grass = this.tm('grama', [0.46, 0.72, 0.36], 0.05);
+    const bx = map.bounds.max[0] + 1;
+    const bz = map.bounds.max[2] + 1;
+    const R = 250;
+    for (const [w, h, x, z] of [
+      [2 * R, R - bz, 0, (R + bz) / 2],
+      [2 * R, R - bz, 0, -(R + bz) / 2],
+      [R - bx, 2 * bz, (R + bx) / 2, 0],
+      [R - bx, 2 * bz, -(R + bx) / 2, 0],
+    ] as const) {
+      const g = MeshBuilder.CreateGround('gramado', { width: w, height: h, subdivisions: 1 }, scene);
+      g.position.set(x, -0.03, z);
+      g.material = grass;
+      g.parent = this.root;
+    }
     const path = MeshBuilder.CreateGround('caminho', { width: 7, height: 160 }, scene);
     path.position.set(0, -0.02, 60);
     path.material = this.tm('terra', [0.86, 0.7, 0.46], 0.02);
@@ -83,7 +100,7 @@ export class Environment {
       m.isPickable = false;
       if (m !== this.sky && !this.smokes.some((f) => f.mesh === m)) m.freezeWorldMatrix();
     });
-    for (const s of this.spinners) s.getChildMeshes().forEach((m) => m.unfreezeWorldMatrix());
+    for (const s of [...this.spinners, ...this.animated]) s.getChildMeshes().forEach((m) => m.unfreezeWorldMatrix());
   }
 
   /**
@@ -93,7 +110,7 @@ export class Environment {
    */
   private mergeStatic() {
     const spinning = new Set<Mesh>();
-    for (const sp of this.spinners) for (const m of sp.getChildMeshes()) spinning.add(m as Mesh);
+    for (const sp of [...this.spinners, ...this.animated]) for (const m of sp.getChildMeshes()) spinning.add(m as Mesh);
     const groups = new Map<number, Mesh[]>();
     for (const m of this.root.getChildMeshes()) {
       if (!(m instanceof Mesh) || !m.material || m === this.sky || spinning.has(m) || m.hasThinInstances || m.renderOutline) continue;
@@ -289,6 +306,48 @@ export class Environment {
       case 'letreiro':
         this.buildSign(node, d);
         break;
+      case 'muralAra': {
+        node.scaling.setAll(1);
+        buildMural(this.ctx, node, d.scale ?? 10, d.variant ?? 0);
+        break;
+      }
+      case 'araTotem': {
+        const spin = buildAraTotem(this.ctx, node);
+        this.spinners.push(spin);
+        break;
+      }
+      case 'arara': {
+        node.position.setAll(0);
+        node.scaling.setAll(1);
+        const holder = new TransformNode('arara-voo', s);
+        holder.parent = this.root;
+        this.animated.push(holder);
+        this.macaws.push(new AmbientMacaw(this.ctx, holder, new Vector3(d.pos[0], d.pos[1], d.pos[2]), d.scale ?? 20, new Vector3(...(d.to ?? [0, 4.2, 0]))));
+        break;
+      }
+      case 'bananeira':
+        buildBananeira(this.ctx, node);
+        break;
+      case 'palmeira':
+        buildPalmeira(this.ctx, node);
+        break;
+      case 'vasos':
+        buildVasos(this.ctx, node, d.variant ?? 0, potProfile);
+        break;
+      case 'oficinaFachada': {
+        // placa acima do telhado da oficina (altura do bloco do MapSpec)
+        const b = this.map.blocks.find((x) => x.style === 'workshop' && d.pos[0] >= x.min[0] - 0.6 && d.pos[0] <= x.max[0] + 0.6 && d.pos[2] >= x.min[2] - 0.1 && d.pos[2] <= x.max[2] + 0.1);
+        // recuada 0,6 m para dentro do telhado: nada fica na frente da parede pintável
+        node.position.x += d.pos[0] > 0 ? 0.6 : -0.6;
+        buildHangingSign(this.ctx, node, 'OFICINA', b ? b.max[1] : 3.2);
+        break;
+      }
+      case 'trampolim':
+        buildClubMast(this.ctx, node);
+        break;
+      case 'guardaSol':
+        buildUmbrella(this.ctx, node, d.variant ?? 0);
+        break;
       case 'rodaGigante': {
         // roda de oleiro decorativa girando sobre o telhado
         const spin = new TransformNode('roda', s);
@@ -358,12 +417,15 @@ export class Environment {
   private buildSign(node: TransformNode, d: DecorSpec) {
     const s = this.scene;
     const tex = new DynamicTexture('tex-letreiro', { width: 1024, height: 256 }, s, true);
-    const label = d.variant === 1 ? 'PÁTIO' : `OLARIA ${GAME_NAME.toUpperCase()}`;
+    // placas com o nome do lugar (orientação): Toca do Ara e Clube da Maré
+    const labels = ['TOCA DO ARA', 'OFICINA CRIATIVA', 'CLUBE DA MARÉ', 'PISCINA'];
+    const label = labels[d.variant ?? 0] ?? GAME_NAME.toUpperCase();
+    const clube = (d.variant ?? 0) >= 2;
     const draw = () => {
       const ctx = tex.getContext() as CanvasRenderingContext2D;
-      ctx.fillStyle = '#f6c14b';
+      ctx.fillStyle = clube ? '#62c9c6' : '#f6c14b';
       ctx.fillRect(0, 0, 1024, 256);
-      ctx.fillStyle = '#e8552b';
+      ctx.fillStyle = clube ? '#f38a6f' : '#e8552b';
       ctx.fillRect(0, 0, 1024, 26);
       ctx.fillRect(0, 230, 1024, 26);
       ctx.textAlign = 'center';
@@ -412,7 +474,8 @@ export class Environment {
     this.skyMat.setFloat('time', this.time);
     const flicker = 0.9 + Math.sin(this.time * 9) * 0.05 + Math.sin(this.time * 23.3) * 0.04;
     for (const l of this.lamps) l.emissiveColor.set(1 * flicker, 0.78 * flicker, 0.4 * flicker);
-    for (const sp of this.spinners) sp.rotation.y += dt * (sp.name === 'estatua-giro' ? 0.35 : 1.6);
+    for (const sp of this.spinners) sp.rotation.y += dt * (sp.name === 'estatua-giro' || sp.name === 'totem-giro' ? 0.35 : 1.6);
+    for (const m of this.macaws) m.update(dt);
     for (const f of this.smokes) {
       f.puffs.forEach((p, i) => {
         p.age = (p.age + dt) % 6;
@@ -425,6 +488,11 @@ export class Environment {
       });
       f.mesh.thinInstanceBufferUpdated('matrix');
     }
+  }
+
+  /** Qualidade baixa: arara fica pousada (sem animação de voo). */
+  setSimplified(on: boolean) {
+    for (const m of this.macaws) m.simplified = on;
   }
 
   dispose() {

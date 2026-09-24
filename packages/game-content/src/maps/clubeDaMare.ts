@@ -65,7 +65,6 @@ function landmarks(L: number, W: number, towerTop: number): DecorSpec[] {
     { kind: 'arara', pos: [0, 11, 0], scale: Math.min(L, W) * 0.9, to: [L - 3, 4.3, -W - 0.4] },
     { kind: 'letreiro', pos: [-L + 10, 4.4, W + 0.6], yaw: 0, variant: 2 },
     { kind: 'letreiro', pos: [L - 10, 4.4, -W - 0.6], yaw: Math.PI, variant: 3 },
-    { kind: 'faixaPiscina', pos: [0, 0.02, 0], scale: 1 },
   ];
 }
 
@@ -122,8 +121,6 @@ function padrao(): MapSpec {
       },
       decorHalf: [
         { kind: 'guardaSol', pos: [-11, 2.6, -3], variant: 0 },
-        { kind: 'escadaPiscina', pos: [-8, 0, 0], yaw: Math.PI / 2 },
-        { kind: 'boias', pos: [-5, -1.8, 3.6], variant: 0 },
         { kind: 'bandeirinhas', pos: [-29.8, 6.2, 7.2], to: [-13, 6.4, 20.3] },
         { kind: 'vasos', pos: [-26, 4.0, 20.6], variant: 2 },
       ],
@@ -175,7 +172,6 @@ function compacto(): MapSpec {
       },
       decorHalf: [
         { kind: 'guardaSol', pos: [-13, 2.6, -4.5], variant: 1 },
-        { kind: 'escadaPiscina', pos: [-5, 0, 0], yaw: Math.PI / 2 },
         { kind: 'bandeirinhas', pos: [-18.8, 6.0, 5.2], to: [-8, 6.2, 12.3] },
       ],
       decorGlobal: [...landmarks(L, W, -1.06).filter((d) => d.kind !== 'trampolim'), ...outskirts(L, W)],
@@ -235,8 +231,6 @@ function ampliado(): MapSpec {
       },
       decorHalf: [
         { kind: 'guardaSol', pos: [-13, 2.6, -3], variant: 0 },
-        { kind: 'escadaPiscina', pos: [-10, 0, 0], yaw: Math.PI / 2 },
-        { kind: 'boias', pos: [-6, -1.8, 4.6], variant: 1 },
         { kind: 'bandeirinhas', pos: [-39.8, 6.2, 8.2], to: [-20, 6.4, 27.3] },
       ],
       decorGlobal: [...landmarks(L, W, 2.6), ...outskirts(L, W)],
