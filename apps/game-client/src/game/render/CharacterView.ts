@@ -1,6 +1,7 @@
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, DynamicTexture } from '@babylonjs/core';
-import type { TeamId, WeaponId } from '@borrifo/game-contracts';
-import { ToonMaterial } from './ToonMaterial';
+import type { AppearanceId, TeamId, WeaponId } from '@borrifo/game-contracts';
+import { DEFAULT_APPEARANCE } from '@borrifo/game-contracts';
+import { sharedToon, ToonMaterial, type ToonMeshState } from './ToonMaterial';
 
 /** Estado visual por frame (derivado da previsão local ou da interpolação remota). */
 export interface CharacterVisual {
@@ -25,14 +26,19 @@ export interface CharacterVisual {
   ink: number;
   inEnemyInk: boolean;
   travel: number;
+  /** 1 = comemora (vitória), -1 = desanima (derrota), 0 = nada. */
+  celebrate?: number;
 }
 
-const GLAZES: Array<[number, number, number]> = [
-  [0.98, 0.94, 0.86],
-  [0.9, 0.93, 0.97],
-  [0.92, 0.96, 0.88],
-  [0.99, 0.9, 0.86],
-];
+/** Tons de pele escolhidos pelo jogador (nunca deduzidos). */
+export const SKIN_TONES: readonly string[] = ['#f4d4ba', '#dfa982', '#b3764c', '#7a4a2d'];
+const HAIR = { a: '#2b1c14', b: '#3b2318' } as const;
+const CLOTH = { camisa: '#f3eadb', short: '#3b3643', legging: '#463d52', sola: '#fbf7f0', olho: '#3a2518' } as const;
+
+export function parseAppearance(id: AppearanceId | undefined): { base: 'a' | 'b'; tone: number } {
+  const a = id ?? DEFAULT_APPEARANCE;
+  return { base: a[0] === 'b' ? 'b' : 'a', tone: Math.min(3, Math.max(0, Number(a[1]) || 0)) };
+}
 
 let shadowTexture: DynamicTexture | null = null;
 function blobShadowTexture(scene: Scene): DynamicTexture {
@@ -52,36 +58,59 @@ function blobShadowTexture(scene: Scene): DynamicTexture {
   return t;
 }
 
+const hex = (h: string) => Color3.FromHexString(h);
+
 /**
- * Bibelô: autômato de cerâmica esmaltada e polímero, com cabeça-pote grande,
- * olhos expressivos e reservatório de vidro exagerado. Forma Bibelô (bípede) e
- * Forma Pião (pião mecânico). Modelo procedural low poly, cel shading suave,
- * contorno discreto só nas silhuetas principais. Cosméticos não mudam a hitbox.
+ * Personagem humano estilizado, em duas bases (apresentação masculina 'a' e
+ * feminina 'b') com a MESMA altura, volume e esqueleto: a hitbox (cápsula de
+ * 1,55 m) é idêntica e a aparência é só cosmética. Cabeça grande, olhos
+ * expressivos, cabelo e roupa esportiva. A cor da equipe fica em áreas
+ * delimitadas (camiseta/jardineira, tênis, faixa ou elástico do cabelo,
+ * mochila de pigmento e ferramenta); pele, olhos e cabelo nunca mudam.
+ *
+ * Forma Pião: a mochila se abre num pião de madeira pintada e a pessoa se
+ * encolhe dentro dele (os olhos e o topete aparecem na borda).
+ *
+ * Materiais compartilhados por cena; o lampejo de dano e a luz sob o
+ * personagem são estado por malha (ToonMeshState), lidos no bind.
  */
 export class CharacterView {
   readonly root: TransformNode;
+  readonly appearance: { base: 'a' | 'b'; tone: number };
   private combat: TransformNode;
   private flow: TransformNode;
-  private upper: TransformNode;
+  private flowSpin: TransformNode;
+  private hips: TransformNode;
+  private torso: TransformNode;
   private head: TransformNode;
-  private armL: TransformNode;
-  private armR: TransformNode;
-  private legL: TransformNode;
-  private legR: TransformNode;
+  private shoulderL: TransformNode;
+  private shoulderR: TransformNode;
+  private elbowL: TransformNode;
+  private elbowR: TransformNode;
+  private thighL: TransformNode;
+  private thighR: TransformNode;
+  private kneeL: TransformNode;
+  private kneeR: TransformNode;
   private tool: TransformNode;
+  private pony: TransformNode | null = null;
   private band: TransformNode | null = null;
-  private eyes: TransformNode[] = [];
-  private brows: Mesh[] = [];
+  private eyes: Mesh;
+  private pupils: Mesh;
+  private browL: Mesh;
+  private browR: Mesh;
+  private mouth: Mesh;
+  private flowEyes: TransformNode;
   private tankLiquid: Mesh;
   private shadow: Mesh;
   private bubble: Mesh;
+  private swirl: Mesh;
   private meshes: Mesh[] = [];
-  private toon: ToonMaterial[] = [];
-  private std: StandardMaterial[] = [];
-  private ceramic: ToonMaterial;
+  private detail: Mesh[] = [];
+  private outlined: Mesh[] = [];
+  private own: Array<ToonMaterial | StandardMaterial> = [];
   private teamMat: ToonMaterial;
-  private coreMat: ToonMaterial;
   private inkMat: ToonMaterial;
+  private readonly toonState: ToonMeshState = { flash: 0, sunVis: 1 };
   private phase = 0;
   private formBlend = 0;
   private spin = 0;
@@ -89,12 +118,16 @@ export class CharacterView {
   private wasGrounded = true;
   private blinkTimer = 2;
   private flashTimer = 0;
-  private wobble = 0;
+  private hurtTimer = 0;
   private lastHp = 100;
   private visibleFactor = 1;
   private recoil = 0;
+  private idleT: number;
+  private deathTimer = 0;
+  private wasAlive = true;
+  private swirlT = 0;
+  private lastForm = 0;
   private marker: Mesh | null = null;
-  private outlined: Mesh[] = [];
 
   constructor(
     private readonly scene: Scene,
@@ -104,172 +137,270 @@ export class CharacterView {
     teamColor: Color3,
     readonly isLocal: boolean,
     readonly isEnemy: boolean,
+    appearance?: AppearanceId,
   ) {
-    this.root = new TransformNode(`bibelo-${playerId}`, scene);
-    const glaze = GLAZES[playerId % GLAZES.length];
-    this.ceramic = this.tm('ceramica', new Color3(...glaze), 0.8);
-    const polymer = this.tm('polimero', new Color3(0.2, 0.19, 0.24), 0.25);
-    this.teamMat = this.tm('equipe', teamColor, 0.7);
-    this.coreMat = this.tm('miolo', teamColor, 0.9);
-    this.coreMat.setEmissive(teamColor.scale(0.35));
-    this.inkMat = this.tm('tinta', teamColor, 1.0);
+    this.appearance = parseAppearance(appearance);
+    const { base, tone } = this.appearance;
+    this.idleT = (playerId * 1.37) % 6;
+    this.root = new TransformNode(`pessoa-${playerId}`, scene);
+    const skin = sharedToon(scene, `pele-${tone}`, hex(SKIN_TONES[tone]), 0.35);
+    skin.soft = 1;
+    const hair = sharedToon(scene, `cabelo-${base}`, hex(HAIR[base]), 0.55);
+    const shirt = sharedToon(scene, 'camisa', hex(CLOTH.camisa), 0.3);
+    const pants = sharedToon(scene, base === 'a' ? 'short' : 'legging', hex(base === 'a' ? CLOTH.short : CLOTH.legging), 0.25);
+    const sole = sharedToon(scene, 'sola', hex(CLOTH.sola), 0.3);
+    const white = sharedToon(scene, 'esclera', new Color3(1, 1, 1), 0.2);
+    const iris = sharedToon(scene, 'iris', hex(CLOTH.olho), 0.9);
+    const glass = sharedToon(scene, 'vidro', new Color3(0.82, 0.95, 1.0), 1.0);
+    glass.alpha = 0.4;
+    const brass = sharedToon(scene, 'latao', new Color3(0.95, 0.72, 0.28), 0.9);
+    const wood = sharedToon(scene, 'madeira-pintada', new Color3(0.78, 0.55, 0.34), 0.25);
+    const dark = sharedToon(scene, 'escuro', new Color3(0.16, 0.1, 0.1), 0.2);
+    // cor da equipe: materiais do time (compartilhados por equipe, atualizados em setTeamColor)
+    this.teamMat = sharedToon(scene, `equipe-${team}`, teamColor, 0.6);
+    this.inkMat = sharedToon(scene, `tinta-${team}`, teamColor, 1.0);
     this.inkMat.setEmissive(teamColor.scale(0.15));
-    const dark = this.tm('pupila', new Color3(0.08, 0.06, 0.1), 0.9);
-    const white = this.tm('esclera', new Color3(1, 1, 1), 0.3);
-    const glass = this.tm('vidro', new Color3(0.82, 0.95, 1.0), 1.0);
-    glass.alpha = 0.38;
-    const brass = this.tm('latao', new Color3(0.95, 0.72, 0.28), 0.9);
-    const wood = this.tm('madeira', new Color3(0.72, 0.5, 0.32), 0.2);
 
-    // ---------------- Forma Bibelô ----------------
-    this.combat = new TransformNode('combate', scene);
-    this.combat.parent = this.root;
+    const node = (name: string, parent: TransformNode, x = 0, y = 0, z = 0) => {
+      const n = new TransformNode(name, scene);
+      n.parent = parent;
+      n.position.set(x, y, z);
+      return n;
+    };
+    const put = (m: Mesh, parent: TransformNode, mat: ToonMaterial, x = 0, y = 0, z = 0) => {
+      m.parent = parent;
+      m.position.set(x, y, z);
+      m.material = mat;
+      this.meshes.push(m);
+      return m;
+    };
+    // peça solta em coordenadas locais, para mesclar com outras do mesmo material (menos desenho)
+    const at = (m: Mesh, x = 0, y = 0, z = 0) => {
+      m.position.set(x, y, z);
+      return m;
+    };
+    const cap = (name: string, r: number, h: number) => MeshBuilder.CreateCapsule(name, { radius: r, height: h, tessellation: 10, subdivisions: 1 }, scene);
+    const sph = (name: string, d: number, seg = 10) => MeshBuilder.CreateSphere(name, { diameter: d, segments: seg }, scene);
+
+    // ---------------- esqueleto (mesmas medidas nas duas bases) ----------------
+    this.combat = node('combate', this.root);
+    this.hips = node('quadril', this.combat, 0, 0.64, 0);
     const mkLeg = (side: number) => {
-      const hip = new TransformNode('quadril', scene);
-      hip.parent = this.combat;
-      hip.position.set(0.15 * side, 0.42, 0);
-      const leg = MeshBuilder.CreateCapsule('perna', { radius: 0.075, height: 0.36, tessellation: 8, subdivisions: 1 }, scene);
-      leg.position.y = -0.17;
-      leg.material = polymer;
-      leg.parent = hip;
-      // botas redondas e grandes (proporção cômica)
-      const foot = MeshBuilder.CreateSphere('pe', { diameter: 0.3, segments: 8 }, scene);
-      foot.scaling.set(0.9, 0.55, 1.4);
-      foot.position.set(0, -0.36, 0.05);
-      foot.material = this.teamMat;
-      foot.parent = hip;
-      this.meshes.push(leg, foot);
-      return hip;
+      const thigh = node('coxa', this.hips, 0.1 * side, 0, 0);
+      put(cap('coxa', 0.088, 0.36), thigh, pants, 0, -0.14, 0);
+      const knee = node('joelho', thigh, 0, -0.31, 0);
+      // canela: pele na base 'a' (bermuda), legging na 'b'
+      put(cap('canela', 0.068, 0.32), knee, base === 'a' ? skin : pants, 0, -0.14, 0);
+      const shoe = put(sph('tenis', 0.2), knee, this.teamMat, 0, -0.3, 0.05);
+      shoe.scaling.set(0.72, 0.5, 1.32);
+      const s2 = at(sph('sola', 0.2), 0, -0.33, 0.05);
+      s2.scaling.set(0.78, 0.25, 1.38);
+      // base 'b': cano do tênis alto
+      this.mergeInto(base === 'b' ? [s2, at(MeshBuilder.CreateCylinder('cano', { height: 0.09, diameter: 0.15, tessellation: 10 }, scene), 0, -0.24, 0)] : [s2], knee, sole, 'sola');
+      return { thigh, knee };
     };
-    this.legL = mkLeg(-1);
-    this.legR = mkLeg(1);
-    this.upper = new TransformNode('tronco', scene);
-    this.upper.parent = this.combat;
-    this.upper.position.y = 0.42;
-    const body = MeshBuilder.CreateLathe('corpo', { shape: jarProfile(), tessellation: 16 }, scene);
-    body.material = this.ceramic;
-    body.parent = this.upper;
-    const belt = MeshBuilder.CreateTorus('faixa', { diameter: 0.64, thickness: 0.08, tessellation: 20 }, scene);
-    belt.position.y = 0.26;
-    belt.scaling.y = 0.75;
-    belt.material = this.teamMat;
-    belt.parent = this.upper;
-    const core = MeshBuilder.CreateSphere('miolo', { diameter: 0.16, segments: 8 }, scene);
-    core.position.set(0, 0.36, 0.28);
-    core.scaling.z = 0.5;
-    core.material = this.coreMat;
-    core.parent = this.upper;
-    // reservatório exagerado nas costas: jarra de vidro com nível visível
-    const tankRoot = new TransformNode('mochila', scene);
-    tankRoot.parent = this.upper;
-    tankRoot.position.set(0, 0.34, -0.36);
-    tankRoot.rotation.x = 0.12;
-    const tank = MeshBuilder.CreateCapsule('tanque', { radius: 0.17, height: 0.58, tessellation: 12 }, scene);
-    tank.material = glass;
-    tank.parent = tankRoot;
-    this.tankLiquid = MeshBuilder.CreateCapsule('tinta', { radius: 0.145, height: 0.5, tessellation: 12 }, scene);
-    this.tankLiquid.setPivotPoint(new Vector3(0, -0.25, 0));
-    this.tankLiquid.material = this.inkMat;
-    this.tankLiquid.parent = tankRoot;
-    const cap = MeshBuilder.CreateCylinder('tampa-tanque', { height: 0.07, diameter: 0.24, tessellation: 12 }, scene);
-    cap.position.y = 0.3;
-    cap.material = brass;
-    cap.parent = tankRoot;
-    const strap = MeshBuilder.CreateTorus('alca', { diameter: 0.42, thickness: 0.035, tessellation: 16 }, scene);
-    strap.rotation.x = Math.PI / 2;
-    strap.position.set(0, 0.04, 0.2);
-    strap.material = polymer;
-    strap.parent = tankRoot;
-    // cabeça-pote grande, com tampa (variação cosmética)
-    this.head = new TransformNode('cabeca', scene);
-    this.head.parent = this.upper;
-    this.head.position.y = 0.62;
-    this.head.scaling.setAll(1.25);
-    const skull = MeshBuilder.CreateLathe('pote', { shape: headProfile(), tessellation: 16 }, scene);
-    skull.material = this.ceramic;
-    skull.parent = this.head;
-    const lid = this.makeLid(scene, playerId % 4);
-    lid.material = this.teamMat;
-    lid.parent = this.head;
-    for (const side of [-1, 1]) {
-      const eye = new TransformNode('olho', scene);
-      eye.parent = this.head;
-      eye.position.set(0.085 * side, 0.15, 0.2);
-      const sclera = MeshBuilder.CreateSphere('esclera', { diameter: 0.11, segments: 8 }, scene);
-      sclera.scaling.set(0.85, 1.15, 0.45);
-      sclera.material = white;
-      sclera.parent = eye;
-      const pupil = MeshBuilder.CreateSphere('pupila', { diameter: 0.06, segments: 6 }, scene);
-      pupil.scaling.set(0.9, 1.2, 0.4);
-      pupil.position.set(0.004 * side, -0.005, 0.03);
-      pupil.material = dark;
-      pupil.parent = eye;
-      this.eyes.push(eye);
-      const brow = MeshBuilder.CreateBox('sobrancelha', { width: 0.085, height: 0.018, depth: 0.02 }, scene);
-      brow.position.set(0.085 * side, 0.245, 0.215);
-      brow.rotation.z = -0.22 * side;
-      brow.material = dark;
-      brow.parent = this.head;
-      this.brows.push(brow);
-      this.meshes.push(sclera, pupil, brow);
+    ({ thigh: this.thighL, knee: this.kneeL } = mkLeg(-1));
+    ({ thigh: this.thighR, knee: this.kneeR } = mkLeg(1));
+    const pelvis = put(sph('bacia', 0.36), this.hips, pants, 0, 0.02, 0);
+    pelvis.scaling.set(1.05, 0.55, 0.8);
+
+    this.torso = node('tronco', this.hips, 0, 0.04, 0);
+    const body = put(MeshBuilder.CreateLathe('camiseta', { shape: torsoProfile(), tessellation: 16 }, scene), this.torso, base === 'a' ? this.teamMat : shirt);
+    body.scaling.z = 0.78;
+    if (base === 'a') {
+      // camiseta de time com gola e barra claras (faixas delimitadas)
+      const collar = at(MeshBuilder.CreateTorus('gola', { diameter: 0.2, thickness: 0.035, tessellation: 16 }, scene), 0, 0.43, 0);
+      collar.scaling.z = 0.8;
+      const hem = at(MeshBuilder.CreateTorus('barra', { diameter: 0.42, thickness: 0.04, tessellation: 18 }, scene), 0, 0.03, 0);
+      hem.scaling.z = 0.78;
+      this.mergeInto([collar, hem], this.torso, shirt, 'gola-barra');
+    } else {
+      // jardineira na cor da equipe sobre a camiseta clara, com duas alças
+      const bib = at(MeshBuilder.CreateLathe('jardineira', { shape: bibProfile(), tessellation: 16 }, scene));
+      bib.scaling.z = 0.8;
+      const straps = [-1, 1].map((side) => {
+        const strap = at(MeshBuilder.CreateBox('alca', { width: 0.045, height: 0.24, depth: 0.03 }, scene), 0.085 * side, 0.3, 0.155);
+        strap.rotation.x = -0.18;
+        return strap;
+      });
+      this.mergeInto([bib, ...straps], this.torso, this.teamMat, 'jardineira');
+      this.mergeInto([-1, 1].map((side) => at(sph('botao', 0.04, 6), 0.085 * side, 0.21, 0.175)), this.torso, brass, 'botoes');
     }
-    const mkArm = (side: number) => {
-      const sh = new TransformNode('ombro', scene);
-      sh.parent = this.upper;
-      sh.position.set(0.31 * side, 0.48, 0.02);
-      const arm = MeshBuilder.CreateCapsule('braco', { radius: 0.055, height: 0.34, tessellation: 8 }, scene);
-      arm.position.y = -0.15;
-      arm.material = polymer;
-      arm.parent = sh;
-      const hand = MeshBuilder.CreateSphere('mao', { diameter: 0.15, segments: 8 }, scene);
-      hand.position.y = -0.33;
-      hand.material = this.ceramic;
-      hand.parent = sh;
-      this.meshes.push(arm, hand);
-      return sh;
+    put(MeshBuilder.CreateCylinder('pescoco', { height: 0.1, diameter: 0.1, tessellation: 10 }, scene), this.torso, skin, 0, 0.46, 0);
+
+    // mochila de pigmento: frasco de vidro com o nível de tinta visível e alças da equipe
+    const pack = node('mochila', this.torso, 0, 0.26, -0.2);
+    pack.rotation.x = 0.1;
+    const tank = put(cap('tanque', 0.13, 0.42), pack, glass);
+    this.tankLiquid = put(cap('tinta', 0.108, 0.36), pack, this.inkMat);
+    this.tankLiquid.setPivotPoint(new Vector3(0, -0.18, 0));
+    const packStrap = at(MeshBuilder.CreateTorus('alca-mochila', { diameter: 0.34, thickness: 0.028, tessellation: 16 }, scene), 0, 0.02, 0.12);
+    packStrap.rotation.x = Math.PI / 2;
+    this.mergeInto([at(MeshBuilder.CreateCylinder('tampa', { height: 0.06, diameter: 0.18, tessellation: 12 }, scene), 0, 0.22, 0), packStrap], pack, this.teamMat, 'tampa-alca');
+
+    // ---------------- cabeça e rosto ----------------
+    this.head = node('cabeca', this.torso, 0, 0.72, 0.01);
+    // crânio, orelhas e nariz: uma malha só (mesmo material, nada se move entre eles)
+    const skullPart = at(sph('cabeca', 0.44, 14));
+    skullPart.scaling.set(1, 1.04, 0.96);
+    const ears = [-1, 1].map((side) => {
+      const ear = at(sph('orelha', 0.1, 8), 0.215 * side, -0.01, -0.01);
+      ear.scaling.set(0.45, 0.8, 0.6);
+      return ear;
+    });
+    const nosePart = at(sph('nariz', 0.07, 8), 0, -0.03, 0.21);
+    nosePart.scaling.set(1, 0.8, 0.8);
+    const skull = this.mergeInto([skullPart, ...ears, nosePart], this.head, skin, 'cabeca');
+    // olhos: esclera e íris (mescladas por material para economizar desenho)
+    this.eyes = this.mergeInto(
+      [-1, 1].map((side) => {
+        const e = sph('esclera', 0.105, 10);
+        e.position.set(0.085 * side, 0.035, 0.18);
+        e.scaling.set(0.85, 1.12, 0.55);
+        return e;
+      }),
+      this.head,
+      white,
+      'olhos',
+    );
+    this.pupils = this.mergeInto(
+      [-1, 1].map((side) => {
+        const p = sph('iris', 0.062, 8);
+        p.position.set(0.085 * side, 0.03, 0.212);
+        p.scaling.set(0.9, 1.1, 0.4);
+        return p;
+      }),
+      this.head,
+      iris,
+      'iris',
+    );
+    const mkBrow = (side: number) => {
+      const b = put(MeshBuilder.CreateBox('sobrancelha', { width: base === 'a' ? 0.1 : 0.085, height: base === 'a' ? 0.026 : 0.018, depth: 0.02 }, scene), this.head, hair, 0.088 * side, 0.125, 0.19);
+      b.rotation.z = -0.12 * side;
+      return b;
     };
-    this.armL = mkArm(-1);
-    this.armR = mkArm(1);
-    this.tool = this.makeTool(scene, weaponId, brass, glass, polymer, wood);
-    this.tool.parent = this.upper;
-    this.meshes.push(body, belt, core, tank, this.tankLiquid, cap, strap, skull, lid);
+    this.browL = mkBrow(-1);
+    this.browR = mkBrow(1);
+    // boca: arco fino (sorriso), invertido para franzir
+    const arc: Vector3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = (i / 8 - 0.5) * 1.8;
+      arc.push(new Vector3(Math.sin(t) * 0.055, -Math.cos(t) * 0.025 + 0.025, 0));
+    }
+    this.mouth = put(MeshBuilder.CreateTube('boca', { path: arc, radius: 0.0085, tessellation: 5, cap: Mesh.CAP_ALL }, scene), this.head, dark, 0, -0.09, 0.2);
+    this.detail.push(this.pupils, this.browL, this.browR, this.mouth);
+
+    // cabelo: cada base com silhueta própria
+    if (base === 'a') {
+      // cachos curtos (várias bolinhas mescladas) e faixa esportiva da equipe
+      const curls: Mesh[] = [];
+      const pts: Array<[number, number, number, number]> = [
+        [0, 0.17, 0.02, 0.2], [0.1, 0.15, 0.06, 0.15], [-0.1, 0.15, 0.06, 0.15], [0.13, 0.12, -0.06, 0.15], [-0.13, 0.12, -0.06, 0.15],
+        [0, 0.15, -0.11, 0.18], [0.07, 0.19, -0.05, 0.14], [-0.07, 0.19, -0.05, 0.14], [0.05, 0.14, 0.13, 0.12], [-0.06, 0.15, 0.12, 0.12],
+      ];
+      for (const [x, y, z, d] of pts) {
+        const c = sph('cacho', d, 8);
+        c.position.set(x, y, z);
+        curls.push(c);
+      }
+      this.mergeInto(curls, this.head, hair, 'cabelo');
+      const bandana = put(MeshBuilder.CreateTorus('faixa', { diameter: 0.43, thickness: 0.045, tessellation: 20 }, scene), this.head, this.teamMat, 0, 0.1, -0.005);
+      bandana.rotation.x = 0.16;
+      bandana.scaling.set(1, 0.9, 0.97);
+    } else {
+      // cabelo volumoso com franja lateral e rabo alto que balança; elástico da equipe
+      const capHair = sph('cabelo', 0.47, 12);
+      capHair.scaling.set(1.02, 0.94, 1.02);
+      capHair.position.set(0, 0.07, -0.05);
+      const fringe = sph('franja', 0.22, 8);
+      fringe.position.set(0.07, 0.15, 0.13);
+      fringe.scaling.set(1.3, 0.5, 0.6);
+      fringe.rotation.z = -0.35;
+      // mechas laterais que emolduram o rosto até a altura do queixo
+      const locks = [-1, 1].map((side) => {
+        const l = cap('mecha', 0.05, 0.3);
+        l.position.set(0.185 * side, -0.02, 0.08);
+        l.rotation.z = 0.12 * side;
+        l.rotation.x = -0.12;
+        return l;
+      });
+      this.mergeInto([capHair, fringe, ...locks], this.head, hair, 'cabelo');
+      // cílios: traço curto na borda de fora de cada olho
+      const lashes = [-1, 1].map((side) => {
+        const l = at(MeshBuilder.CreateBox('cilio', { width: 0.05, height: 0.014, depth: 0.02 }, scene), 0.125 * side, 0.085, 0.19);
+        l.rotation.z = 0.5 * side;
+        return l;
+      });
+      this.detail.push(this.mergeInto(lashes, this.head, dark, 'cilios'));
+      this.pony = node('rabo', this.head, 0, 0.2, -0.14);
+      const tail = put(cap('rabo', 0.07, 0.34), this.pony, hair, 0, -0.14, -0.05);
+      tail.rotation.x = 0.35;
+      put(MeshBuilder.CreateTorus('elastico', { diameter: 0.09, thickness: 0.03, tessellation: 12 }, scene), this.pony, this.teamMat, 0, 0, 0);
+      this.mergeInto([-1, 1].map((side) => at(sph('brinco', 0.035, 6), 0.215 * side, -0.07, 0.01)), this.head, brass, 'brincos');
+    }
+
+    // ---------------- braços ----------------
+    const mkArm = (side: number) => {
+      const sh = node('ombro', this.torso, 0.2 * side, 0.38, 0.01);
+      put(cap('manga', 0.066, 0.2), sh, base === 'a' ? this.teamMat : shirt, 0, -0.08, 0);
+      const elbow = node('cotovelo', sh, 0, -0.2, 0);
+      const fore = cap('antebraco', 0.052, 0.24);
+      fore.position.y = -0.1;
+      const hand = sph('mao', 0.105, 8);
+      hand.position.y = -0.24;
+      this.mergeInto([fore, hand], elbow, skin, 'braco');
+      return { sh, elbow };
+    };
+    ({ sh: this.shoulderL, elbow: this.elbowL } = mkArm(-1));
+    ({ sh: this.shoulderR, elbow: this.elbowR } = mkArm(1));
+    this.tool = this.makeTool(scene, weaponId, brass, glass, dark, wood);
+    this.tool.parent = this.torso;
 
     // ---------------- Forma Pião ----------------
-    this.flow = new TransformNode('piao', scene);
-    this.flow.parent = this.root;
-    const top = MeshBuilder.CreateLathe('piao', { shape: topProfile(), tessellation: 18 }, scene);
-    top.material = this.ceramic;
-    top.parent = this.flow;
-    const stripe = MeshBuilder.CreateTorus('listra', { diameter: 0.8, thickness: 0.09, tessellation: 22 }, scene);
-    stripe.position.y = 0.36;
-    stripe.material = this.teamMat;
-    stripe.parent = this.flow;
-    const knob = MeshBuilder.CreateSphere('pino', { diameter: 0.16, segments: 8 }, scene);
-    knob.position.y = 0.62;
-    knob.material = this.coreMat;
-    knob.parent = this.flow;
-    const fins: Mesh[] = [];
-    for (let i = 0; i < 3; i++) {
-      const fin = MeshBuilder.CreateBox('aleta', { width: 0.06, height: 0.13, depth: 0.24 }, scene);
-      fin.position.set(Math.cos((i * Math.PI * 2) / 3) * 0.36, 0.44, Math.sin((i * Math.PI * 2) / 3) * 0.36);
-      fin.rotation.y = (-i * Math.PI * 2) / 3;
-      fin.material = polymer;
-      fin.parent = this.flow;
-      fins.push(fin);
-    }
-    this.meshes.push(top, stripe, knob, ...fins);
+    this.flow = node('piao', this.root);
+    this.flowSpin = node('giro', this.flow);
+    put(MeshBuilder.CreateLathe('piao', { shape: topProfile(), tessellation: 18 }, scene), this.flowSpin, wood);
+    this.mergeInto(([[0.3, 0.74], [0.42, 0.8]] as const).map(([y, d]) => at(MeshBuilder.CreateTorus('listra', { diameter: d, thickness: 0.07, tessellation: 22 }, scene), 0, y, 0)), this.flowSpin, this.teamMat, 'listras');
+    put(MeshBuilder.CreateCylinder('ponta', { height: 0.12, diameterTop: 0.06, diameterBottom: 0.0, tessellation: 8 }, scene), this.flowSpin, brass, 0, -0.03, 0);
+    // quem está dentro espia pela borda: topete e olhos não giram
+    this.flowEyes = node('espia', this.flow, 0, 0.5, 0);
+    const tuft = put(sph('topete', 0.26, 10), this.flowEyes, hair, 0, 0.05, -0.02);
+    tuft.scaling.set(1, 0.6, 1);
+    const fe = [-1, 1].map((side) => {
+      const e = sph('esclera', 0.09, 8);
+      e.position.set(0.06 * side, 0.02, 0.1);
+      e.scaling.set(0.9, 1.1, 0.6);
+      return e;
+    });
+    this.mergeInto(fe, this.flowEyes, white, 'olhos-piao');
+    const fp = [-1, 1].map((side) => {
+      const p = sph('iris', 0.05, 6);
+      p.position.set(0.06 * side, 0.015, 0.13);
+      p.scaling.set(0.9, 1.1, 0.4);
+      return p;
+    });
+    this.mergeInto(fp, this.flowEyes, iris, 'iris-piao');
     this.flow.scaling.setAll(0.001);
+    this.flow.setEnabled(false);
 
-    // contorno discreto: só nas silhuetas principais
-    const outlineColor = teamColor.scale(0.25).add(new Color3(0.05, 0.03, 0.08));
-    for (const m of [body, skull, tank, top]) {
+    // redemoinho de tinta na transição de forma
+    this.swirl = MeshBuilder.CreateTorus('redemoinho', { diameter: 1.0, thickness: 0.06, tessellation: 24 }, scene);
+    this.swirl.material = this.inkMat;
+    this.swirl.parent = this.root;
+    this.swirl.position.y = 0.35;
+    this.swirl.setEnabled(false);
+    this.meshes.push(this.swirl);
+
+    // contorno discreto só nas silhuetas principais
+    const outlineColor = new Color3(0.16, 0.1, 0.14);
+    for (const m of [body, skull]) {
       m.renderOutline = true;
-      m.outlineWidth = 0.014;
+      m.outlineWidth = 0.012;
       m.outlineColor = outlineColor;
       this.outlined.push(m);
     }
 
-    // sombra de contato suave (gradiente radial)
+    // sombra de contato suave
     this.shadow = MeshBuilder.CreateGround('sombra', { width: 1.0, height: 1.0 }, scene);
     const sm = new StandardMaterial(`sombra-${playerId}`, scene);
     sm.diffuseTexture = blobShadowTexture(scene);
@@ -277,18 +408,18 @@ export class CharacterView {
     sm.disableLighting = true;
     sm.emissiveColor = new Color3(1, 1, 1);
     sm.zOffset = -2;
-    this.std.push(sm);
+    this.own.push(sm);
     this.shadow.material = sm;
     this.shadow.parent = this.root;
     this.shadow.position.y = 0.03;
-    this.shadow.isPickable = false;
 
-    // bolha de proteção de reaparecimento
+    // bolha de proteção de reaparecimento (própria: alfa pulsa por personagem)
     this.bubble = MeshBuilder.CreateSphere('protecao', { diameter: 2, segments: 12 }, scene);
-    const bm = this.tm('bolha', teamColor.scale(0.6).add(new Color3(0.4, 0.4, 0.4)), 1);
+    const bm = new ToonMaterial(`bolha-${playerId}`, scene, teamColor.scale(0.6).add(new Color3(0.4, 0.4, 0.4)), 1);
     bm.alpha = 0.18;
     bm.setEmissive(teamColor.scale(0.3));
     bm.backFaceCulling = false;
+    this.own.push(bm);
     this.bubble.material = bm;
     this.bubble.parent = this.root;
     this.bubble.position.y = 0.8;
@@ -297,200 +428,180 @@ export class CharacterView {
 
     // marcador de aliado (seta sobre a cabeça)
     if (!isLocal && !isEnemy) {
-      this.marker = MeshBuilder.CreateCylinder('marcador', { diameterTop: 0.26, diameterBottom: 0, height: 0.24, tessellation: 3 }, scene);
+      this.marker = MeshBuilder.CreateCylinder('marcador', { diameterTop: 0.24, diameterBottom: 0, height: 0.22, tessellation: 3 }, scene);
       const mm = new StandardMaterial(`marcador-${playerId}`, scene);
       mm.emissiveColor = teamColor;
       mm.disableLighting = true;
-      this.std.push(mm);
+      this.own.push(mm);
       this.marker.material = mm;
       this.marker.parent = this.root;
-      this.marker.position.y = 2.25;
+      this.marker.position.y = 2.05;
       this.meshes.push(this.marker);
     }
-    for (const m of this.root.getChildMeshes()) m.isPickable = false;
+    for (const m of this.root.getChildMeshes()) {
+      m.isPickable = false;
+      m.metadata = { toon: this.toonState };
+    }
   }
 
-  private tm(name: string, color: Color3, gloss: number): ToonMaterial {
-    const m = new ToonMaterial(`${name}-${this.playerId}`, this.scene, color, gloss);
-    this.toon.push(m);
-    return m;
+  /** Funde peças de um mesmo material presas ao mesmo nó (menos chamadas de desenho). */
+  private mergeInto(parts: Mesh[], parent: TransformNode, mat: ToonMaterial, name: string): Mesh {
+    const merged = Mesh.MergeMeshes(parts, true, true) ?? parts[0];
+    merged.name = name;
+    merged.parent = parent;
+    merged.material = mat;
+    this.meshes.push(merged);
+    return merged;
   }
 
-  private makeLid(scene: Scene, variant: number): Mesh {
-    if (variant === 0) {
-      const l = MeshBuilder.CreateCylinder('tampa', { height: 0.06, diameter: 0.38, tessellation: 16 }, scene);
-      l.position.y = 0.31;
-      const k = MeshBuilder.CreateSphere('pegador', { diameter: 0.1, segments: 6 }, scene);
-      k.position.y = 0.06;
-      k.parent = l;
-      k.material = this.teamMat;
-      this.meshes.push(k);
-      return l;
-    }
-    if (variant === 1) {
-      const l = MeshBuilder.CreateSphere('tampa', { diameter: 0.38, segments: 8, slice: 0.5 }, scene);
-      l.position.y = 0.29;
-      l.scaling.y = 0.7;
-      return l;
-    }
-    if (variant === 2) {
-      const l = MeshBuilder.CreateCylinder('tampa', { height: 0.2, diameterTop: 0.1, diameterBottom: 0.38, tessellation: 16 }, scene);
-      l.position.y = 0.38;
-      return l;
-    }
-    const l = MeshBuilder.CreateTorus('tampa', { diameter: 0.33, thickness: 0.07, tessellation: 16 }, scene);
-    l.position.y = 0.31;
-    return l;
-  }
-
-  private makeTool(scene: Scene, weapon: WeaponId, brass: ToonMaterial, glass: ToonMaterial, polymer: ToonMaterial, wood: ToonMaterial): TransformNode {
+  private makeTool(scene: Scene, weapon: WeaponId, brass: ToonMaterial, glass: ToonMaterial, dark: ToonMaterial, wood: ToonMaterial): TransformNode {
     const t = new TransformNode('ferramenta', scene);
-    t.position.set(0.24, 0.32, 0.28);
-    const outline = (m: Mesh) => {
-      m.renderOutline = true;
-      m.outlineWidth = 0.012;
-      m.outlineColor = new Color3(0.12, 0.08, 0.1);
-      this.outlined.push(m);
+    t.position.set(0.22, 0.26, 0.26);
+    const add = (m: Mesh, mat: ToonMaterial, outline = false) => {
+      m.material = mat;
+      m.parent = t;
+      this.meshes.push(m);
+      if (outline) {
+        m.renderOutline = true;
+        m.outlineWidth = 0.01;
+        m.outlineColor = new Color3(0.12, 0.08, 0.1);
+        this.outlined.push(m);
+      }
+      return m;
     };
     if (weapon === 'esguicho') {
-      // bomba de jardim: reservatório bojudo exagerado + bico longo curvado
-      const tank = MeshBuilder.CreateSphere('reservatorio', { diameter: 0.3, segments: 10 }, scene);
+      // borrifador de jardim: reservatório bojudo e bico comprido
+      const tank = add(MeshBuilder.CreateSphere('reservatorio', { diameter: 0.26, segments: 10 }, scene), glass, true);
       tank.scaling.set(1, 1, 1.25);
-      tank.material = glass;
-      tank.parent = t;
-      const liquid = MeshBuilder.CreateSphere('liquido', { diameter: 0.25, segments: 8 }, scene);
+      const liquid = add(MeshBuilder.CreateSphere('liquido', { diameter: 0.21, segments: 8 }, scene), this.inkMat);
       liquid.scaling.set(1, 0.8, 1.2);
       liquid.position.y = -0.02;
-      liquid.material = this.inkMat;
-      liquid.parent = t;
-      const nozzle = MeshBuilder.CreateCylinder('bico', { height: 0.46, diameterTop: 0.04, diameterBottom: 0.08, tessellation: 8 }, scene);
+      const nozzle = add(MeshBuilder.CreateCylinder('bico', { height: 0.42, diameterTop: 0.04, diameterBottom: 0.07, tessellation: 8 }, scene), brass);
       nozzle.rotation.x = Math.PI / 2 - 0.12;
-      nozzle.position.set(0, 0.04, 0.36);
-      nozzle.material = brass;
-      nozzle.parent = t;
-      const tip = MeshBuilder.CreateCylinder('ponteira', { height: 0.07, diameterTop: 0.11, diameterBottom: 0.06, tessellation: 10 }, scene);
+      nozzle.position.set(0, 0.04, 0.32);
+      const tip = add(MeshBuilder.CreateCylinder('ponteira', { height: 0.07, diameterTop: 0.1, diameterBottom: 0.05, tessellation: 10 }, scene), this.teamMat);
       tip.rotation.x = Math.PI / 2;
-      tip.position.set(0, 0.07, 0.6);
-      tip.material = this.teamMat;
-      tip.parent = t;
-      const pump = MeshBuilder.CreateCylinder('bomba', { height: 0.2, diameter: 0.05, tessellation: 8 }, scene);
-      pump.position.set(0, 0.2, -0.05);
-      pump.material = brass;
-      pump.parent = t;
-      const knob = MeshBuilder.CreateSphere('pomo', { diameter: 0.09, segments: 6 }, scene);
-      knob.position.set(0, 0.31, -0.05);
-      knob.material = this.teamMat;
-      knob.parent = t;
-      outline(tank);
-      this.meshes.push(tank, liquid, nozzle, tip, pump, knob);
+      tip.position.set(0, 0.07, 0.54);
+      const pump = add(MeshBuilder.CreateCylinder('bomba', { height: 0.18, diameter: 0.045, tessellation: 8 }, scene), dark);
+      pump.position.set(0, 0.18, -0.05);
+      this.detail.push(pump);
     } else if (weapon === 'rodo') {
-      // rodo de quintal enorme: cabo de madeira e lâmina de borracha colorida
-      t.position.set(0, 0.02, 0.32);
-      const handle = MeshBuilder.CreateCylinder('cabo', { height: 1.15, diameter: 0.06, tessellation: 8 }, scene);
+      t.position.set(0, 0.0, 0.3);
+      const handle = add(MeshBuilder.CreateCylinder('cabo', { height: 1.1, diameter: 0.055, tessellation: 8 }, scene), wood);
       handle.rotation.x = Math.PI / 2 - 0.95;
       handle.position.set(0, -0.14, 0.26);
-      handle.material = wood;
-      handle.parent = t;
-      const blade = MeshBuilder.CreateBox('lamina', { width: 2.1, height: 0.18, depth: 0.12 }, scene);
-      blade.position.set(0, -0.5, 0.64);
-      blade.material = wood;
-      blade.parent = t;
-      const rubber = MeshBuilder.CreateBox('borracha', { width: 2.14, height: 0.09, depth: 0.14 }, scene);
-      rubber.position.set(0, -0.62, 0.66);
-      rubber.material = this.teamMat;
-      rubber.parent = t;
-      for (const side of [-1, 1]) {
-        const cap = MeshBuilder.CreateSphere('ponta', { diameter: 0.2, segments: 6 }, scene);
-        cap.position.set(1.07 * side, -0.55, 0.64);
-        cap.material = this.teamMat;
-        cap.parent = t;
-        this.meshes.push(cap);
-      }
-      outline(blade);
-      this.meshes.push(handle, blade, rubber);
+      const blade = add(MeshBuilder.CreateBox('lamina', { width: 1.9, height: 0.16, depth: 0.11 }, scene), wood, true);
+      blade.position.set(0, -0.48, 0.62);
+      const rubber = add(MeshBuilder.CreateBox('borracha', { width: 1.94, height: 0.08, depth: 0.13 }, scene), this.teamMat);
+      rubber.position.set(0, -0.59, 0.64);
     } else {
-      // estilingue de forquilha gigante com elástico grosso
-      const grip = MeshBuilder.CreateCylinder('empunhadura', { height: 0.24, diameter: 0.07, tessellation: 8 }, scene);
-      grip.material = wood;
-      grip.parent = t;
+      // estilingue de forquilha grande com elástico da equipe
+      add(MeshBuilder.CreateCylinder('empunhadura', { height: 0.22, diameter: 0.065, tessellation: 8 }, scene), wood);
       for (const side of [-1, 1]) {
-        const prong = MeshBuilder.CreateCylinder('forquilha', { height: 0.28, diameter: 0.06, tessellation: 8 }, scene);
-        prong.position.set(0.085 * side, 0.22, 0);
+        const prong = add(MeshBuilder.CreateCylinder('forquilha', { height: 0.26, diameter: 0.055, tessellation: 8 }, scene), wood, true);
+        prong.position.set(0.08 * side, 0.2, 0);
         prong.rotation.z = -0.5 * side;
-        prong.material = wood;
-        prong.parent = t;
-        const tipb = MeshBuilder.CreateSphere('ponta', { diameter: 0.08, segments: 6 }, scene);
-        tipb.position.set(0.16 * side, 0.34, 0);
-        tipb.material = brass;
-        tipb.parent = t;
-        outline(prong);
-        this.meshes.push(prong, tipb);
+        const tipb = add(MeshBuilder.CreateSphere('ponta', { diameter: 0.07, segments: 6 }, scene), brass);
+        tipb.position.set(0.15 * side, 0.31, 0);
       }
       this.band = new TransformNode('elastico', scene);
       this.band.parent = t;
-      this.band.position.set(0, 0.34, 0);
-      const pouch = MeshBuilder.CreateSphere('pedra', { diameter: 0.12, segments: 8 }, scene);
-      pouch.position.z = -0.14;
+      this.band.position.set(0, 0.31, 0);
+      const pouch = MeshBuilder.CreateSphere('pedra', { diameter: 0.11, segments: 8 }, scene);
+      pouch.position.z = -0.13;
       pouch.material = this.inkMat;
       pouch.parent = this.band;
+      this.meshes.push(pouch);
       for (const side of [-1, 1]) {
-        const strap = MeshBuilder.CreateCylinder('tira', { height: 0.2, diameter: 0.035, tessellation: 6 }, scene);
+        const strap = MeshBuilder.CreateCylinder('tira', { height: 0.19, diameter: 0.032, tessellation: 6 }, scene);
         strap.rotation.x = Math.PI / 2;
         strap.rotation.y = 0.62 * side;
-        strap.position.set(0.075 * side, 0, -0.07);
+        strap.position.set(0.07 * side, 0, -0.065);
         strap.material = this.teamMat;
         strap.parent = this.band;
         this.meshes.push(strap);
       }
-      this.meshes.push(grip, pouch);
     }
     return t;
   }
 
   setTeamColor(c: Color3) {
     this.teamMat.color = c;
-    this.coreMat.color = c;
-    this.coreMat.setEmissive(c.scale(0.35));
     this.inkMat.color = c;
     this.inkMat.setEmissive(c.scale(0.15));
   }
 
   /** 0–1: esmaece o personagem colado na câmera para não tapar a mira. */
   nearFade = 1;
+  /** Distância até a câmera (LOD: detalhes do rosto somem de longe). */
+  camDist = 0;
   /** Eventos de pé do último update (para o som): passo no apoio e aterrissagem (s no ar). */
   readonly foot = { step: false, landed: 0 };
   private stepSign = 0;
   private airTime = 0;
 
-  /** Reação a dano (pequeno tranco e lampejo claro). */
+  /** Reação a dano: tranco, careta e lampejo claro. */
   hitReaction() {
     this.flashTimer = 0.12;
-    this.wobble = 1;
+    this.hurtTimer = 0.35;
   }
 
   update(dt: number, v: CharacterVisual, groundY: number | null, sunVis = 1) {
-    this.root.setEnabled(v.alive);
+    // eliminação estilizada: um "puf" curto (encolhe girando) antes de sumir
     if (!v.alive) {
+      if (this.wasAlive) this.deathTimer = 0.28;
+      this.wasAlive = false;
       this.lastHp = 100;
+      this.deathTimer -= dt;
+      if (this.deathTimer <= 0) {
+        this.root.setEnabled(false);
+        return;
+      }
+      const k = this.deathTimer / 0.28;
+      this.combat.scaling.set(k * 1.15, k * 0.8, k * 1.15);
+      this.combat.rotation.y += dt * 18;
       return;
     }
+    if (!this.wasAlive) {
+      this.combat.rotation.y = 0;
+      this.wasAlive = true;
+    }
+    this.root.setEnabled(true);
     this.root.position.set(v.pos[0], v.pos[1], v.pos[2]);
     this.root.rotation.y = v.yaw;
-    for (const m of this.toon) m.setSunVisibility(sunVis);
-    // forma: mistura com leve exagero (transição legível)
+    this.toonState.sunVis = sunVis;
+    this.idleT += dt;
+
+    // ---------------- forma (mistura com leve exagero) ----------------
     const target = v.form === 1 ? 1 : 0;
+    if (target !== this.lastForm) {
+      this.swirlT = 0.32;
+      this.lastForm = target;
+    }
     this.formBlend += (target - this.formBlend) * Math.min(1, dt * 14);
     const b = this.formBlend;
     const cs = Math.max(0.001, 1 - b);
-    const fs = Math.max(0.001, b * (1 + Math.sin(b * Math.PI) * 0.28));
+    const fs = Math.max(0.001, b * (1 + Math.sin(b * Math.PI) * 0.25));
+    this.combat.setEnabled(b < 0.985);
+    this.flow.setEnabled(b > 0.015);
     this.combat.scaling.set(cs, cs, cs);
+    this.combat.position.y = -0.3 * b; // encolhe para dentro do pião
     this.flow.scaling.set(fs, fs, fs);
-    this.spin += dt * (6 + v.speed * 3.5);
-    this.flow.rotation.y = this.spin;
+    this.spin += dt * (7 + v.speed * 3.2);
+    this.flowSpin.rotation.y = this.spin;
     const sub = v.submerged ? 1 : 0;
-    this.flow.position.y = -0.36 * sub;
+    this.flow.position.y = -0.34 * sub;
     this.flow.rotation.x = v.climbing ? -1.35 : Math.sin(this.spin * 0.5) * 0.06 * Math.min(1, v.speed / 4);
     this.flow.position.z = v.climbing ? -0.1 : 0;
+    this.flowEyes.setEnabled(!sub);
+    this.swirlT = Math.max(0, this.swirlT - dt);
+    this.swirl.setEnabled(this.swirlT > 0 && this.visibleFactor > 0.5);
+    if (this.swirlT > 0) {
+      const k = 1 - this.swirlT / 0.32;
+      this.swirl.scaling.setAll(0.4 + k * 0.9);
+      this.swirl.rotation.y = k * 6;
+      this.swirl.visibility = (1 - k) * this.visibleFactor;
+    }
 
     // exposição reduzida imerso (não é invisibilidade absoluta)
     let vis = 1;
@@ -499,73 +610,129 @@ export class CharacterView {
     vis = Math.min(vis, this.nearFade);
     this.visibleFactor += (vis - this.visibleFactor) * Math.min(1, dt * 10);
     const translucent = this.visibleFactor < 0.98;
-    for (const m of this.meshes) m.visibility = this.visibleFactor;
+    for (const m of this.meshes) if (m !== this.swirl) m.visibility = this.visibleFactor;
     for (const m of this.outlined) m.renderOutline = !translucent;
+    // LOD: detalhes pequenos do rosto e da ferramenta somem de longe (menos desenho)
+    const near = this.camDist < 26;
+    for (const m of this.detail) m.setEnabled(near);
 
-    // locomoção expressiva: passos largos, balanço e inclinação
+    // ---------------- locomoção ----------------
     const walk = v.grounded && !v.climbing ? Math.min(1, v.speed / 5.5) : 0;
-    this.phase += dt * (4 + v.speed * 2.0);
-    // som de passo quando o pé apoia (troca de sinal do balanço), só andando na forma de combate
+    const run = Math.max(0, Math.min(1, (v.speed - 4) / 3)) * walk;
+    this.phase += dt * (3.5 + v.speed * 2.1);
     const sign = Math.sin(this.phase) >= 0 ? 1 : -1;
     this.foot.step = sign !== this.stepSign && walk > 0.3 && v.form === 0 && !v.submerged;
     this.stepSign = sign;
     this.foot.landed = !this.wasGrounded && v.grounded && !v.climbing ? this.airTime : 0;
     this.airTime = v.grounded ? 0 : this.airTime + dt;
-    const swing = Math.sin(this.phase) * 0.85 * walk;
-    this.legL.rotation.x = v.grounded ? swing : -0.7;
-    this.legR.rotation.x = v.grounded ? -swing : 0.35;
-    const bob = Math.abs(Math.sin(this.phase)) * 0.06 * walk;
-    this.upper.position.y = 0.42 + bob;
-    this.upper.rotation.z = Math.sin(this.phase) * 0.06 * walk;
+    const s = Math.sin(this.phase);
+    const stride = 0.75 + run * 0.35;
+    if (v.grounded) {
+      this.thighL.rotation.x = s * stride * walk;
+      this.thighR.rotation.x = -s * stride * walk;
+      // joelho dobra na volta da passada (peso), estica no apoio
+      this.kneeL.rotation.x = Math.max(0, -Math.sin(this.phase + 0.9)) * 1.25 * walk;
+      this.kneeR.rotation.x = Math.max(0, Math.sin(this.phase + 0.9)) * 1.25 * walk;
+    } else {
+      // no ar: pernas encolhidas (antecipação de pouso)
+      const tuck = v.vy > 0 ? 1 : 0.6;
+      this.thighL.rotation.x = -0.75 * tuck;
+      this.thighR.rotation.x = -0.25 * tuck;
+      this.kneeL.rotation.x = 1.1 * tuck;
+      this.kneeR.rotation.x = 0.7 * tuck;
+    }
+    const bob = Math.abs(s) * (0.045 + run * 0.03) * walk;
+    const breathe = Math.sin(this.idleT * 2.1) * 0.012 * (1 - walk);
+    this.hips.position.y = 0.64 + bob - (v.grounded ? 0 : 0.02);
+    this.torso.rotation.z = s * 0.05 * walk;
+    this.torso.scaling.y = 1 + breathe;
     if (!this.wasGrounded && v.grounded) this.squash = 0.18;
     this.wasGrounded = v.grounded;
     this.squash = Math.max(0, this.squash - dt);
-    const sq = this.squash > 0 ? Math.sin((this.squash / 0.18) * Math.PI) * 0.16 : 0;
-    const stretch = !v.grounded ? Math.min(0.1, Math.abs(v.vy) * 0.012) : 0;
-    this.wobble = Math.max(0, this.wobble - dt * 5);
-    const wob = Math.sin(performance.now() * 0.045) * 0.06 * this.wobble;
+    const sq = this.squash > 0 ? Math.sin((this.squash / 0.18) * Math.PI) * 0.14 : 0;
+    const stretch = !v.grounded ? Math.min(0.08, Math.abs(v.vy) * 0.01) : 0;
     this.combat.scaling.y *= 1 - sq + stretch;
-    this.combat.scaling.x *= 1 + sq * 0.6 + wob;
-    this.combat.scaling.z *= 1 + sq * 0.6 - wob;
+    this.combat.scaling.x *= 1 + sq * 0.5;
+    this.combat.scaling.z *= 1 + sq * 0.5;
+    if (this.pony) {
+      this.pony.rotation.x = 0.2 + Math.sin(this.phase * 2) * 0.25 * walk + (v.grounded ? 0 : -0.4);
+      this.pony.rotation.z = Math.sin(this.phase) * 0.2 * walk;
+    }
 
-    // mira: tronco e cabeça acompanham; recuo curto ao disparar
+    // ---------------- mira, ferramenta e reações ----------------
     if (v.firing) this.recoil = Math.min(1, this.recoil + dt * 20);
     else this.recoil = Math.max(0, this.recoil - dt * 8);
-    const aim = -v.pitch * 0.55;
-    this.upper.rotation.x = v.charging ? aim - 0.18 : aim + walk * 0.12 - this.recoil * 0.05;
-    this.head.rotation.x = -v.pitch * 0.35 + (v.charging ? 0.1 : 0);
-    const armAim = -1.35 - v.pitch * 0.6;
-    if (this.weaponId === 'rodo') {
-      const low = v.dragging ? -0.7 : v.swinging ? -2.5 : -0.9;
-      this.armR.rotation.x = low;
-      this.armL.rotation.x = low;
+    this.hurtTimer = Math.max(0, this.hurtTimer - dt);
+    const hurt = this.hurtTimer > 0 ? Math.sin((this.hurtTimer / 0.35) * Math.PI) : 0;
+    const aim = -v.pitch * 0.5;
+    const lean = walk * (0.1 + run * 0.08);
+    this.torso.rotation.x = (v.charging ? aim - 0.16 : aim + lean - this.recoil * 0.05) - hurt * 0.25;
+    this.head.rotation.x = -v.pitch * 0.3 + (v.charging ? 0.08 : 0) - hurt * 0.2;
+    this.head.rotation.y = Math.sin(this.idleT * 0.6) * 0.18 * (1 - walk) * (v.firing ? 0 : 1);
+    const armAim = -1.4 - v.pitch * 0.6;
+    const celebrate = v.celebrate ?? 0;
+    if (celebrate > 0) {
+      // vitória: pulinhos e braços para cima
+      const hop = Math.abs(Math.sin(this.idleT * 6));
+      this.hips.position.y += hop * 0.12;
+      this.shoulderL.rotation.x = -2.9 + Math.sin(this.idleT * 12) * 0.2;
+      this.shoulderR.rotation.x = -2.9 - Math.sin(this.idleT * 12) * 0.2;
+      this.shoulderL.rotation.z = -0.3;
+      this.shoulderR.rotation.z = 0.3;
+      this.elbowL.rotation.x = this.elbowR.rotation.x = -0.2;
+    } else if (celebrate < 0) {
+      this.torso.rotation.x = 0.35;
+      this.head.rotation.x = 0.35;
+      this.shoulderL.rotation.x = this.shoulderR.rotation.x = 0.15;
+      this.shoulderL.rotation.z = -0.1;
+      this.shoulderR.rotation.z = 0.1;
+      this.elbowL.rotation.x = this.elbowR.rotation.x = -0.1;
+    } else if (this.weaponId === 'rodo') {
+      const low = v.dragging ? -0.7 : v.swinging ? -2.5 : -0.95;
+      this.shoulderR.rotation.x = low;
+      this.shoulderL.rotation.x = low;
+      this.shoulderL.rotation.z = 0.25;
+      this.shoulderR.rotation.z = -0.25;
+      this.elbowL.rotation.x = this.elbowR.rotation.x = -0.35;
       this.tool.rotation.x = v.swinging ? -1.0 : v.dragging ? 0.18 + Math.sin(this.phase * 2) * 0.03 : 0;
     } else {
-      this.armR.rotation.x = armAim + (v.firing ? Math.sin(this.phase * 9) * 0.05 : 0);
-      this.armL.rotation.x = armAim + 0.1 + (v.charging ? 0.3 : 0);
-      this.armL.rotation.z = 0.35;
-      this.tool.position.z = 0.28 - this.recoil * 0.06;
+      this.shoulderR.rotation.x = armAim + (v.firing ? Math.sin(this.phase * 9) * 0.04 : 0);
+      this.shoulderR.rotation.z = -0.08;
+      this.elbowR.rotation.x = -0.35;
+      // mão livre: apoia a ferramenta ou puxa o elástico ao carregar
+      this.shoulderL.rotation.x = armAim + 0.15 + (v.charging ? 0.25 : 0);
+      this.shoulderL.rotation.z = 0.45;
+      this.elbowL.rotation.x = v.charging ? -1.2 - v.charge * 0.4 : -0.7;
+      this.tool.position.z = 0.26 - this.recoil * 0.06;
+      if (walk > 0 && !v.firing && !v.charging) {
+        // correndo sem atirar: braços acompanham a passada
+        this.shoulderL.rotation.x = -0.4 - s * 0.6 * walk;
+        this.shoulderL.rotation.z = 0.12;
+        this.elbowL.rotation.x = -0.9;
+      }
     }
     if (this.band) this.band.scaling.z = 1 + (v.charging ? v.charge * 2.6 : 0);
     this.tankLiquid.scaling.y = Math.max(0.03, v.ink / 100);
 
-    // olhos: piscar e expressão (sobrancelhas franzem ao disparar/carregar)
+    // ---------------- rosto: piscar, olhar, expressão ----------------
     this.blinkTimer -= dt;
     const blink = this.blinkTimer < 0.1 ? 0.12 : 1;
-    if (this.blinkTimer < 0) this.blinkTimer = 2.5 + ((this.playerId * 7919) % 17) / 5;
-    for (const e of this.eyes) e.scaling.y = blink;
-    const frown = v.firing || v.charging ? 0.45 : 0;
-    this.brows.forEach((br, i) => {
-      const side = i === 0 ? -1 : 1;
-      br.rotation.z = (-0.22 + frown) * side;
-      br.position.y = 0.245 - frown * 0.02;
-    });
+    if (this.blinkTimer < 0) this.blinkTimer = 2.3 + ((this.playerId * 7919) % 17) / 5;
+    const squint = hurt > 0 ? 0.35 : v.firing || v.charging ? 0.82 : 1;
+    this.eyes.scaling.y = blink * squint;
+    this.pupils.scaling.y = blink * squint;
+    this.pupils.position.y = -v.pitch * 0.02;
+    const frown = v.firing || v.charging ? 0.42 : hurt > 0 ? 0.3 : celebrate > 0 ? -0.2 : 0;
+    this.browL.rotation.z = (-0.12 + frown) * -1;
+    this.browR.rotation.z = -0.12 + frown;
+    this.browL.position.y = this.browR.position.y = 0.125 - frown * 0.02 + (celebrate > 0 ? 0.015 : 0);
+    // boca: sorriso por padrão; reta concentrada ao mirar; "o" de dor; tristeza na derrota
+    const sad = celebrate < 0 || hurt > 0.3;
+    this.mouth.scaling.set(hurt > 0.3 ? 0.55 : v.firing || v.charging ? 0.8 : 1, sad ? -1 : v.firing || v.charging ? 0.35 : celebrate > 0 ? 1.5 : 1, 1);
     if (v.hp < this.lastHp - 0.5) this.hitReaction();
     this.lastHp = v.hp;
     this.flashTimer = Math.max(0, this.flashTimer - dt);
-    const f = Math.min(0.65, this.flashTimer * 6);
-    this.ceramic.setFlash(f);
-    this.teamMat.setFlash(f * 0.6);
+    this.toonState.flash = Math.min(0.6, this.flashTimer * 6);
 
     this.bubble.setEnabled(v.protected);
     if (v.protected) (this.bubble.material as ToonMaterial).alpha = 0.14 + Math.sin(performance.now() * 0.008) * 0.05;
@@ -575,8 +742,8 @@ export class CharacterView {
       const h = v.pos[1] - groundY;
       this.shadow.setEnabled(h < 6 && !v.climbing && !v.submerged);
       this.shadow.position.y = groundY - v.pos[1] + 0.03;
-      const s = Math.max(0.35, 1 - h * 0.12) * (v.form === 1 ? 0.9 : 1.1);
-      this.shadow.scaling.set(s, 1, s);
+      const sc = Math.max(0.35, 1 - h * 0.12) * (v.form === 1 ? 0.9 : 1.0);
+      this.shadow.scaling.set(sc, 1, sc);
     } else this.shadow.setEnabled(false);
   }
 
@@ -584,36 +751,40 @@ export class CharacterView {
     return this.tool.getAbsolutePosition().add(this.root.forward.scale(0.35));
   }
 
+  /** Quantas malhas este personagem desenha agora (medição de custo). */
+  activeMeshCount(): number {
+    return this.root.getChildMeshes(false).filter((m) => m.isEnabled() && m.isVisible).length;
+  }
+
   dispose() {
-    this.root.dispose(false, true);
-    for (const m of this.toon) m.dispose();
-    for (const m of this.std) m.dispose();
+    // materiais compartilhados ficam com a cena; só os próprios são liberados
+    this.root.dispose(false, false);
+    for (const m of this.own) m.dispose();
   }
 }
 
-function jarProfile(): Vector3[] {
+/** Perfil da camiseta (tronco): cintura, peito e ombros arredondados. */
+function torsoProfile(): Vector3[] {
   return [
-    new Vector3(0, 0, 0),
-    new Vector3(0.18, 0.0, 0),
-    new Vector3(0.29, 0.07, 0),
-    new Vector3(0.33, 0.22, 0),
-    new Vector3(0.31, 0.4, 0),
-    new Vector3(0.21, 0.54, 0),
-    new Vector3(0.14, 0.6, 0),
-    new Vector3(0.16, 0.64, 0),
-    new Vector3(0, 0.64, 0),
+    new Vector3(0, 0.0, 0),
+    new Vector3(0.17, 0.0, 0),
+    new Vector3(0.19, 0.08, 0),
+    new Vector3(0.2, 0.22, 0),
+    new Vector3(0.21, 0.33, 0),
+    new Vector3(0.18, 0.41, 0),
+    new Vector3(0.09, 0.46, 0),
+    new Vector3(0, 0.46, 0),
   ];
 }
 
-function headProfile(): Vector3[] {
+/** Jardineira: parte da frente/baixo do tronco, um pouco mais larga que a camiseta. */
+function bibProfile(): Vector3[] {
   return [
-    new Vector3(0, 0, 0),
-    new Vector3(0.11, 0.0, 0),
-    new Vector3(0.21, 0.06, 0),
-    new Vector3(0.25, 0.16, 0),
-    new Vector3(0.23, 0.27, 0),
-    new Vector3(0.19, 0.31, 0),
-    new Vector3(0, 0.31, 0),
+    new Vector3(0, -0.01, 0),
+    new Vector3(0.185, -0.01, 0),
+    new Vector3(0.205, 0.08, 0),
+    new Vector3(0.212, 0.2, 0),
+    new Vector3(0.0, 0.2, 0),
   ];
 }
 
@@ -624,8 +795,8 @@ function topProfile(): Vector3[] {
     new Vector3(0.2, 0.17, 0),
     new Vector3(0.4, 0.34, 0),
     new Vector3(0.42, 0.4, 0),
-    new Vector3(0.32, 0.5, 0),
-    new Vector3(0.13, 0.56, 0),
-    new Vector3(0, 0.57, 0),
+    new Vector3(0.34, 0.5, 0),
+    new Vector3(0.18, 0.54, 0),
+    new Vector3(0, 0.55, 0),
   ];
 }

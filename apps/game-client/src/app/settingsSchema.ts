@@ -4,6 +4,7 @@
  * permitidos) e o que não passa volta ao padrão, sem derrubar o resto.
  * Sem efeitos colaterais: testável fora do navegador.
  */
+import { APPEARANCE_IDS, DEFAULT_APPEARANCE, type AppearanceId } from '@borrifo/game-contracts';
 import { DEFAULT_PAD_BINDS, PAD_ACTIONS, type PadAction, type PadPreset, type ResponseCurve } from '../game/input/gamepad';
 
 export const SETTINGS_VERSION = 2;
@@ -53,6 +54,8 @@ export interface Settings {
   gamepad: GamepadSettings;
   /** Versão do tutorial já concluída ou pulada (0 = nunca). */
   tutorialDone: number;
+  /** Aparência cosmética (base + tom de pele); o servidor valida e sincroniza. */
+  appearance: AppearanceId;
 }
 
 export const DEFAULT_KEYBINDS: Record<BindableAction, string> = {
@@ -107,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keybinds: DEFAULT_KEYBINDS,
   gamepad: DEFAULT_GAMEPAD,
   tutorialDone: 0,
+  appearance: DEFAULT_APPEARANCE,
 };
 
 // ------------------------------------------------------------ validadores
@@ -192,6 +196,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     keybinds: sanitizeKeybinds(raw.keybinds),
     gamepad: sanitizeGamepad(raw.gamepad),
     tutorialDone: num(raw.tutorialDone, 0, 1000, d.tutorialDone),
+    appearance: oneOf(raw.appearance, APPEARANCE_IDS, d.appearance),
   };
 }
 

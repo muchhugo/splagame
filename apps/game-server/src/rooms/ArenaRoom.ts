@@ -32,6 +32,10 @@ import {
   SetReadySchema,
   SetTeamSchema,
   SetWeaponSchema,
+  SetAppearanceSchema,
+  APPEARANCE_IDS,
+  DEFAULT_APPEARANCE,
+  type AppearanceId,
   StartSchema,
   TICKS_PER_SNAPSHOT,
   TICK_RATE,
@@ -70,6 +74,7 @@ interface RoomPlayer {
   userId: string | null;
   displayName: string;
   avatarUrl: string | null;
+  appearance: AppearanceId;
   isBot: boolean;
   team: TeamId;
   weaponId: WeaponId;
@@ -192,6 +197,7 @@ export class ArenaRoom extends Room {
       userId: auth.userId,
       displayName: sanitizeDisplayName(auth.displayName),
       avatarUrl: auth.avatarUrl,
+      appearance: DEFAULT_APPEARANCE,
       isBot: false,
       team,
       weaponId: 'esguicho',
@@ -339,6 +345,11 @@ export class ArenaRoom extends Room {
       p.weaponId = m.weaponId;
       this.broadcastLobby();
     });
+    this.guarded(C2S.SET_APPEARANCE, SetAppearanceSchema, (p, m, client) => {
+      if (this.phase !== 'lobby' && this.phase !== 'results') return this.notice(client, 'wrong_phase', 'Troque de visual entre rodadas.');
+      p.appearance = m.appearance;
+      this.broadcastLobby();
+    });
     this.guarded(C2S.SET_READY, SetReadySchema, (p, m) => {
       if (this.phase !== 'lobby') return;
       p.ready = m.ready;
@@ -440,6 +451,7 @@ export class ArenaRoom extends Room {
         userId: p.userId,
         displayName: p.displayName,
         avatarUrl: p.avatarUrl,
+        appearance: p.appearance,
         isBot: p.isBot,
         team: p.team,
         weaponId: p.weaponId,
@@ -535,6 +547,8 @@ export class ArenaRoom extends Room {
             userId: null,
             displayName: BOT_NAMES[(id + team) % BOT_NAMES.length],
             avatarUrl: null,
+            // bots variam entre as duas bases e os tons (identificados como bots na interface)
+            appearance: APPEARANCE_IDS[(id * 3) % APPEARANCE_IDS.length],
             isBot: true,
             team,
             weaponId: (['esguicho', 'rodo', 'estilingue', 'esguicho'] as const)[count % 4],

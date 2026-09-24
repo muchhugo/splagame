@@ -266,6 +266,7 @@ export class GameRuntime {
     this.interp.clear();
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
+    this.roundWinner = null;
     this.predictor?.dispose();
     this.predictor = null;
     this.lastSnapshot = null;
@@ -893,6 +894,7 @@ export class GameRuntime {
 
   /** Fim da rodada: vitória, derrota ou empate do ponto de vista da turma local, depois do sino. */
   playRoundResult(roundId: number, winner: TeamId | 'draw') {
+    this.roundWinner = winner;
     if (roundId === this.resultSoundRound) return;
     this.resultSoundRound = roundId;
     const wait = Math.max(0, 1100 - (performance.now() - this.roundEndAt));
@@ -903,6 +905,7 @@ export class GameRuntime {
     }, wait);
   }
   private resultSoundRound = -1;
+  private roundWinner: TeamId | 'draw' | null = null;
   private roundEndAt = 0;
   private resultTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -949,13 +952,16 @@ export class GameRuntime {
     if (!view) {
       if (!info) return;
       const colors = this.teamColors();
-      view = new CharacterView(this.scene, id, info.team, info.weaponId, colors[info.team], id === this.myId, info.team !== this.myTeam);
+      view = new CharacterView(this.scene, id, info.team, info.weaponId, colors[info.team], id === this.myId, info.team !== this.myTeam, info.appearance);
       this.views.set(id, view);
     }
     const ground = this.physics.raycast([v.pos[0], v.pos[1] + 0.3, v.pos[2]], [0, -1, 0], 8);
     const cp = this.rig.camera.position;
     const camDist = Math.hypot(v.pos[0] - cp.x, v.pos[1] + 0.8 - cp.y, v.pos[2] - cp.z);
     view.nearFade = Math.min(1, Math.max(0.2, (camDist - 0.9) / 0.9));
+    view.camDist = camDist;
+    // fim da rodada: quem venceu comemora, quem perdeu murcha (empate: nada)
+    if (this.phase === 'finishing' && this.roundWinner !== null && this.roundWinner !== 'draw' && info) v.celebrate = info.team === this.roundWinner ? 1 : -1;
     view.update(dt, v, ground ? ground.point[1] : null, this.sunAt(v.pos));
     this.footAudio(id, view, v);
   }
@@ -1184,6 +1190,7 @@ export class GameRuntime {
     this.plates.clear();
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
+    this.roundWinner = null;
     this.predictor?.dispose();
     this.effects?.dispose();
     this.env?.dispose();

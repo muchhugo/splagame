@@ -224,3 +224,13 @@ describe('cores das equipes no cliente', () => {
     expect(teamColorsFor('padrao', undefined)).toEqual(['#ff6414', '#4a3dff']);
   });
 });
+
+describe('aparência nas preferências', () => {
+  it('aceita só aparências conhecidas; o resto volta ao padrão sem derrubar outras preferências', () => {
+    expect(sanitizeSettings({ appearance: 'b2', sensitivity: 2 }).appearance).toBe('b2');
+    const bad = sanitizeSettings({ appearance: '<img src=x>', sensitivity: 2 });
+    expect(bad.appearance).toBe(DEFAULT_SETTINGS.appearance);
+    expect(bad.sensitivity).toBe(2);
+    expect(sanitizeSettings({}).appearance).toBe(DEFAULT_SETTINGS.appearance);
+  });
+});

@@ -10,6 +10,18 @@ export type WeaponId = 'esguicho' | 'rodo' | 'estilingue';
 export const WEAPON_IDS: readonly WeaponId[] = ['esguicho', 'rodo', 'estilingue'];
 
 /**
+ * Aparência COSMÉTICA do personagem: base humana ('a' = apresentação masculina,
+ * 'b' = apresentação feminina) × tom de pele (0–3), escolhida pelo jogador. Não
+ * muda hitbox, movimento nem regras, e nunca é deduzida de foto, nome ou voz.
+ */
+export const APPEARANCE_IDS = ['a0', 'a1', 'a2', 'a3', 'b0', 'b1', 'b2', 'b3'] as const;
+export type AppearanceId = (typeof APPEARANCE_IDS)[number];
+export const DEFAULT_APPEARANCE: AppearanceId = 'a1';
+export function isAppearanceId(v: unknown): v is AppearanceId {
+  return typeof v === 'string' && (APPEARANCE_IDS as readonly string[]).includes(v);
+}
+
+/**
  * Estados da sala. Espelha a máquina de estados documentada em docs/architecture.md:
  * LOBBY → LOADING → COUNTDOWN → RUNNING → FINISHING → RESULTS → (LOBBY | LOADING)
  */
@@ -23,6 +35,7 @@ export const C2S = {
   INPUT: 'in',
   SET_TEAM: 'lobby.team',
   SET_WEAPON: 'lobby.weapon',
+  SET_APPEARANCE: 'lobby.appearance',
   SET_READY: 'lobby.ready',
   SET_BOTS: 'lobby.bots',
   START: 'lobby.start',
@@ -34,6 +47,7 @@ export const C2S = {
 
 export const SetTeamSchema = z.object({ team: z.union([z.literal(0), z.literal(1)]) }).strict();
 export const SetWeaponSchema = z.object({ weaponId: z.enum(['esguicho', 'rodo', 'estilingue']) }).strict();
+export const SetAppearanceSchema = z.object({ appearance: z.enum(APPEARANCE_IDS) }).strict();
 export const SetReadySchema = z.object({ ready: z.boolean() }).strict();
 export const SetBotsSchema = z.object({ enabled: z.boolean() }).strict();
 export const StartSchema = z.object({}).strict();
@@ -96,6 +110,8 @@ export interface LobbyPlayer {
   isBot: boolean;
   team: TeamId;
   weaponId: WeaponId;
+  /** Aparência cosmética escolhida (igual para todos os clientes). */
+  appearance: AppearanceId;
   ready: boolean;
   connection: ConnectionStatus;
   loaded: boolean;

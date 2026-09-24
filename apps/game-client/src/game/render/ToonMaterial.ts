@@ -29,6 +29,7 @@ uniform vec3 color;
 uniform vec3 emissive;
 uniform float alpha;
 uniform float gloss;
+uniform float soft;
 uniform float flash;
 uniform float sunVis;
 uniform vec3 sunDir;
@@ -43,13 +44,14 @@ void main(void){
   vec3 V = normalize(cameraPosition - vPos);
   float ndl = dot(N, L);
   // duas faixas: luz e sombra, com uma meia-luz estreita
-  float lit = smoothstep(-0.02, 0.12, ndl) * mix(0.35, 1.0, sunVis);
+  // 'soft' (pele): terminador mais largo e sombra mais clara; evita a "barba" de sombra no rosto
+  float lit = smoothstep(-0.02 - soft * 0.55, 0.12 + soft * 0.25, ndl) * mix(0.35, 1.0, sunVis);
   float top = smoothstep(0.55, 0.62, ndl) * 0.08;
   vec3 amb = mix(groundColor, skyColor, N.y * 0.5 + 0.5);
   // sombra clara e fria: mantém a leitura do personagem mesmo contra o sol
   vec3 shade = color * (amb * shadowTint * 0.82 + vec3(0.16, 0.15, 0.18));
   vec3 light = color * (sunColor * (0.92 + top) + amb * 0.18);
-  vec3 col = mix(shade, light, lit);
+  vec3 col = mix(mix(shade, light, soft * 0.4), light, lit);
   // brilho do esmalte: mancha recortada, só onde há luz
   vec3 H = normalize(L + V);
   float s = smoothstep(0.9, 0.94, dot(N, H)) * gloss * lit;
@@ -76,30 +78,54 @@ export function setToonLight(l: ToonLight) {
   sharedLight = l;
 }
 
+/** Estado por malha lido no bind (compartilhado por todas as malhas de um personagem). */
+export interface ToonMeshState {
+  flash: number;
+  sunVis: number;
+}
+
+/** Material toon compartilhado por cena e chave (cores fixas: pele, cabelo, roupa neutra, equipe). */
+export function sharedToon(scene: Scene, key: string, color: Color3, gloss = 0.6): ToonMaterial {
+  const cache = ((scene as unknown as { __toon?: Map<string, ToonMaterial> }).__toon ??= new Map());
+  let m = cache.get(key);
+  if (!m || m.getScene() !== scene) {
+    m = new ToonMaterial(`toon-${key}`, scene, color, gloss);
+    cache.set(key, m);
+    scene.onDisposeObservable.addOnce(() => cache.clear());
+  }
+  return m;
+}
+
 export class ToonMaterial extends ShaderMaterial {
   private _color: Color3;
   private _emissive = new Color3(0, 0, 0);
   private _flash = 0;
   private _sunVis = 1;
   private _gloss: number;
+  /** 0 = recorte duro (padrão); 1 = pele (sombra suave e clara). */
+  soft = 0;
 
   constructor(name: string, scene: Scene, color: Color3, gloss = 0.6) {
     super(name, scene, { vertex: 'borrifoToon', fragment: 'borrifoToon' }, {
       attributes: ['position', 'normal'],
-      uniforms: ['world', 'viewProjection', 'color', 'emissive', 'alpha', 'gloss', 'flash', 'sunVis', 'sunDir', 'sunColor', 'skyColor', 'groundColor', 'shadowTint', 'cameraPosition'],
+      uniforms: ['world', 'viewProjection', 'color', 'emissive', 'alpha', 'gloss', 'soft', 'flash', 'sunVis', 'sunDir', 'sunColor', 'skyColor', 'groundColor', 'shadowTint', 'cameraPosition'],
     });
     this._color = color.clone();
     this._gloss = gloss;
-    this.onBindObservable.add(() => {
+    this.onBindObservable.add((mesh) => {
       const e = this.getEffect();
       if (!e) return;
       const l = sharedLight;
+      // estado POR MALHA (lampejo de dano, luz do sol sob o personagem, esmaecimento): permite
+      // compartilhar o mesmo material entre vários personagens sem um piscar pelo outro
+      const per = (mesh?.metadata as { toon?: ToonMeshState } | null)?.toon;
       e.setColor3('color', this._color);
       e.setColor3('emissive', this._emissive);
-      e.setFloat('alpha', this.alpha);
+      e.setFloat('alpha', this.alpha * (mesh ? mesh.visibility : 1));
       e.setFloat('gloss', this._gloss);
-      e.setFloat('flash', this._flash);
-      e.setFloat('sunVis', this._sunVis);
+      e.setFloat('soft', this.soft);
+      e.setFloat('flash', per ? per.flash : this._flash);
+      e.setFloat('sunVis', per ? per.sunVis : this._sunVis);
       if (l) {
         e.setVector3('sunDir', l.sunDir);
         e.setColor3('sunColor', l.sunColor);

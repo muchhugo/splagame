@@ -1135,3 +1135,11 @@ table.stats tr:nth-child(even) td {
     animation: none;
   }
 }
+
+/* escolha de visual (cosmético) */
+.appearance { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.appearance .look { width: 40px; height: 40px; border-radius: 12px; border: 2px solid transparent; background: rgba(255,255,255,.08); display: grid; place-items: center; cursor: pointer; }
+.appearance .look i { width: 22px; height: 22px; border-radius: 50%; background: var(--skin); box-shadow: 0 -5px 0 -1px #2b1c14; }
+.appearance .look.b i { box-shadow: 0 -5px 0 -1px #3b2318, 9px -2px 0 -5px #3b2318; }
+.appearance .look.selected { border-color: var(--accent, #ffd166); }
+.appearance .look:focus-visible { outline: 3px solid var(--accent, #ffd166); outline-offset: 2px; }

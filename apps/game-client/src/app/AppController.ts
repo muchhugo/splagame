@@ -1,4 +1,4 @@
-import { GAME_ID, GAME_VERSION, C2S, paintContextTag, type LobbyState, type TeamId, type WeaponId } from '@borrifo/game-contracts';
+import { GAME_ID, GAME_VERSION, C2S, paintContextTag, type AppearanceId, type LobbyState, type TeamId, type WeaponId } from '@borrifo/game-contracts';
 import { ActivityRequestError, MatchCredentialResponseSchema, type ActivityClient } from '@borrifo/activity-sdk';
 import { HostVoiceAdapter, type VoiceAdapter } from '@borrifo/voice-adapter';
 import { DEFAULT_MAP_ID, MAPS, computeMapHash } from '@borrifo/game-content';
@@ -9,6 +9,7 @@ import { hudStore } from '../game/hud';
 import { deviceStore } from '../game/input/device';
 import { pushNotice, showError, uiStore } from './uiStore';
 import { maybeAutoStartTutorial } from './tutorial';
+import { settingsStore } from './settings';
 import { SpeakingSmoother, voiceViewStore } from './profiles';
 
 const MAP = MAPS[DEFAULT_MAP_ID];
@@ -148,6 +149,8 @@ export class AppController {
         uiStore.set({ welcome: m });
         if (m.map.hash !== MAP_HASH) showError({ title: 'Versão incompatível', message: 'O mapa do servidor é diferente do seu. Recarregue a Atividade.', actions: ['reload', 'close'] });
         if (m.resumed) pushNotice('Conexão recuperada', 'good');
+        // aparência escolhida neste aparelho; o servidor valida e distribui a todos
+        this.conn?.send(C2S.SET_APPEARANCE, { appearance: settingsStore.get().appearance });
       },
       onLobby: (l: LobbyState) => this.onLobby(l),
       onRoundLoading: (m: import('@borrifo/game-contracts').RoundLoadingMessage) => {
@@ -245,6 +248,10 @@ export class AppController {
 
   setTeam(team: TeamId) {
     this.conn?.send(C2S.SET_TEAM, { team });
+  }
+  setAppearance(appearance: AppearanceId) {
+    settingsStore.set({ appearance });
+    this.conn?.send(C2S.SET_APPEARANCE, { appearance });
   }
   setWeapon(weaponId: WeaponId) {
     this.conn?.send(C2S.SET_WEAPON, { weaponId });

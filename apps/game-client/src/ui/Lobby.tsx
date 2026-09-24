@@ -1,4 +1,4 @@
-import type { LobbyPlayer, TeamId, WeaponId } from '@borrifo/game-contracts';
+import { APPEARANCE_IDS, type LobbyPlayer, type TeamId, type WeaponId } from '@borrifo/game-contracts';
 import { WEAPONS, MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
 import { useStore } from '../app/store';
 import { uiStore } from '../app/uiStore';
@@ -55,6 +55,7 @@ export function Lobby() {
         {([0, 1] as TeamId[]).map((t) => (
           <TeamColumn key={t} team={t} players={teamPlayers(t)} myId={myId} hostId={lobby.hostPlayerId} fill={lobby.fillWithBots} max={lobby.maxTeamSize} onJoin={() => c?.setTeam(t)} canJoin={me?.team !== t} />
         ))}
+        <AppearancePicker current={me?.appearance} onPick={(a) => c?.setAppearance(a)} />
         <div className="weapons" role="radiogroup" aria-label="Ferramenta principal">
           {(Object.keys(WEAPONS) as WeaponId[]).map((w) => {
             const d = WEAPONS[w];
@@ -106,6 +107,25 @@ export function Lobby() {
           {!isHost ? <div className="muted" style={{ fontSize: 13 }}>Quem organiza a sala inicia a partida quando todos estiverem prontos.</div> : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Tons de pele iguais aos do personagem 3D (CharacterView.SKIN_TONES). Só cosmético: a hitbox é a mesma. */
+const SKIN = ['#f4d4ba', '#dfa982', '#b3764c', '#7a4a2d'];
+function AppearancePicker(props: { current: string | undefined; onPick: (a: (typeof APPEARANCE_IDS)[number]) => void }) {
+  return (
+    <div className="appearance" role="radiogroup" aria-label="Visual do personagem">
+      <span className="muted">Visual</span>
+      {APPEARANCE_IDS.map((a) => {
+        const base = a[0] === 'a' ? 'Base 1 (camiseta)' : 'Base 2 (jardineira)';
+        const tone = Number(a[1]) + 1;
+        return (
+          <button key={a} role="radio" aria-checked={props.current === a} aria-label={`${base}, tom ${tone}`} title={`${base}, tom ${tone}`} className={`look ${a[0]} ${props.current === a ? 'selected' : ''}`} style={{ ['--skin' as string]: SKIN[Number(a[1])] }} onClick={() => props.onPick(a)}>
+            <i />
+          </button>
+        );
+      })}
     </div>
   );
 }

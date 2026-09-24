@@ -61,6 +61,24 @@ describe('ingresso, vagas e lobby', () => {
   });
 });
 
+describe('aparência cosmética', () => {
+  it('valida, sincroniza para todos e só aceita troca no lobby', async () => {
+    const sid = newSid();
+    const a = await join('ap1', sid);
+    const b = await join('ap2', sid);
+    const aid = a.welcome!.playerId;
+    expect(a.lobby!.players.find((p) => p.playerId === aid)!.appearance).toBe('a1');
+    a.send(C2S.SET_APPEARANCE, { appearance: 'b3' });
+    await b.waitFor(() => b.lobby!.players.find((p) => p.playerId === aid)?.appearance === 'b3', 3000, 'b vê b3');
+    // valores fora da lista são descartados pelo esquema (a sala segue viva, nada muda)
+    a.send(C2S.SET_APPEARANCE, { appearance: 'z9' });
+    a.send(C2S.SET_APPEARANCE, { appearance: 'a0', hitbox: 3 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(b.lobby!.players.find((p) => p.playerId === aid)!.appearance).toBe('b3');
+    await Promise.all([a.leave(), b.leave()]);
+  });
+});
+
 describe('credenciais', () => {
   it('rejeita credencial reutilizada, expirada, de outra sessão, audiência/emissor errados e sem permissão', async () => {
     const sid = newSid();
