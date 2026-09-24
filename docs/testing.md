@@ -10,7 +10,7 @@ núcleos, Chromium 141 (Playwright 1.56.1) com renderização por CPU (SwiftShad
 pnpm test          # vitest: unidade + integração pelo transporte real (≈18 s)
 pnpm typecheck     # tsc estrito em todos os pacotes
 pnpm dev           # (outro terminal) necessário para os testes de navegador
-pnpm e2e           # Playwright: host ⇄ Atividade, 2 navegadores, controle (simulado) e treino rápido
+pnpm e2e           # Playwright: host ⇄ Atividade, 2 navegadores, controle (simulado), treino rápido e menus
 pnpm e2e:audio     # Playwright: efeitos sonoros numa partida real (≈5 min) e cobertura por ferramenta
 pnpm e2e:voz       # Playwright: voz pelo host com LiveKit LOCAL e mídia simulada (ver abaixo)
 E2E_SWIFTSHADER=1 pnpm e2e   # sem GPU (containers/CI)
@@ -58,7 +58,37 @@ commitado.
 | desempenho do cliente 4×4 e 8×8 | ok ([performance.md](performance.md)) |
 | voz com LiveKit local e fala sintética | **5 de 5 execuções completas** |
 
-## Resultado da última execução
+## Menus sobre a arena (24/09/2026)
+
+Estes resultados vêm da pilha própria em portas livres (servidor, cliente e host), com
+SwiftShader:
+
+- `pnpm test`: **212 de 212**, em 18 arquivos. Os testes novos são `lobbySpot.test.ts`
+  (palco nas 6 variantes), `appearance.test.ts` (formato, limites e recusa) e o caso de
+  cabelo e cor em `network.test.ts`.
+- `pnpm -r typecheck`: sem erros.
+- `e2e/menus.mjs`: **todas as verificações passaram**. Na primeira execução, quatro
+  verificações falharam; os ajustes foram:
+  - o seletor de categoria pegava a aba do lobby atrás do diálogo (erro do teste);
+  - as turmas só aparecem no 3 e no 2 da contagem (espera ajustada);
+  - no celular, a área de giro cobria a alça da folha (**erro da interface**: a ordem das
+    camadas foi corrigida);
+  - o conteúdo de uma categoria ficava com opacidade 0 no SwiftShader (**erro da
+    interface**: a animação de entrada perdeu a opacidade).
+- Passaram também `gameplay.mjs`, `tutorial.mjs`, `shell.mjs` e `voz-interface.mjs`.
+- `gamepad.mjs` passou, com RB/LB trocando as abas do lobby. Os comandos agora ficam na
+  aba Partida.
+- `personagens.mjs` passou com 8 aparências distintas numa partida 4 × 4. O teste foi
+  atualizado: sozinho com bots, a formação flex é 1 × 1.
+- `audio-cobertura.mjs`:
+  - primeira execução: duas falhas. O Pião-Guia estava sem aliado (mesmo motivo do 1 × 1,
+    teste atualizado para 4 × 4). A carga do Estilingue não soou (`false → false`).
+  - isolado e na execução completa seguinte, **tudo passou**, carga incluída
+    (`true → false`).
+  - a causa da falha única da carga **não foi identificada**. Ela fica registrada aqui, e
+    não como "intermitente".
+- `capturas.mjs`: sem falhas; as capturas estão em `e2e/out/capturas/menus/`.
+
 
 Resultados:
 - `pnpm test`: **119 de 119 passaram**, em 14 arquivos.
@@ -96,6 +126,7 @@ Resultados:
 | `e2e/gamepad.mjs` | controle **simulado** (`navigator.getGamepads` falso) numa partida real, 31 verificações: "Controle conectado (Xbox)"; lobby com LS/RS/RT/Y; direcional move o foco; Menu e B abrem e fecham o menu; analógico esquerdo move (6,8 m em 1,5 s) e o direito gira a câmera; RT dispara; **1 pulso** de vibração no começo da rajada (45 ms, `dual-rumble`); HUD com RB; View segurado abre e fecha o mapa; teclado no meio da partida troca as dicas para Q sem pausar; desconectar e conectar um DualSense mostra os avisos e R1; Options, ↓ e ✕ abrem Configurações na aba Controle; R1/L1 trocam de aba; remapeamento salvo em `borrifo.settings.v2`, com troca em caso de conflito; restaurar padrão; testar vibração; sem erros |
 | `e2e/tutorial.mjs` | o treino começa sozinho na primeira rodada sem pausar; texto por dispositivo ("W A S D" → "LS" → "Tab"); andar, girar a câmera, disparar, pintar o chão, Forma Pião e mapa concluídos pelo jogo de verdade; pular e encerrar; conclusão salva por versão; contexto **móvel emulado** com toque: "Arraste o Analógico", botão Mapa, mapa cabe na tela deitada, "Fechar" |
 | `e2e/voz.mjs` | LiveKit **local** e mídia **simulada** do Chromium: dois usuários na mesma sala; apelido "Aninha"; o jogo não entra na chamada sozinho; microfone desligado ao entrar; participantes com `userId`; "microfone desligado" no lobby; Bruno liga o microfone e Ana vê o anel de fala **no Bruno**; na partida, o ponto do Bruno no placar indica fala; fechar a Atividade mantém Ana na chamada. Última série: **3 de 5 execuções** passaram tudo; nas outras 2, só o indicador no placar falhou dentro de 25 s, e a detecção de fala sobre o bipe do dispositivo falso é intermitente |
+| `e2e/menus.mjs` | navegação **real** pelos menus sobre a arena, com dois navegadores na mesma sala e um celular emulado; detalhes em [menus.md](menus.md#validação) |
 | `e2e/gameplay.mjs` | dois contextos de navegador (Ana e Bruno) no mesmo lobby; partida iniciada pela anfitriã; **hash de tinta idêntico** nas duas réplicas na mesma sequência (última execução: seq 91, unidades 33.933 e 38.148 nos dois); materiais limitados (154 → 164) e texturas estáveis (4 → 4) após ~30 s de jogo; aba oculta não renderiza e retoma ao voltar; sem erros de página |
 
 ### Verificação visual

@@ -16,6 +16,9 @@ await openStandalone(page, 'ana', `pers-${Date.now().toString(36)}`);
 await page.evaluate(() => window.__borrifo.controller.setAppearance('b2'));
 await page.waitForFunction(() => window.__borrifo.uiStore.get().lobby.players.find((p) => p.playerId === window.__borrifo.uiStore.get().welcome.playerId)?.appearance === 'b2', null, { timeout: 5000 });
 check(true, 'aparência escolhida volta do servidor no estado do lobby');
+// 4 × 4 com bots: oito personagens com base, tom, cabelo e cor variados
+await page.evaluate(() => window.__borrifo.controller.setOptions({ formation: 4 }));
+await page.waitForFunction(() => window.__borrifo.uiStore.get().lobby.plan.teamSize === 4);
 await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Começar partida'))?.click());
 await page.waitForFunction(() => window.__borrifo.uiStore.get().lobby?.phase === 'running', null, { timeout: 90000 });
 await page.waitForTimeout(1500);

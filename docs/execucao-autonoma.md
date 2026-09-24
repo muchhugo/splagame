@@ -39,6 +39,14 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 | S1 | Configurações de qualidade, resolução interna, efeitos e volumes com efeito real; persistência e migração | Preferências v2 com `resolution`, `postFx`, `particles` e `reduceMotion`, aplicadas no runtime | `gamepad.test.ts` (saneamento) | testado no laboratório |
 | P1 | Desempenho medido antes e depois; sessões longas; limpeza de recursos | `e2e/desempenho.mjs`, `scripts/bench-tick.ts`, LOD por distância | [performance.md](performance.md#execução-autônoma-antes-e-depois-24092026) | testado no laboratório (SwiftShader) |
 | P2 | 60 FPS em GPU real; rede adversa real | — | — | bloqueado externamente |
+| I1 | Menus sobre a arena 3D; lobby como hub social da Atividade, sem XP nem perfil próprio (menus §1–2) | `ui/Lobby.tsx` (Sala/Partida/Você), `render/LobbyStage.ts`, `render/lobbySpot.ts` | `e2e/menus.mjs`; `lobbySpot.test.ts` (6 variantes) | testado no laboratório |
+| I2 | Linguagem visual de videogame, ícones próprios, cores do design system (menus §3, §10) | `ui/icons.tsx`, `styles.css` (hub, cartaz, abas, botão principal) | Capturas em `e2e/out/capturas/menus/` | testado no laboratório |
+| I3 | Seleção de ferramenta com o personagem 3D real, pose e estatísticas com movimento (menus §4) | Vitrine do palco; `pendingWeapon` para troca instantânea | `menus.mjs` (troca antes da resposta do servidor, depois confirmada) | testado no laboratório |
+| I4 | Aparência pelo modelo 3D: base, pele, cabelo e cor, com miniaturas do próprio modelo e giro (menus §5) | Contrato `[ab][0-3]h[0-3]c[0-5]`; `GameRuntime.portraits`; 4 cabelos e 6 cores | `appearance.test.ts`, `network.test.ts`, `menus.mjs`, `personagens.mjs` | testado no laboratório |
+| I5 | Personagens da sala na cena: turmas juntas, reação a pronto, fala, equipamento; limite para 16 (menus §6) | Palco com até 5 por turma (3 na qualidade baixa); etiquetas projetadas | `menus.mjs` (reação de Bruno; 8 × 8 com 10 no palco e 6 só na lista) | testado no laboratório |
+| I6 | Transição lobby → partida com interface recolhendo, mapa, turmas, contagem e largada própria (menus §7) | `App.tsx` (saída do lobby), `GameRuntime` (sobrevoo e mistura com a câmera do ombro), `ui/RoundIntro.tsx` | `menus.mjs` (recolhe, cartaz, turmas, contagem, "Valendo!", campo de visão final) | testado no laboratório |
+| I7 | Configurações Jogo, Gráficos, Áudio, Controles, Toque e Acessibilidade (menus §8) | `ui/Menu.tsx`; opções de toque novas (sensibilidade, tamanho, opacidade, lados) | `menus.mjs`, `gamepad.mjs` (L1/R1) | testado no laboratório |
+| I8 | Celular com folha, carrosséis e ação no polegar (menus §9) | `.hub.is-narrow`, enquadramento `topo` do palco | `menus.mjs` com celular **emulado** | testado no laboratório (sem aparelho) |
 | E1 | Script agregador de validação executado | `scripts/validar.mjs` (`pnpm validar --voz --desempenho`): 20 de 20 etapas no commit `e32ce54`, voz 5 de 5 | [testing.md](testing.md) | testado no laboratório |
 
 ## Decisões tomadas
@@ -73,6 +81,22 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
   curva gera atraso e torção, o squash chega a 0,26 numa queda de 1,5 m e o foco fica em 1
   no disparo. Os testes e o E2E de partida passaram. **Não foi avaliada por pessoas
   jogando**, então a intensidade é de protótipo.
+- **Menus: palco achado por raycast, não marcado à mão.** Um trecho do mapa só serve se
+  for plano e livre e se **todas** as posições que a câmera de apresentação usa enxergarem o
+  grupo sem obstrução. Isso vale para mapas futuros sem trabalho extra. A busca pontua
+  antes e confere as câmeras depois, e custa de 15 a 120 ms. O teste pegou três problemas
+  reais durante o desenho:
+  - câmera fora da arena, atrás de um letreiro;
+  - caixote no meio do grupo;
+  - o mapa compacto sem trecho largo: o palco passou a encolher em degraus e a busca passou
+    a ir até perto dos muros.
+- **Aparência extensível sem quebrar clientes.** A forma legado (`a1`) continua válida. A
+  forma nova é validada por expressão regular estrita (8 caracteres no máximo) e nunca vira
+  texto livre.
+- **Retratos do próprio modelo** em vez de desenhos. A textura segue a proporção da tela e
+  é recortada no quadrado central: sem isso, a projeção da câmera esticava o retrato.
+- **Opacidade fora das animações de entrada de painel.** No SwiftShader, o conteúdo ficava
+  invisível até o próximo quadro. Só o deslocamento anima.
 - **Validação numa worktree isolada** do commit, com pilha própria em portas livres: valida
   o que está commitado e não interfere na pilha de desenvolvimento.
 

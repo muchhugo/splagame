@@ -23,6 +23,10 @@ real precisaria implementar.
 >   **Território** e **Correio do Ara**. Buffs **Embalo** e **Fôlego** e o combo cooperativo
 >   **Mutirão**. Duas bases humanas de personagem e cenário brasileiro. Ver
 >   [docs/mapas-e-modos.md](docs/mapas-e-modos.md).
+> - Menus **sobre a arena 3D**. O lobby é o hub da Atividade, com o grupo no palco. A aba
+>   Você mostra o personagem de verdade (ferramenta, base, pele, cabelo e cor) e gira. A
+>   entrada na rodada tem sobrevoo, turmas, contagem e "Valendo!". Ver
+>   [docs/menus.md](docs/menus.md).
 > - Tudo foi **testado no laboratório** (`pnpm validar`). Nada foi validado com pessoas, GPU
 >   real, aparelhos físicos ou o Trivo real.
 >

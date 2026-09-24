@@ -143,6 +143,12 @@ tática, escalando ou no Pião, o fator de foco sobe em cerca de 60 ms. O exager
 A vitrine de desenvolvimento tem poses com movimento real (`freada`, `curva` e
 `aterrissagem`), que rodam em passo fixo e congelam logo depois do evento.
 
+## Interface fora da partida
+
+Os menus acontecem sobre a arena em 3D, com o grupo no palco. O lobby é o hub social da
+Atividade: não há XP, carreira nem perfil próprio, porque a identidade vem do Trivo.
+Detalhes, decisões e validação estão em [menus.md](menus.md).
+
 ## Cores das equipes por rodada
 
 O servidor escolhe um par de apresentação a cada rodada (Urucum × Anil, Açaí × Mate, Pitanga

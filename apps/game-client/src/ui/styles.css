@@ -1326,12 +1326,25 @@ kbd {
 /* celular deitado: painel lateral mais estreito, cartaz enxuto */
 @media (max-height: 520px) and (orientation: landscape) {
   .hub-panel {
-    top: 64px;
-    bottom: 88px;
+    top: 82px;
+    bottom: 84px;
     width: min(380px, 46vw);
   }
   .hub-top {
-    top: 8px;
+    top: 6px;
+  }
+  .poster {
+    min-height: 44px;
+    padding: 3px 18px 3px 6px;
+  }
+  .poster .map-art {
+    width: 48px;
+  }
+  .poster-map {
+    font-size: 16px;
+  }
+  .hub-tools .chip {
+    display: none;
   }
   .hub-brand {
     display: none;

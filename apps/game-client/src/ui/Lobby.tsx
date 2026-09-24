@@ -663,7 +663,9 @@ function ActionDock({ lobby, myId }: { lobby: LobbyState; myId: number }) {
             </span>
           </>
         ) : (
-          <span className="ready-count">Sala com você e {plan.bots[0] + plan.bots[1]} bots</span>
+          <span className="ready-count">
+            {plan.bots[0] + plan.bots[1] === 0 ? 'Só você na sala' : `Sala com você e ${plan.bots[0] + plan.bots[1]} bot${plan.bots[0] + plan.bots[1] > 1 ? 's' : ''}`}
+          </span>
         )}
         {queued ? <span className="pill warn">Você está na fila: entra na próxima rodada</span> : null}
         {isHost && notReady.length > 0 ? <span className="muted small">Aguardando prontos: {notReady.map((p) => p.displayName).join(', ')}</span> : null}

@@ -62,6 +62,7 @@ Legenda:
 | Mensagem clara sem WebGL2 | Parcial | Implementada; não exercitada num navegador sem WebGL2 |
 | Direção de arte cartoon (toon, luz, materiais, letreiros, estátua, respingos orgânicos) | Testado | Iterada por capturas; ver [game-design.md](game-design.md#direção-de-arte) |
 | HUD, menus, mapa tático, resultados em pt-BR | Testado | Usados nos E2E e nas capturas |
+| Menus sobre a arena: lobby hub com palco 3D, vitrine do personagem (ferramenta, base, pele, cabelo, cor), entrada cinematográfica na rodada, configurações em 6 categorias, celular em folha | Laboratório | `e2e/menus.mjs` (dois navegadores e celular **emulado**), `lobbySpot.test.ts`, `appearance.test.ts`; ver [menus.md](menus.md). **Sem celular físico, sem GPU real e sem o Trivo real** |
 | Efeitos sonoros gravados (CC0), ligados aos eventos reais | Testado (sem escuta) | 66 arquivos ([AUDIO_CREDITS.md](../AUDIO_CREDITS.md)); `e2e/audio.mjs` e `e2e/audio-cobertura.mjs` verificam carga, disparo por evento, cadência, limite de vozes, loops que param, silenciar, sem clipping e revanche. **Ninguém ouviu ainda**: o ambiente não tem saída de som. A mixagem gravada está em `e2e/out/audio-partida.wav` |
 | Música de fundo | Parcial | Trilha generativa própria (fora do escopo da troca por arquivos); não foi ouvida |
 | Acessibilidade (paletas, padrões, redução de tremor e flashes, escala do HUD, remapeamento, reduced-motion) | Parcial | Implementada; não revisada com usuários nem com leitor de tela |

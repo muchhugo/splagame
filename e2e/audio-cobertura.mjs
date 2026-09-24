@@ -11,6 +11,9 @@ async function session(weapon) {
   errs.push(...[]);
   const e = watchErrors(page, weapon);
   await openStandalone(page, 'gabi', `cob-${weapon}-${Date.now().toString(36)}`);
+  // 4 × 4 com bots: há aliado para o Pião-Guia (sozinho com bots a formação flex é 1 × 1)
+  await page.evaluate(() => window.__borrifo.controller.setOptions({ formation: 4 }));
+  await page.waitForFunction(() => window.__borrifo.uiStore.get().lobby.plan.teamSize === 4);
   await page.click('[role=tab]:has-text("Você")');
   await page.click(`button[role=radio]:has-text("${weapon}")`);
   await page.waitForFunction((w) => window.__borrifo.uiStore.get().lobby.players.some((p) => p.weaponId === w.toLowerCase()), weapon);
