@@ -290,7 +290,7 @@ export class MatchSimulation {
     // simulados acompanha o total de entradas do cliente, sem ganho de velocidade.
     while (p.inputDebt > 0 && p.inputQueue.length > 1) {
       const dropped = p.inputQueue.shift()!;
-      p.inputQueue[0] = { ...p.inputQueue[0], pressedActions: [...dropped.pressedActions, ...p.inputQueue[0].pressedActions].slice(-4) };
+      p.inputQueue[0] = { ...p.inputQueue[0], pressedActions: [...dropped.pressedActions, ...p.inputQueue[0].pressedActions].slice(-8) };
       p.lastProcessedSeq = dropped.sequence;
       p.inputDebt--;
     }
@@ -360,7 +360,12 @@ export class MatchSimulation {
       if (p.hpRegenDelay <= 0 && s.hp < HEALTH.maxHp) s.hp = Math.min(HEALTH.maxHp, s.hp + HEALTH.regenRate * dt);
     }
     // limite do mapa (salvaguarda): volta ao spawn sem contar eliminação
-    if (s.pos[1] < this.opts.map.killY) this.respawnNow(p);
+    if (s.pos[1] < this.opts.map.killY) {
+      // caiu para fora do mapa com a cápsula: ela solta (sem chão válido, volta ao centro);
+      // o reaparecimento não pode levar a cápsula junto para o spawn
+      this.correio?.drop(p.id);
+      this.respawnNow(p);
+    }
   }
 
   /* --------------------------- disparos --------------------------- */
@@ -660,7 +665,14 @@ export class MatchSimulation {
     const cap = (WEAPONS.rodo as ContactWeaponDefinition).flickMaxDamagePerTarget;
     const dmg = Math.max(0, Math.min(pr.damage, cap - dealt));
     this.flickDamageDealt.set(key, dealt + dmg);
-    if (this.flickDamageDealt.size > 512) this.flickDamageDealt.clear();
+    // limite de memória sem zerar um leque em andamento: descarta só os grupos mais antigos
+    if (this.flickDamageDealt.size > 512) {
+      let n = this.flickDamageDealt.size - 384;
+      for (const k of this.flickDamageDealt.keys()) {
+        if (n-- <= 0) break;
+        this.flickDamageDealt.delete(k);
+      }
+    }
     return dmg;
   }
 

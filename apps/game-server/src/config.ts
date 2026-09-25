@@ -1,4 +1,5 @@
 import { RECONNECT_WINDOW_SECONDS } from '@borrifo/game-contracts';
+import { MODES } from '@borrifo/game-content';
 /**
  * Configuração do servidor de partidas a partir do ambiente.
  * Credenciais de desenvolvimento NUNCA são aceitas com NODE_ENV=production.
@@ -40,8 +41,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   }
   const jwksUrl = authMode === 'jwks' ? env.MATCH_CREDENTIAL_JWKS_URL ?? null : null;
   if (authMode === 'jwks' && !jwksUrl) throw new Error('MATCH_CREDENTIAL_JWKS_URL é obrigatório em modo jwks.');
+  /** Número da configuração: finito e dentro da faixa, senão o servidor não sobe (erro claro). */
+  const num = (name: string, def: number, min: number, max: number): number => {
+    const raw = env[name];
+    if (raw === undefined || raw === '') return def;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < min || v > max) throw new Error(`${name} inválido ("${raw}"): use um número entre ${min} e ${max}.`);
+    return v;
+  };
   return {
-    port: Number(env.GAME_SERVER_PORT ?? 2567),
+    port: num('GAME_SERVER_PORT', 2567, 1, 65535),
     host: env.GAME_SERVER_HOST ?? '0.0.0.0',
     nodeEnv,
     authMode,
@@ -53,12 +62,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .map((s) => s.trim())
       .filter(Boolean),
     resultsFile: env.RESULTS_FILE ?? 'data/results.jsonl',
-    maxRooms: Number(env.MAX_ROOMS ?? 50),
-    roundDurationSeconds: Number(env.ROUND_DURATION_SECONDS ?? 180),
-    correioDurationSeconds: Number(env.CORREIO_DURATION_SECONDS ?? 240),
-    reconnectWindowSeconds: Math.max(1, Math.min(120, Number(env.RECONNECT_WINDOW_SECONDS ?? RECONNECT_WINDOW_SECONDS) || RECONNECT_WINDOW_SECONDS)),
-    joinRateBurst: Number(env.JOIN_RATE_BURST ?? 10),
-    joinRatePerSecond: Number(env.JOIN_RATE_PER_SECOND ?? 1),
+    maxRooms: num('MAX_ROOMS', 50, 1, 10_000),
+    roundDurationSeconds: num('ROUND_DURATION_SECONDS', 180, 1, 3600),
+    correioDurationSeconds: num('CORREIO_DURATION_SECONDS', MODES.correio.durationSeconds ?? 240, 1, 3600),
+    reconnectWindowSeconds: num('RECONNECT_WINDOW_SECONDS', RECONNECT_WINDOW_SECONDS, 1, 120),
+    joinRateBurst: num('JOIN_RATE_BURST', 10, 1, 100_000),
+    joinRatePerSecond: num('JOIN_RATE_PER_SECOND', 1, 0.01, 100_000),
     avatarAllowedHosts: (env.AVATAR_ALLOWED_HOSTS ?? '')
       .split(',')
       .map((s) => s.trim().toLowerCase())

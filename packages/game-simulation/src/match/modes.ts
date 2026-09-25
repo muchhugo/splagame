@@ -121,6 +121,9 @@ export class MutiraoTracker {
     let list = this.recent.get(p.id);
     if (!list) this.recent.set(p.id, (list = []));
     list.push({ tick: this.h.tick, cell, area, pos: this.h.layout.cellCenter(cell) });
+    // aparo aqui também: quem está morto ou em recarga não passa por eligible() e a lista cresceria
+    const from = this.h.tick - this.window;
+    while (list.length && list[0].tick < from) list.shift();
   }
 
   private eligible(p: SimPlayer): { area: number; centroid: Vec3; cells: number[] } | null {

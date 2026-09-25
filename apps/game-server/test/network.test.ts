@@ -221,6 +221,22 @@ describe('reconexão e identidade', () => {
   });
 });
 
+describe('expulsão por abuso', () => {
+  it('quem manda mensagens inválidas em excesso sai sem janela de reconexão e fica recusado por um tempo', async () => {
+    const sid = newSid();
+    const evil = await join('abuso1', sid);
+    const good = await join('abuso2', sid);
+    const evilId = evil.welcome!.playerId;
+    for (let i = 0; i < 80; i++) evil.send(C2S.INPUT, { lixo: i } as never);
+    await evil.waitFor(() => evil.leftCode !== null, 5000, 'expulso');
+    expect(evil.leftCode).toBe(CloseCodes.ABUSE);
+    // não fica "reconectando" nem volta sozinho
+    await good.waitFor(() => !good.lobby!.players.some((p) => p.playerId === evilId), 5000, 'slot liberado');
+    await expect(join('abuso1', sid)).rejects.toThrow();
+    await good.leave();
+  });
+});
+
 describe('janela de reconexão expirada', () => {
   it('durante a rodada, o slot vira bot da mesma turma; ao voltar, a pessoa retoma o slot', async () => {
     // o matchmaker do Colyseus é global no processo: ajusta a sala do servidor da suíte

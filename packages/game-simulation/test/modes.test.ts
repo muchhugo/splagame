@@ -243,6 +243,31 @@ describe('Correio do Ara', () => {
     void events;
   });
 
+  it('portador que cai da conexão solta a cápsula e não a recolhe parado; ao voltar, controla o slot', () => {
+    const { sim, a, b, step, tick, input } = carry();
+    step(T(CORREIO.firstSpawnSeconds) + 2, tick);
+    expect(sim.correio!.carrier).toBe(1);
+    // queda de conexão (o servidor suspende o slot e solta o objetivo)
+    sim.dropObjective(1);
+    sim.setSuspended(1, true);
+    step(T(2), tick);
+    expect(sim.correio!.carrier).not.toBe(1);
+    expect(sim.correio!.state === 'caida' || sim.correio!.carrier === 2).toBe(true);
+    // volta com um cliente novo: sequências e ações recomeçam do zero e valem de novo
+    sim.setSuspended(1, false);
+    const seqBefore = a.lastProcessedSeq;
+    expect(seqBefore).toBeGreaterThan(10);
+    sim.resetInputStream(1);
+    const x0 = a.state.pos[0];
+    for (let i = 1; i <= T(1); i++) {
+      sim.enqueueInput(1, { ...neutralInput(i, Math.PI / 2, 0), moveY: 1 });
+      input(b);
+      sim.step();
+    }
+    expect(a.lastProcessedSeq).toBe(T(1));
+    expect(Math.abs(a.state.pos[0] - x0)).toBeGreaterThan(1);
+  });
+
   it('entrega exige 60% da estação com a tinta da equipe e 1,2 s dentro; alterna a estação', () => {
     const { sim, a, step, tick, paintAs, events } = carry();
     step(T(CORREIO.firstSpawnSeconds) + 2, tick);

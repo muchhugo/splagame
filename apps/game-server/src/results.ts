@@ -14,12 +14,18 @@ export interface ResultSink {
 /** Laboratório: arquivo JSONL local, idempotente. Não é banco de produção. */
 export class JsonlResultSink implements ResultSink {
   private seen = new Set<string>();
-  private loaded = false;
+  /** Leitura única e compartilhada: escritas simultâneas no início esperam a mesma leitura. */
+  private loading: Promise<void> | null = null;
+  /** Chaves em gravação (duas chamadas iguais ao mesmo tempo gravam uma vez). */
+  private writing = new Map<string, Promise<'written' | 'duplicate'>>();
   constructor(private readonly file: string) {}
 
-  private async load() {
-    if (this.loaded) return;
-    this.loaded = true;
+  private load(): Promise<void> {
+    this.loading ??= this.readExisting();
+    return this.loading;
+  }
+
+  private async readExisting() {
     try {
       const txt = await readFile(this.file, 'utf8');
       for (const line of txt.split('\n')) {
@@ -40,7 +46,18 @@ export class JsonlResultSink implements ResultSink {
     await this.load();
     const key = `${result.matchId}:${result.roundId}`;
     if (this.seen.has(key)) return 'duplicate';
-    this.seen.add(key);
+    const inFlight = this.writing.get(key);
+    if (inFlight) return inFlight.then(() => 'duplicate' as const);
+    const p = this.append(activitySessionId, key, result);
+    this.writing.set(key, p);
+    try {
+      return await p;
+    } finally {
+      this.writing.delete(key);
+    }
+  }
+
+  private async append(activitySessionId: string, key: string, result: RoundResult): Promise<'written' | 'duplicate'> {
     await mkdir(dirname(this.file), { recursive: true });
     const row = {
       key,
@@ -57,6 +74,8 @@ export class JsonlResultSink implements ResultSink {
       writtenAt: new Date().toISOString(),
     };
     await appendFile(this.file, JSON.stringify(row) + '\n', 'utf8');
+    // só marca como gravado DEPOIS de gravar: se a escrita falhar, a próxima tentativa grava
+    this.seen.add(key);
     log('info', 'result.persisted', { activitySessionId, matchId: result.matchId, roundId: result.roundId, winner: result.winner });
     return 'written';
   }

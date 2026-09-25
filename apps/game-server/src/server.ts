@@ -29,6 +29,7 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
     roundDurationSeconds: cfg.roundDurationSeconds,
     correioDurationSeconds: cfg.correioDurationSeconds,
     reconnectWindowSeconds: cfg.reconnectWindowSeconds,
+    maxRooms: cfg.maxRooms,
   };
   const allowed = new Set(cfg.allowedOrigins);
   // CORS do matchmaking: só origens permitidas (a credencial vai no corpo do POST).

@@ -107,6 +107,7 @@ interface RoomPlayer {
   sitOuts: number;
   /** Na fila/espectador nesta rodada. */
   queued: boolean;
+  lastRateNoticeAt?: number;
 }
 
 export interface ArenaDeps {
@@ -116,6 +117,8 @@ export interface ArenaDeps {
   correioDurationSeconds: number;
   /** Padrão: RECONNECT_WINDOW_SECONDS. */
   reconnectWindowSeconds?: number;
+  /** Máximo de salas simultâneas neste processo (cada uma tem física e laço de 30 Hz). */
+  maxRooms?: number;
 }
 
 const BOT_NAMES = ['Bibelô Jarra', 'Bibelô Vaso', 'Bibelô Cuia', 'Bibelô Tacho', 'Bibelô Pote', 'Bibelô Bule', 'Bibelô Caneca', 'Bibelô Moringa'];
@@ -189,7 +192,7 @@ export class ArenaRoom extends Room {
     const sid = typeof options?.activitySessionId === 'string' ? options.activitySessionId : '';
     if (!sid) throw new ServerError(400, 'activitySessionId ausente');
     if (ArenaRoom.bySession.has(sid)) throw new ServerError(409, 'sala da sessão cheia ou já existente');
-    ArenaRoom.bySession.set(sid, this.roomId);
+    if (ArenaRoom.bySession.size >= (ArenaRoom.deps.maxRooms ?? Infinity)) throw new ServerError(503, 'servidor de partidas lotado; tente de novo em instantes');
     this.activitySessionId = sid;
     this.matchId = randomUUID();
     this.maxClients = MAX_ROOM_HUMANS + 2;
@@ -197,11 +200,20 @@ export class ArenaRoom extends Room {
     this.world = staticWorld(DEFAULT_MAP_ID);
     this.registerMessages();
     this.setFixedTimestep(() => this.fixedStep(), TICK_RATE);
+    // só registra a sessão depois de montar tudo: uma falha acima não deixa a sessão presa
+    ArenaRoom.bySession.set(sid, this.roomId);
     log('info', 'room.created', { activitySessionId: sid, matchId: this.matchId, roomId: this.roomId });
   }
 
+  /** userId expulso por abuso → até quando fica recusado. */
+  private kicked = new Map<string, number>();
+
   override onJoin(client: Client, _options: unknown, auth: VerifiedIdentity) {
     if (!auth || auth.activitySessionId !== this.activitySessionId) throw new ServerError(403, 'credencial não corresponde a esta sessão');
+    const ban = this.kicked.get(auth.userId);
+    if (ban !== undefined && ban > Date.now()) throw new ServerError(403, 'removido da sala por mensagens inválidas; tente mais tarde');
+    // a sala nasce com a primeira entrada: só quem tem permissão de criar pode abri-la
+    if (!auth.canCreate && ![...this.players.values()].some((p) => !p.isBot)) throw new ServerError(403, 'sem permissão para abrir a partida desta sessão');
     // Reentrada do mesmo usuário: recupera o slot existente (sem criar segundo jogador).
     const existing = [...this.players.values()].find((p) => !p.isBot && p.userId === auth.userId) ?? [...this.players.values()].find((p) => p.userId === auth.userId);
     if (existing) {
@@ -215,7 +227,8 @@ export class ArenaRoom extends Room {
       this.broadcastLobby();
       return;
     }
-    const humans = [...this.players.values()].filter((p) => !p.isBot);
+    // quem já saiu e virou bot não ocupa vaga de pessoa
+    const humans = [...this.players.values()].filter((p) => !p.isBot && p.connection !== 'replaced_by_bot');
     if (humans.length >= MAX_ROOM_HUMANS) throw new ServerError(409, 'sala cheia');
     const midRound = this.phase !== 'lobby' && this.phase !== 'results';
     const team = this.pickTeamForNewcomer();
@@ -258,6 +271,8 @@ export class ArenaRoom extends Room {
     const pid = this.bySessionId.get(client.sessionId);
     const p = pid !== undefined ? this.players.get(pid) : undefined;
     if (!p) return;
+    // expulso: não ganha janela de reconexão (o Colyseus segue para onLeave)
+    if (p.userId && (this.kicked.get(p.userId) ?? 0) > Date.now()) return;
     p.connection = 'reconnecting';
     // Correio do Ara: quem cai da conexão solta a cápsula (o slot segue na rodada)
     this.sim?.dropObjective(p.playerId);
@@ -315,11 +330,12 @@ export class ArenaRoom extends Room {
     this.broadcastLobby();
   }
 
-  override onDispose() {
+  override async onDispose() {
+    let pending: Promise<unknown> | null = null;
     if (this.sim && !this.sim.finished && (this.phase === 'running' || this.phase === 'countdown')) {
       // Encerramento sem recuperação: rodada marcada como interrompida, sem vencedor inventado.
       const r = this.sim.finish('interrupted');
-      void ArenaRoom.deps.sink.write(this.activitySessionId, { ...r, winner: 'draw', status: 'interrupted' }).catch(() => {});
+      pending = ArenaRoom.deps.sink.write(this.activitySessionId, { ...r, winner: 'draw', status: 'interrupted' }).catch(() => {});
     }
     this.sim?.dispose();
     this.physics?.dispose();
@@ -327,6 +343,8 @@ export class ArenaRoom extends Room {
     this.physics = null;
     if (ArenaRoom.bySession.get(this.activitySessionId) === this.roomId) ArenaRoom.bySession.delete(this.activitySessionId);
     log('info', 'room.disposed', { activitySessionId: this.activitySessionId, matchId: this.matchId, rounds: this.roundId });
+    // o desligamento espera a gravação do resultado interrompido (senão o processo sai antes)
+    if (pending) await pending;
   }
 
   override onBeforeShutdown() {
@@ -343,7 +361,11 @@ export class ArenaRoom extends Room {
       if (!p || p.sessionId !== client.sessionId) return;
       const b = bucket === 'input' ? p.inputBucket : p.controlBucket;
       if (!b.take()) {
-        if (bucket === 'control') this.notice(client, 'rate_limited', 'Muitas ações seguidas. Aguarde um instante.');
+        // no máximo um aviso por segundo (o aviso não pode virar amplificador de tráfego)
+        if (bucket === 'control' && Date.now() - (p.lastRateNoticeAt ?? 0) > 1000) {
+          p.lastRateNoticeAt = Date.now();
+          this.notice(client, 'rate_limited', 'Muitas ações seguidas. Aguarde um instante.');
+        }
         return;
       }
       const res = schema.safeParse(raw);
@@ -351,6 +373,8 @@ export class ArenaRoom extends Room {
         p.invalidCount++;
         if (p.invalidCount > 50) {
           log('warn', 'client.abusive', { activitySessionId: this.activitySessionId, playerId: p.playerId });
+          // expulsão de verdade: sem janela de reconexão e recusado por um minuto
+          if (p.userId) this.kicked.set(p.userId, Date.now() + 60_000);
           client.leave(CloseCodes.ABUSE, 'mensagens inválidas em excesso');
         }
         return;
@@ -386,6 +410,8 @@ export class ArenaRoom extends Room {
       this.broadcastLobby();
     });
     this.guarded(C2S.SET_APPEARANCE, SetAppearanceSchema, (p, m, client) => {
+      // o cliente reafirma o visual ao entrar: igual ao atual não gera aviso nem difusão
+      if (m.appearance === p.appearance) return;
       if (this.phase !== 'lobby' && this.phase !== 'results') return this.notice(client, 'wrong_phase', 'Troque de visual entre rodadas.');
       p.appearance = m.appearance;
       this.broadcastLobby();
