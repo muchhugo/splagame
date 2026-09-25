@@ -102,7 +102,7 @@ Legenda:
 | 2: multiplayer real e arsenal | Concluída (latência emulada no laboratório; rede real pendente) |
 | 3: Atividade e LiveKit | Contrato e host de laboratório concluídos; **LiveKit e Trivo reais pendentes** |
 | 4: acabamento | Em grande parte feita (arte, áudio, HUD, acessibilidade); falta playtest com pessoas |
-| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; rede emulada e persistência em PostgreSQL feitas; faltam GPU real, várias salas e banco gerenciado real |
+| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; rede emulada, persistência em PostgreSQL e várias salas por processo (limite medido: 16) feitas; faltam GPU real, vários processos e banco gerenciado real |
 | 6: modos e conteúdo | Em andamento no laboratório: Correio do Ara, buffs, Mutirão, dois mapas com variantes, formação flexível e banco de espectadores; falta playtest |
 
 ## Próximo ponto de continuação

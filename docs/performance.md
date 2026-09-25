@@ -263,3 +263,28 @@ O que foi feito, cada item com a medição que o justificou:
 desenvolvimento, que é o que expõe os ganchos de teste). O efeito em travadas de GC não
 foi medido diretamente; o que se mediu é o volume alocado e as compilações.
 
+## Várias salas no mesmo processo (25/09/2026)
+
+`apps/game-server/scripts/load-rooms.ts`: N salas ao mesmo tempo num processo Node (um
+núcleo), cada uma com 1 cliente headless (anfitrião) e 15 bots (8 × 8), 15 s de rodada. Os
+clientes headless rodam **no mesmo processo** (decodificam snapshots), então o servidor
+sozinho tem um pouco mais de folga do que a tabela mostra. Máquina do laboratório com 4
+núcleos.
+
+| Salas | Jogadores simulados | Ticks/s (esperados) | Passo p50 / p99 | Atraso do laço p99 / máx. | CPU do processo |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 16 | 30 (30) | 1,4 / 4,0 ms | 6,8 / 14 ms | 10% |
+| 4 | 64 | 120 (120) | 1,0 / 2,2 ms | 6,5 / 8 ms | 18% |
+| 8 | 128 | 240 (240) | 0,9 / 1,9 ms | 6,6 / 28 ms | 32% |
+| 12 | 192 | 360 (360) | 0,9 / 1,8 ms | 7,1 / 12 ms | 42% |
+| 16 | 256 | 481 (480) | 1,0 / 2,0 ms | 8,2 / 16 ms | 70% |
+| 24 | 384 | 720 (720) | 0,9 / 1,8 ms | 11,4 / 46 ms | 81% |
+| 32 | 512 | 963 (960) | 0,8 / 1,9 ms | **45,7 / 105 ms** | **100%** |
+
+- O custo de cada passo não cresce com o número de salas. O que satura é o processo: com
+  32 salas o laço de eventos atrasa mais que um tick (33 ms) no p99.
+- **`MAX_ROOMS` agora vale 16 por padrão** (antes 50, que saturaria um processo). Para mais
+  salas, mais processos (o Colyseus distribui salas entre processos com um driver/presença
+  compartilhados; isso **não foi montado nem testado** aqui).
+- Não validado: máquina de produção, vários processos, rede real.
+

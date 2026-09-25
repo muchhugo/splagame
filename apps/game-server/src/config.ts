@@ -77,7 +77,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     resultSink,
     databaseUrl,
     databaseSsl: env.DATABASE_SSL === '1',
-    maxRooms: num('MAX_ROOMS', 50, 1, 10_000),
+    // medido (scripts/load-rooms.ts): 16 salas 8 × 8 por processo deixam folga no laço de
+    // eventos (atraso p99 8 ms); com 32 o processo satura. Mais salas = mais processos.
+    maxRooms: num('MAX_ROOMS', 16, 1, 10_000),
     roundDurationSeconds: num('ROUND_DURATION_SECONDS', 180, 1, 3600),
     correioDurationSeconds: num('CORREIO_DURATION_SECONDS', MODES.correio.durationSeconds ?? 240, 1, 3600),
     reconnectWindowSeconds: num('RECONNECT_WINDOW_SECONDS', RECONNECT_WINDOW_SECONDS, 1, 120),

@@ -160,7 +160,7 @@ spawn virado para a parede.
 - **GPU real, FPS real, mobile, touch real, Safari e Firefox:** só Chromium com SwiftShader. O
   toque foi exercitado num contexto móvel **emulado**, não num aparelho.
 - **Latência, jitter e perda de rede:** não houve emulação; cliente e servidor na mesma máquina.
-- **Muitas salas simultâneas e processos múltiplos:** só uma sala por teste de carga.
+- **Processos múltiplos:** não testado. Várias salas num processo: `scripts/load-rooms.ts` (até 32 salas; ver performance.md).
 - **Pessoas jogando:** o balanceamento foi ajustado só com bots.
 - **Postgres/Drizzle:** não implementado (resultado em JSONL, ver ADR 0006).
 - **Escuta dos efeitos sonoros:** o ambiente não tem saída de áudio. A escolha e o equilíbrio
