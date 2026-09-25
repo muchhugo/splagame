@@ -25,21 +25,14 @@ export function Hud() {
   const lobbyDuration = useStore(uiStore, (s) => s.lobby?.roundDurationSeconds);
   const hints = useHints();
   const teams = useTeams();
-  const reticle = useRef<HTMLDivElement>(null);
-  const blocked = useRef<HTMLDivElement>(null);
-  const hit = useRef<HTMLDivElement>(null);
-  const dmg = useRef<HTMLDivElement>(null);
-  const plates = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    hudDom.reticle = reticle.current;
-    hudDom.blocked = blocked.current;
-    hudDom.nameplates = plates.current;
-    hudDom.hitmarker = hit.current;
-    hudDom.damage = dmg.current;
-    return () => {
-      hudDom.reticle = hudDom.blocked = hudDom.hitmarker = hudDom.damage = hudDom.nameplates = null;
-    };
-  }, []);
+  // refs por callback: reticle, hitmarker e bloqueio desmontam na morte e voltam no
+  // reaparecimento; o runtime precisa sempre do nó ATUAL (senão escreve num nó solto)
+  const refReticle = (el: HTMLDivElement | null) => void (hudDom.reticle = el);
+  const refBlocked = (el: HTMLDivElement | null) => void (hudDom.blocked = el);
+  const refHit = (el: HTMLDivElement | null) => void (hudDom.hitmarker = el);
+  const refDamage = (el: HTMLDivElement | null) => void (hudDom.damage = el);
+  const refPlates = (el: HTMLDivElement | null) => void (hudDom.nameplates = el);
+  const spec = h.spectating;
   const w = WEAPONS[h.weaponId];
   const low = h.ink < INK.lowThreshold;
   const inkColor = `var(--team${h.myTeam})`;
@@ -52,8 +45,8 @@ export function Hud() {
 
   return (
     <div className="hud" aria-hidden={false}>
-      <div className="damage-vignette" ref={dmg} />
-      <div className="nameplates" ref={plates} aria-hidden="true" />
+      <div className="damage-vignette" ref={refDamage} />
+      <div className="nameplates" ref={refPlates} aria-hidden="true" />
       <div className="hud-top">
         <div className="roster" aria-label={`Turma ${teams[0].name}`}>
           {t0.map((r) => (
@@ -74,7 +67,7 @@ export function Hud() {
         </div>
       </div>
       {h.mode === 'correio' ? <ObjectiveHud /> : null}
-      <BuffChips />
+      {spec ? null : <BuffChips />}
       <div className={`territory ${h.mode === 'correio' ? 'secondary' : ''}`} title="Território pintado agora (parcial)">
         <div style={{ width: `${h.territory[0]}%`, background: 'var(--team0)' }} />
         <div style={{ flex: 1 }} />
@@ -85,11 +78,11 @@ export function Hud() {
         <VoiceChip />
       </div>
 
-      {h.alive ? (
+      {h.alive && !spec ? (
         <>
-          <div className={`reticle ${low ? 'lowink' : ''}`} ref={reticle} />
-          <div className="hitmarker" ref={hit} />
-          <div className="blocked" ref={blocked} title="Obstáculo no caminho do disparo">
+          <div className={`reticle ${low ? 'lowink' : ''}`} ref={refReticle} />
+          <div className="hitmarker" ref={refHit} />
+          <div className="blocked" ref={refBlocked} title="Obstáculo no caminho do disparo">
             ✕
           </div>
           <div className={`inktank ${low ? 'low' : ''}`} title={`Pigmento ${Math.round(h.ink)}%`}>
@@ -100,7 +93,7 @@ export function Hud() {
         </>
       ) : null}
 
-      <div className="hud-bl">
+      <div className="hud-bl" hidden={spec}>
         <div className={`gauge ${specialReady ? 'ready' : ''}`} title={RODA_DE_OLEIRO.name}>
           <svg viewBox="0 0 80 80">
             <circle cx="40" cy="40" r="32" fill="rgba(20,14,12,.7)" stroke="rgba(255,244,230,.2)" strokeWidth="8" />
@@ -132,7 +125,7 @@ export function Hud() {
         ))}
       </div>
 
-      <div className="state-flags">
+      <div className="state-flags" hidden={spec}>
         {h.inEnemyInk && h.alive ? <span className="chip bad">Tinta adversária: lento e exposto</span> : null}
         {low && h.alive ? <span className="chip warn">Pigmento baixo — recarregue na Forma Pião</span> : null}
         {h.protectedFor > 0 && h.alive ? <span className="chip ok">Proteção de reaparecimento</span> : null}
@@ -141,7 +134,7 @@ export function Hud() {
       </div>
 
       <RoundIntro />
-      {!h.alive && h.phase === 'running' ? (
+      {!h.alive && !spec && h.phase === 'running' ? (
         <div className="center-msg">
           <div className="sub">Voltando ao galpão em</div>
           <div className="big">{Math.max(0, h.respawnIn).toFixed(1)}</div>
@@ -153,8 +146,8 @@ export function Hud() {
           <div className="sub">{result ? (h.mode === 'correio' ? 'Contando as entregas…' : 'Contando o território…') : ''}</div>
         </div>
       ) : null}
-      {!locked && !menu && hints.device === 'teclado' && (h.phase === 'running' || h.phase === 'countdown') ? <div className="clicktoplay">Clique na arena para jogar · Esc abre o menu</div> : null}
-      {specialReady && !h.specialActive && h.alive && h.phase === 'running' ? (
+      {!spec && !locked && !menu && hints.device === 'teclado' && (h.phase === 'running' || h.phase === 'countdown') ? <div className="clicktoplay">Clique na arena para jogar · Esc abre o menu</div> : null}
+      {!spec && specialReady && !h.specialActive && h.alive && h.phase === 'running' ? (
         <div className="special-hint" aria-live="polite">
           {pressText(hints.label('special'), hints.device)} para a {RODA_DE_OLEIRO.name}
         </div>

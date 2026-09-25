@@ -248,7 +248,7 @@ export class ArenaRoom extends Room {
     if (this.hostPlayerId === null) this.hostPlayerId = p.playerId;
     log('info', 'player.joined', { activitySessionId: this.activitySessionId, matchId: this.matchId, playerId: p.playerId, midRound });
     this.sendWelcome(client, p, false);
-    if (midRound) this.notice(client, 'late_join_waiting', 'Partida em andamento: você entra na próxima rodada.');
+    if (midRound) this.notice(client, 'late_join_waiting', 'Partida em andamento: você fica no banco assistindo e entra na próxima rodada.');
     this.afterJoinSync(client, p);
     this.broadcastLobby();
   }
@@ -261,6 +261,7 @@ export class ArenaRoom extends Room {
     p.connection = 'reconnecting';
     // Correio do Ara: quem cai da conexão solta a cápsula (o slot segue na rodada)
     this.sim?.dropObjective(p.playerId);
+    this.sim?.setSuspended(p.playerId, true);
     const def = this.allowReconnection(client, ArenaRoom.deps.reconnectWindowSeconds ?? RECONNECT_WINDOW_SECONDS);
     p.reconnect = def;
     def.catch(() => {
@@ -276,6 +277,9 @@ export class ArenaRoom extends Room {
     if (!p) return;
     p.connection = 'connected';
     p.reconnect = null;
+    // o cliente recomeça a rodada (round.loading de novo): sequências e ações do zero
+    this.sim?.setSuspended(p.playerId, false);
+    this.sim?.resetInputStream(p.playerId);
     log('info', 'player.reconnected', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, playerId: p.playerId });
     this.sendWelcome(client, p, true);
     this.afterJoinSync(client, p);
@@ -296,7 +300,11 @@ export class ArenaRoom extends Room {
       // (mesma equipe, mesmas regras). O usuário pode retomar o slot se voltar.
       p.connection = 'replaced_by_bot';
       const sp = this.sim!.players.get(p.playerId);
-      if (sp) sp.bot = new BotBrain(this.world.nav, this.botSeed++);
+      if (sp) {
+        this.sim!.setSuspended(p.playerId, false);
+        this.sim!.resetInputStream(p.playerId);
+        sp.bot = new BotBrain(this.world.nav, this.botSeed++);
+      }
       log('info', 'player.replaced_by_bot', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, playerId: p.playerId });
     } else {
       this.players.delete(p.playerId);
@@ -415,9 +423,14 @@ export class ArenaRoom extends Room {
     this.guarded(C2S.LOADED, LoadedSchema, (p, m, client) => {
       if (m.roundId !== this.roundId) return;
       if (m.mapHash !== this.world.mapHash) return this.notice(client, 'map_mismatch', 'Mapa local diferente do servidor. Recarregue a Atividade.');
+      // repetido não reenvia a tinta inteira a cada mensagem (banda): no máximo a cada 1,5 s
+      const now = Date.now();
+      if (p.loaded && now - p.lastResyncAt < 1500) return;
+      const first = !p.loaded;
       p.loaded = true;
+      p.lastResyncAt = now;
       if (this.phase !== 'loading') this.sendPaintSnapshot(client);
-      this.broadcastLobby();
+      if (first && p.inRound) this.broadcastLobby();
     });
     this.guarded(C2S.VOTE, VoteSchema, (p, m) => {
       if (this.phase !== 'results') return;
@@ -480,6 +493,10 @@ export class ArenaRoom extends Room {
     this.bySessionId.set(client.sessionId, p.playerId);
     const sp = this.sim?.players.get(p.playerId);
     if (sp && sp.bot && !p.isBot) sp.bot = null;
+    if (sp) {
+      this.sim!.setSuspended(p.playerId, false);
+      this.sim!.resetInputStream(p.playerId);
+    }
     this.promoteHostIfNeeded();
   }
 
@@ -552,8 +569,8 @@ export class ArenaRoom extends Room {
     };
   }
 
-  private roundLoading(): RoundLoadingMessage {
-    return { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, mode: this.sim?.mode ?? this.mode, teamPairId: this.teamPairId, timeoutMs: MATCH.loadingTimeoutSeconds * 1000 };
+  private roundLoading(spectator = false): RoundLoadingMessage {
+    return { matchId: this.matchId, roundId: this.roundId, mapId: this.world.map.id, mapHash: this.world.mapHash, mode: this.sim?.mode ?? this.mode, teamPairId: this.teamPairId, timeoutMs: MATCH.loadingTimeoutSeconds * 1000, spectator };
   }
 
   private phaseRemainingMs(): number | null {
@@ -587,9 +604,11 @@ export class ArenaRoom extends Room {
   /** Reenvia contexto da rodada para quem entra/reconecta no meio dela. */
   private afterJoinSync(client: Client, p: RoomPlayer) {
     client.send(S2C.LOBBY, this.lobbyState());
-    if (!this.sim || !p.inRound) return;
+    if (!this.sim) return;
     if (this.phase === 'loading' || this.phase === 'countdown' || this.phase === 'running') {
-      client.send(S2C.ROUND_LOADING, this.roundLoading());
+      // fora da rodada: entra no banco e assiste (o cliente confirma com LOADED e recebe a tinta)
+      if (!p.inRound) p.loaded = false;
+      client.send(S2C.ROUND_LOADING, this.roundLoading(!p.inRound));
       if (this.phase !== 'loading' && p.loaded) this.sendPaintSnapshot(client);
       if (this.phase === 'running') client.send(S2C.ROUND_START, { roundId: this.roundId, durationMs: this.sim.phaseRemainingMs, startTick: this.sim.startTick });
     }
@@ -620,7 +639,7 @@ export class ArenaRoom extends Room {
         p.queued = true;
         p.sitOuts++;
         const c = this.clients.find((x) => x.sessionId === p.sessionId);
-        if (c) this.notice(c, 'queued', 'Formação completa: você fica na fila e entra na próxima rodada.');
+        if (c) this.notice(c, 'queued', 'Formação completa: você fica no banco assistindo e entra na próxima rodada.');
       } else {
         p.team = t;
         p.inRound = true;
@@ -685,9 +704,10 @@ export class ArenaRoom extends Room {
       if (p.isBot || p.connection === 'replaced_by_bot') sp.bot = new BotBrain(this.world.nav, this.botSeed++);
     }
     log('info', 'round.loading', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, players: this.sim.players.size, mapId: this.world.map.id, mode: this.mode, teamSize: f.teamSize, queued: f.queue.length });
+    // quem está no banco (fila ou entrou atrasado) também recebe: assiste como espectador
     for (const c of this.clients) {
       const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
-      if (p?.inRound) c.send(S2C.ROUND_LOADING, this.roundLoading());
+      if (p) c.send(S2C.ROUND_LOADING, this.roundLoading(!p.inRound));
     }
     this.broadcastLobby();
   }
@@ -698,7 +718,7 @@ export class ArenaRoom extends Room {
     // quem não carregou a tempo continua na rodada; o servidor neutraliza suas entradas
     for (const c of this.clients) {
       const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
-      if (p?.inRound) this.sendPaintSnapshot(c);
+      if (p) this.sendPaintSnapshot(c);
     }
     this.broadcast(S2C.ROUND_COUNTDOWN, { roundId: this.roundId, countdownMs: MATCH.countdownSeconds * 1000 });
     log('info', 'round.countdown', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId });
@@ -803,7 +823,7 @@ export class ArenaRoom extends Room {
       const bytes = encodePaintDelta(d);
       for (const c of this.clients) {
         const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
-        if (p?.inRound) c.sendBytes(S2C.PAINT_DELTA, bytes);
+        if (p) c.sendBytes(S2C.PAINT_DELTA, bytes);
       }
     }
   }
@@ -825,8 +845,9 @@ export class ArenaRoom extends Room {
     const pk = sim.pickupSnapshot();
     for (const c of this.clients) {
       const p = this.players.get(this.bySessionId.get(c.sessionId) ?? -1);
-      if (!p || !p.inRound) continue;
-      const sp = sim.players.get(p.playerId);
+      if (!p) continue;
+      // espectador (banco): mesmo snapshot público, sem estado próprio nem eventos pessoais
+      const sp = p.inRound ? sim.players.get(p.playerId) : undefined;
       const msg: SnapshotMessage = {
         t: sim.tick,
         ack: sp?.lastProcessedSeq ?? 0,
@@ -835,7 +856,7 @@ export class ArenaRoom extends Room {
         me: sp ? { ...toSelfSnapshot(sp.state), bf: sp.mode.buff, bt: Math.round(sp.mode.buffTicks / TICK_RATE * 10) / 10, mt: Math.round(sp.mode.mutiraoTicks / TICK_RATE * 10) / 10, mc: Math.round(sp.mode.mutiraoCooldownTicks / TICK_RATE * 10) / 10 } : null,
         pl: tuples,
         ob: objects,
-        ev: events.filter((e) => e.to === undefined || e.to === p.playerId).map((e) => e.ev),
+        ev: events.filter((e) => e.to === undefined || (p.inRound && e.to === p.playerId)).map((e) => e.ev),
         sc,
         ...(obj ? { obj } : {}),
         ...(pk ? { pk } : {}),

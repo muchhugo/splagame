@@ -128,6 +128,9 @@ export function installGamepadNav() {
       return;
     }
     if (!uiMode()) return;
+    // o aperto é da interface: o jogo ignora (sem pular ao confirmar "Voltar ao jogo",
+    // sem o botão Menu reabrir o menu que acabou de fechar)
+    e.consumed = true;
     // direcional pelo evento (um toque rápido não se perde num quadro lento); segurar repete no laço abaixo
     const d = DPAD[e.button];
     if (d) {

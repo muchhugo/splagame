@@ -14,3 +14,4 @@ playwright-report
 artifacts/tmp
 apps/game-server/data/
 e2e/out/
+e2e/ux-tmp/

@@ -37,7 +37,8 @@ const TABS: Array<[Tab, string]> = [
 
 /** Tela estreita (celular em pé): a cena fica em cima e o painel vira folha embaixo. */
 function useNarrow(): boolean {
-  const q = '(max-width: 760px), (max-aspect-ratio: 4/5)';
+  // só retrato: celular deitado usa o painel lateral compacto (não a folha)
+  const q = '(max-width: 760px) and (orientation: portrait), (max-aspect-ratio: 4/5)';
   const [n, setN] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
   useEffect(() => {
     if (typeof matchMedia !== 'function') return;
@@ -59,6 +60,7 @@ export function Lobby({ leaving = false }: { leaving?: boolean }) {
   const lobby = useStore(uiStore, (s) => s.lobby);
   const welcome = useStore(uiStore, (s) => s.welcome);
   const intro = useStore(stageStore, (s) => s.intro);
+  const menuOpen = useStore(uiStore, (s) => s.menuOpen);
   const [tab, setTab] = useState<Tab>('sala');
   const narrow = useNarrow();
   const [sheetOpen, setSheetOpen] = useState(true);
@@ -89,7 +91,7 @@ export function Lobby({ leaving = false }: { leaving?: boolean }) {
   const isHost = lobby.hostPlayerId === myId;
 
   return (
-    <div className={`screen hub ${intro ? 'is-intro' : ''} ${leaving ? 'is-leaving' : ''} ${narrow ? 'is-narrow' : ''} ${sheetOpen ? '' : 'sheet-closed'} tab-${tab}`} aria-hidden={leaving || undefined}>
+    <div className={`screen hub ${intro ? 'is-intro' : ''} ${leaving ? 'is-leaving' : ''} ${narrow ? 'is-narrow' : ''} ${sheetOpen ? '' : 'sheet-closed'} tab-${tab}`} aria-hidden={leaving || undefined} inert={leaving || menuOpen || undefined}>
       {intro ? <IntroCard lobby={lobby} /> : null}
       {tab !== 'voce' && !leaving ? <StageTags lobby={lobby} myId={myId} /> : null}
 
@@ -115,7 +117,9 @@ export function Lobby({ leaving = false }: { leaving?: boolean }) {
             <button
               key={t}
               role="tab"
+              id={`hub-tab-${t}`}
               aria-selected={tab === t}
+              aria-controls="hub-body"
               className={`hub-tab ${tab === t ? 'on' : ''}`}
               onClick={() => {
                 setTab(t);
@@ -126,7 +130,7 @@ export function Lobby({ leaving = false }: { leaving?: boolean }) {
             </button>
           ))}
         </nav>
-        <div className="hub-body" key={tab}>
+        <div className="hub-body" key={tab} id="hub-body" role="tabpanel" aria-labelledby={`hub-tab-${tab}`}>
           {tab === 'sala' ? <Roster lobby={lobby} myId={myId} /> : null}
           {tab === 'partida' ? <MatchOptions lobby={lobby} isHost={isHost} /> : null}
           {tab === 'voce' ? <Customize me={me} narrow={narrow} /> : null}
@@ -279,8 +283,8 @@ function Roster({ lobby, myId }: { lobby: LobbyState; myId: number }) {
         />
       ))}
       {queue.length ? (
-        <div className="queue" aria-label="Fila">
-          <b>Na fila</b> <span className="muted">entram na próxima revanche</span>
+        <div className="queue" aria-label="Banco">
+          <b>No banco</b> <span className="muted">assistem e entram na próxima rodada</span>
           <div className="queue-list">
             {queue.map((p) => (
               <span key={p.playerId} className="queue-chip">
@@ -461,7 +465,8 @@ function Customize({ me, narrow }: { me: LobbyPlayer | undefined; narrow: boolea
   const look = parseAppearanceId(stored ?? me?.appearance);
   const pendingWeapon = useStore(uiStore, (s) => s.pendingWeapon);
   const weapon = pendingWeapon ?? me?.weaponId ?? 'esguicho';
-  const team = me?.team ?? 0;
+  const lobbyNow = useStore(uiStore, (st) => st.lobby);
+  const team: TeamId = (me ? lobbyNow?.plan.teamOf[me.playerId] : undefined) ?? me?.team ?? 0;
   const pick = (p: Partial<AppearanceParts>) => c?.setAppearance(formatAppearanceId({ ...look, ...p }));
   const hairIds = HAIR_STYLE_NAMES.map((_, h) => formatAppearanceId({ ...look, hair: h }));
   const baseIds = (['a', 'b'] as const).map((b) => formatAppearanceId({ ...look, base: b }));
@@ -532,20 +537,27 @@ function Shot({ src }: { src: string | undefined }) {
 /** Retratos do modelo 3D (cache por aparência e turma). */
 const shotCache = new Map<string, string>();
 function usePortraits(ids: AppearanceId[], team: TeamId): Array<string | undefined> {
-  const key = `${team}:${ids.join(',')}`;
+  // a cor efetiva da turma (par da rodada ou paleta de acessibilidade) entra na chave
+  const teamColor = useTeams()[team].color;
+  const [retry, setRetry] = useState(0);
+  const key = `${team}:${teamColor}:${ids.join(',')}:${retry}`;
+  const ck = (a: AppearanceId) => `${team}:${teamColor}:${a}`;
   const [, bump] = useState(0);
   useEffect(() => {
-    const missing = ids.filter((a) => !shotCache.has(`${team}:${a}`));
+    const missing = ids.filter((a) => !shotCache.has(ck(a)));
     if (!missing.length) return;
     let alive = true;
-    // espera um pouco: trocas seguidas (passar pelas cores) viram um lote só
+    // espera um pouco: trocas seguidas (passar pelas cores) viram um lote só; sem runtime
+    // (troca de mapa) ou com falha, tenta de novo em seguida
     const t = setTimeout(() => {
-      void getController()
-        ?.runtime?.portraits(missing, team)
+      const rt = getController()?.runtime;
+      if (!rt) return void (alive && setTimeout(() => setRetry((x) => x + 1), 800));
+      rt.portraits(missing, team)
         .then((urls) => {
-          urls.forEach((u, i) => u && shotCache.set(`${team}:${missing[i]}`, u));
+          urls.forEach((u, i) => u && shotCache.set(ck(missing[i]), u));
           if (alive) bump((x) => x + 1);
-        });
+        })
+        .catch(() => alive && setTimeout(() => setRetry((x) => x + 1), 800));
     }, 120);
     return () => {
       alive = false;
@@ -553,7 +565,7 @@ function usePortraits(ids: AppearanceId[], team: TeamId): Array<string | undefin
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return ids.map((a) => shotCache.get(`${team}:${a}`));
+  return ids.map((a) => shotCache.get(ck(a)));
 }
 
 function ToolDetail({ weapon }: { weapon: WeaponId }) {
@@ -598,7 +610,7 @@ function TurnTable() {
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
       const rx = gamepadHub.active ? gamepadHub.frame.rx : 0;
-      if (Math.abs(rx) > 0.2) getController()?.rotateStage(rx * dt * 3.2);
+      if (Math.abs(rx) > 0.2) getController()?.rotateStage(-rx * dt * 3.2);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -616,18 +628,19 @@ function TurnTable() {
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d || d.id !== e.pointerId) return;
-        getController()?.rotateStage((e.clientX - d.x) * 0.012);
+        // "girar um prato": arrastar para a direita leva a frente do personagem para a direita
+        getController()?.rotateStage(-(e.clientX - d.x) * 0.012);
         d.x = e.clientX;
       }}
       onPointerUp={() => (drag.current = null)}
       onPointerCancel={() => (drag.current = null)}
     >
       <div className="turn-hint">
-        <button className="round-btn" aria-label="Girar para a esquerda" data-sfx="none" onClick={() => getController()?.rotateStage(-0.5)}>
+        <button className="round-btn" aria-label="Girar para a esquerda" data-sfx="none" onClick={() => getController()?.rotateStage(0.5)}>
           <RotateIcon dir={-1} />
         </button>
         <span>{hints.device === 'controle' ? 'Analógico direito gira' : 'Arraste para girar'}</span>
-        <button className="round-btn" aria-label="Girar para a direita" data-sfx="none" onClick={() => getController()?.rotateStage(0.5)}>
+        <button className="round-btn" aria-label="Girar para a direita" data-sfx="none" onClick={() => getController()?.rotateStage(-0.5)}>
           <RotateIcon dir={1} />
         </button>
       </div>
@@ -667,7 +680,7 @@ function ActionDock({ lobby, myId }: { lobby: LobbyState; myId: number }) {
             {plan.bots[0] + plan.bots[1] === 0 ? 'Só você na sala' : `Sala com você e ${plan.bots[0] + plan.bots[1]} bot${plan.bots[0] + plan.bots[1] > 1 ? 's' : ''}`}
           </span>
         )}
-        {queued ? <span className="pill warn">Você está na fila: entra na próxima rodada</span> : null}
+        {queued ? <span className="pill warn">Você fica no banco: assiste e entra na próxima rodada</span> : null}
         {isHost && notReady.length > 0 ? <span className="muted small">Aguardando prontos: {notReady.map((p) => p.displayName).join(', ')}</span> : null}
         {!isHost ? <span className="muted small">Quem organiza a sala inicia quando todos estiverem prontos.</span> : null}
       </div>

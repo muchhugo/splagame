@@ -18,7 +18,7 @@ export function Menu() {
   if (settingsOpen) return <SettingsPanel onClose={() => uiStore.set({ settingsOpen: false, ...(screen !== 'match' ? { menuOpen: false } : {}) })} />;
   return (
     <div className="screen settings-screen" onKeyDown={(e) => e.key === 'Escape' && c?.resumeGame()}>
-      <div className="panel menu" role="dialog" aria-labelledby="menu-title">
+      <div className="panel menu" role="dialog" aria-modal="true" aria-labelledby="menu-title">
         <h2 id="menu-title" className="menu-title">
           Menu
         </h2>
@@ -99,7 +99,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   };
   return (
     <div className="screen settings-screen" onKeyDown={bindKey}>
-      <div className="panel settings" role="dialog" aria-labelledby="set-title">
+      <div className="panel settings" role="dialog" aria-modal="true" aria-labelledby="set-title">
         <header className="set-head">
           <h2 id="set-title">Configurações</h2>
           <button className="round-btn" data-sfx="back" onClick={onClose} aria-label="Fechar">

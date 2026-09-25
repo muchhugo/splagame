@@ -293,7 +293,7 @@ export class CorreioMode {
     let bestD = Infinity;
     for (const p of sorted(this.h)) {
       const s = p.state;
-      if (!s.alive || s.travelPhase !== 0) continue;
+      if (!s.alive || s.travelPhase !== 0 || p.suspended) continue;
       const d = hdist(s.pos, this.pos);
       if (d > CORREIO.pickupRadius || Math.abs(s.pos[1] - this.pos[1]) > 1.3) continue;
       if (d < bestD - 1e-9) {

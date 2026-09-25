@@ -53,6 +53,8 @@ interface Actor {
   /** "Pop" de escala ao trocar o visual. */
   pop: number;
   seen: boolean;
+  ground?: number | null;
+  groundAt?: Vec3;
 }
 
 const smooth = (x: number) => x * x * (3 - 2 * x);
@@ -77,7 +79,16 @@ export class LobbyStage {
   mode: StageMode = 'sala';
   framing: StageFraming = 'direita';
   /** Máximo de personagens por turma no palco (o painel lista todo mundo). */
-  perTeam = 5;
+  private _perTeam = 5;
+  get perTeam() {
+    return this._perTeam;
+  }
+  set perTeam(n: number) {
+    if (n === this._perTeam) return;
+    this._perTeam = n;
+    // qualidade mudou: reaplica o elenco na hora
+    if (this.pending) this.setPlayers(this.pending.players, this.pending.myId);
+  }
   private yawUser = 0;
   private yawVel = 0;
   private introT = -1;
@@ -162,7 +173,10 @@ export class LobbyStage {
     for (const m of this.splats) {
       const { side, i } = m.metadata as { side: number; i: number };
       const team = sideTeam(side);
-      m.material = sharedToon(this.scene, `palco-mancha-${team}`, this.colors[team].scale(0.92), 0.5);
+      const sm = sharedToon(this.scene, `palco-mancha-${team}`, this.colors[team].scale(0.92), 0.5);
+      // o material compartilhado guarda a cor da primeira criação: reaplica a atual
+      sm.color = this.colors[team].scale(0.92);
+      m.material = sm;
       const u = side * halfW * (0.5 + [0, 0.18, -0.12][i]);
       const w = [0.7, 1.2, 0.3][i];
       m.position.set(c[0] + r[0] * u - d[0] * w, c[1] + 0.018 + i * 0.002, c[2] + r[1] * u - d[1] * w);
@@ -171,6 +185,7 @@ export class LobbyStage {
       m.rotation.y = i * 0.9;
     }
     const mat = sharedToon(this.scene, `palco-tinta-${this.myTeam}`, this.colors[this.myTeam], 1);
+    mat.color = this.colors[this.myTeam];
     for (const p of (this.pedestal.metadata as { paint: Mesh[] }).paint) p.material = mat;
   }
 
@@ -189,7 +204,10 @@ export class LobbyStage {
     this.hidden = [0, 0];
     for (const team of [0, 1] as TeamId[]) {
       const list = players.filter((p) => p.team === team).sort((a, b) => rank(a) - rank(b) || a.playerId - b.playerId);
-      chosen.push(...list.slice(0, this.perTeam));
+      // quem aparece depende da prioridade; a VAGA de cada um é estável (ficar pronto não
+      // faz ninguém trocar de lugar): você na frente, o resto por ordem de chegada
+      const visible = list.slice(0, this.perTeam).sort((a, b) => (a.playerId === myId ? -1 : b.playerId === myId ? 1 : 0) || (a.isBot === b.isBot ? a.playerId - b.playerId : a.isBot ? 1 : -1));
+      chosen.push(...visible);
       this.hidden[team] = Math.max(0, list.length - this.perTeam);
     }
     for (const a of this.actors.values()) a.seen = false;
@@ -293,8 +311,7 @@ export class LobbyStage {
       lift = rodo ? 1.85 : 1.15;
       look = rodo ? 0.85 : 0.95;
     } else {
-      // no celular em pé, o quadro prioriza a própria turma (lado esquerdo do palco)
-      center = this.framing === 'topo' ? [c[0] - r[0] * halfW * 0.45, c[1], c[2] - r[1] * halfW * 0.45] : c;
+      center = c;
       const useful = this.framing === 'direita' ? 0.62 : 0.95;
       const width = this.framing === 'topo' ? halfW + 1 : halfW * 2 + 0.8;
       const fit = width / (2 * tanH * useful);
@@ -306,14 +323,17 @@ export class LobbyStage {
     const visH = 2 * dist * tanV;
     // desloca câmera e alvo juntos para o sujeito cair no espaço livre da interface
     const sx = this.framing === 'direita' ? -visW * 0.19 : 0;
-    // celular em pé: o sujeito sobe para a faixa de cima (a folha ocupa a parte de baixo)
+    // celular em pé: o sujeito sobe para a faixa de cima (a folha ocupa a parte de baixo).
+    // Só o ALVO desce (a câmera inclina); a câmera mantém a altura e nunca entra no chão.
     const sy = this.framing === 'topo' ? -visH * (this.mode === 'vitrine' ? 0.29 : 0.25) : 0;
     const sway = this.mode === 'sala' ? Math.sin(this.t * 0.39) * 0.35 : 0;
     const bob = Math.sin(this.t * 0.27) * 0.08;
-    // dentro da faixa lateral validada pela busca do palco
-    const off = this.mode === 'vitrine' && me ? Math.max(STAGE.closeLat, Math.min(0, sx)) : Math.max(this.spot.latMin, Math.min(this.spot.latMax, sx + sway));
+    // celular em pé: o grupo prioriza a própria turma (lado esquerdo); tudo dentro da faixa
+    // lateral validada pela busca do palco
+    const favor = this.framing === 'topo' && this.mode === 'sala' ? -halfW * 0.45 : 0;
+    const off = this.mode === 'vitrine' && me ? Math.max(STAGE.closeLat, Math.min(0, sx)) : Math.max(this.spot.latMin, Math.min(this.spot.latMax, favor + sx + sway));
     const tgt = new Vector3(center[0] + r[0] * off, center[1] + look + sy + bob, center[2] + r[1] * off);
-    const pos = new Vector3(center[0] + d[0] * dist + r[0] * off, center[1] + lift + sy + bob, center[2] + d[1] * dist + r[1] * off);
+    const pos = new Vector3(center[0] + d[0] * dist + r[0] * off, center[1] + lift + bob, center[2] + d[1] * dist + r[1] * off);
     return { pos, tgt };
   }
 
@@ -391,7 +411,12 @@ export class LobbyStage {
       const cp = cam.position;
       a.view.camDist = Math.hypot(a.pos[0] - cp.x, a.pos[1] + 0.9 - cp.y, a.pos[2] - cp.z);
       a.view.nearFade = 1;
-      const g = groundY(vis.pos);
+      // chão da vaga: um raycast por posição (o palco é estático), não um por quadro
+      if (a.ground === undefined || a.groundAt !== a.pos) {
+        a.ground = groundY(a.pos);
+        a.groundAt = a.pos;
+      }
+      const g = a.ground;
       a.view.update(dt, vis, g === null ? a.pos[1] + lift : Math.max(g, a.pos[1] + lift), 1);
       const s = 1 + Math.sin(a.pop * Math.PI) * 0.12;
       a.view.root.scaling.set(s, 2 - s, s);

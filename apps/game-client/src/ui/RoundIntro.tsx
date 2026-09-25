@@ -21,6 +21,7 @@ export function RoundIntro() {
   const left = useStore(hudStore, (s) => s.timeLeftMs);
   const myTeam = useStore(hudStore, (s) => s.myTeam);
   const mode = useStore(hudStore, (s) => s.mode);
+  const spectating = useStore(hudStore, (s) => s.spectating);
   const lobby = useStore(uiStore, (s) => s.lobby);
   const teams = useTeams();
   const [goUntil, setGoUntil] = useState(0);
@@ -88,7 +89,7 @@ export function RoundIntro() {
           <div className="ri-sub">{sub}</div>
         </>
       ) : null}
-      {go ? <GoSplash team={myTeam} /> : null}
+      {go ? <GoSplash team={spectating ? null : myTeam} /> : null}
     </div>
   );
 }
@@ -111,7 +112,7 @@ function Count({ n }: { n: number }) {
 }
 
 /** Largada: respingo desenhado aqui (forma própria) na cor da sua turma e a palavra da largada. */
-function GoSplash({ team }: { team: TeamId }) {
+function GoSplash({ team }: { team: TeamId | null }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -125,7 +126,7 @@ function GoSplash({ team }: { team: TeamId }) {
     return () => ctx.revert();
   }, []);
   return (
-    <div className="go-splash" ref={ref} style={{ ['--go' as string]: `var(--team${team})` }}>
+    <div className="go-splash" ref={ref} style={{ ['--go' as string]: team === null ? 'var(--ouro)' : `var(--team${team})` }}>
       <svg viewBox="0 0 400 260" className="go-blob" aria-hidden="true">
         <path
           d="M200 18c30 0 42 26 64 22s44-20 60 0-4 40 12 56 50 10 50 38-38 26-44 46 22 46-6 58-44-14-66-4-30 30-62 26-30-34-56-36-54 22-72 2 12-40-6-58-58-10-58-38 42-30 46-50-18-44 8-58 44 12 62 4 38-34 68-34z"

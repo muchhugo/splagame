@@ -599,6 +599,11 @@ export class CharacterView {
     this.teamMat.color = c;
     this.inkMat.color = c;
     this.inkMat.setEmissive(c.scale(0.15));
+    // bolha de proteção e seta de aliado acompanham a troca de par ou de paleta
+    const bm = this.bubble.material as ToonMaterial;
+    bm.color = c.scale(0.6).add(new Color3(0.4, 0.4, 0.4));
+    bm.setEmissive(c.scale(0.3));
+    if (this.marker) (this.marker.material as StandardMaterial).emissiveColor = c;
   }
 
   /** 0–1: esmaece o personagem colado na câmera para não tapar a mira. */
@@ -612,7 +617,9 @@ export class CharacterView {
   private lastAir = 0;
 
   /** Reação a dano: tranco, careta e lampejo claro. */
+  private lastReactAt = -1;
   hitReaction() {
+    this.lastReactAt = this.idleT;
     this.flashTimer = 0.12;
     this.hurtTimer = 0.35;
     // tranco: o tronco e a cabeça levam um empurrão que balança e assenta
@@ -628,6 +635,9 @@ export class CharacterView {
     if (!v.alive) {
       if (this.wasAlive) this.deathTimer = 0.28;
       this.wasAlive = false;
+      // morto não pisa nem pousa (senão o som de passo do último quadro vivo se repete)
+      this.foot.step = false;
+      this.foot.landed = 0;
       this.lastHp = 100;
       this.deathTimer -= dt;
       if (this.deathTimer <= 0) {
@@ -644,6 +654,11 @@ export class CharacterView {
       this.wasAlive = true;
       for (const k of Object.values(this.sp)) k.reset();
       this.prevPos = null;
+      // reaparece de pé: sem "aterrissagem" herdada de quando morreu no ar
+      this.wasGrounded = true;
+      this.airTime = 0;
+      this.lastAir = 0;
+      this.squash = 0;
     }
     this.root.setEnabled(true);
     this.root.position.set(v.pos[0], v.pos[1], v.pos[2]);
@@ -832,7 +847,9 @@ export class CharacterView {
     // boca: sorriso por padrão; reta concentrada ao mirar; "o" de dor; tristeza na derrota
     const sad = celebrate < 0 || hurt > 0.3;
     this.mouth.scaling.set(hurt > 0.3 ? 0.55 : v.firing || v.charging ? 0.8 : 1, sad ? -1 : v.firing || v.charging ? 0.35 : celebrate > 0 ? 1.5 : 1, 1);
-    if (v.hp < this.lastHp - 0.5) this.hitReaction();
+    // só quedas de verdade (a tinta adversária tira pouco a cada snapshot) e sem dobrar
+    // com o evento de acerto que já chamou a reação
+    if (v.hp < this.lastHp - 8 && this.idleT - this.lastReactAt > 0.25) this.hitReaction();
     this.lastHp = v.hp;
     this.flashTimer = Math.max(0, this.flashTimer - dt);
     this.toonState.flash = Math.min(0.6, this.flashTimer * 6);
@@ -864,8 +881,12 @@ export class CharacterView {
     if (this.prevPos) {
       const dx = v.pos[0] - this.prevPos[0],
         dz = v.pos[2] - this.prevPos[2];
-      if (Math.hypot(dx, dz) > 3) this.velS = [0, 0];
-      else {
+      if (Math.hypot(dx, dz) > 3) {
+        // teleporte (reaparecer, Pião-Guia, correção grande): recomeça sem tranco
+        this.velS = [0, 0];
+        this.accS = [0, 0];
+        vx = vz = 0;
+      } else {
         vx = dx / dt;
         vz = dz / dt;
       }
@@ -950,7 +971,14 @@ export class CharacterView {
       return;
     }
     this.combat.rotation.y = 0;
-    if (this.focus > 0.95) return;
+    if (this.focus > 0.95) {
+      // foco total: zera os deslocamentos do idle (não congela a última pose de balanço)
+      this.hips.position.x = 0;
+      this.hips.rotation.z = 0;
+      this.thighL.rotation.z = this.thighR.rotation.z = 0;
+      this.shoulderL.position.y = this.shoulderR.position.y = 0.38;
+      return;
+    }
     const idle = (1 - walk) * (grounded ? 1 : 0);
     // braço livre: balanço exagerado e cotovelo mole na corrida; pendurado e oscilando parado
     const armSwing = s * (0.9 + run * 0.5) * walk;

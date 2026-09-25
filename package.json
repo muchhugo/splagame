@@ -16,7 +16,7 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "build": "pnpm -r build",
     "setup:env": "node scripts/setup-env.mjs",
-    "e2e": "node e2e/shell.mjs && node e2e/gameplay.mjs && node e2e/gamepad.mjs && node e2e/tutorial.mjs && node e2e/menus.mjs",
+    "e2e": "node e2e/shell.mjs && node e2e/gameplay.mjs && node e2e/gamepad.mjs && node e2e/tutorial.mjs && node e2e/menus.mjs && node e2e/banco.mjs",
     "e2e:voz": "node e2e/voz.mjs",
     "e2e:audio": "node e2e/audio.mjs && node e2e/audio-cobertura.mjs",
     "audio:build": "python3 scripts/audio/build_sfx.py",

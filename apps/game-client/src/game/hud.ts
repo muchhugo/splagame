@@ -51,6 +51,10 @@ export interface HudState {
   corrections: number;
   pendingInputs: number;
   mode: GameModeId;
+  /** No banco: assistindo à rodada (sem personagem próprio). */
+  spectating: boolean;
+  /** Quem a câmera do espectador acompanha (null = visão geral). */
+  spectateTarget: { id: number; name: string; team: TeamId } | null;
   /** Buff ativo do jogador local e tempo restante. */
   buff: BuffKind | null;
   buffLeft: number;
@@ -101,6 +105,8 @@ export const hudStore = createStore<HudState>({
   corrections: 0,
   pendingInputs: 0,
   mode: 'territorio',
+  spectating: false,
+  spectateTarget: null,
   buff: null,
   buffLeft: 0,
   mutirao: 0,

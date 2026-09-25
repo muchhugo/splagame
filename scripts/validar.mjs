@@ -132,6 +132,7 @@ try {
       e2e('navegador: controle (entrada, glifos, vibração, menu)', 'gamepad.mjs');
       e2e('navegador: treino rápido v2', 'tutorial.mjs');
       e2e('navegador: menus sobre a arena (lobby, vitrine 3D, configurações, entrada na rodada, celular)', 'menus.mjs');
+      e2e('navegador: banco (entrar no meio da partida e assistir como espectador)', 'banco.mjs');
       e2e('navegador: contrato de voz pelo bridge (mesmo nome, userId)', 'voz-interface.mjs');
       if (!RAPIDO) e2e('navegador: capturas das telas (desktop e celular emulado)', 'capturas.mjs', { PREFIXO: 'validacao' });
       if (DESEMPENHO) e2e('desempenho do cliente (4×4 e 8×8)', 'desempenho.mjs', { ROTULO: 'validacao', CENARIOS: '4x4,8x8', RODADAS: '1' });

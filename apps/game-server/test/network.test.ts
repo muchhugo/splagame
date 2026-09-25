@@ -344,7 +344,7 @@ describe('partida completa com 8 conexões, revanche e ressincronização', () =
     await Promise.all(clients.map((c) => c.leave()));
   });
 
-  it('quem chega com a rodada em andamento aguarda a próxima e não controla ninguém', async () => {
+  it('quem chega com a rodada em andamento fica no banco: assiste ao vivo e não controla ninguém', async () => {
     const sid = newSid();
     const a = await join('l1', sid);
     a.send(C2S.START, {});
@@ -353,9 +353,18 @@ describe('partida completa com 8 conexões, revanche e ressincronização', () =
     await late.waitFor(() => late.notices.find((n) => n.code === 'late_join_waiting'), 3000, 'aviso');
     const me = late.lobby!.players.find((p) => p.playerId === late.welcome!.playerId)!;
     expect(me.inRound).toBe(false);
+    // banco: recebe a rodada marcada como espectador e os snapshots públicos, sem estado próprio
+    const rl = await late.waitFor(() => late.roundLoadings?.at(-1), 3000, 'round.loading do espectador');
+    expect(rl.spectator).toBe(true);
+    await late.waitFor(() => late.snapshots.length > 0, 3000, 'snapshots do espectador');
+    const snap = late.snapshots.at(-1)!;
+    expect(snap.me).toBeNull();
+    expect(snap.pl.some((t) => t[0] === a.welcome!.playerId)).toBe(true);
+    expect(snap.pl.some((t) => t[0] === late.welcome!.playerId)).toBe(false);
+    // entradas do banco não movem ninguém
     late.sendInput({ moveY: 1 });
     await new Promise((r) => setTimeout(r, 300));
-    expect(late.snapshots.length).toBe(0); // não recebe estado de jogador na rodada
+    expect(late.snapshots.at(-1)!.pl.some((t) => t[0] === late.welcome!.playerId)).toBe(false);
     await Promise.all([a.leave(), late.leave()]);
   });
 });

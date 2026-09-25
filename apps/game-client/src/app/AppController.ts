@@ -11,6 +11,7 @@ import { pushNotice, showError, uiStore } from './uiStore';
 import { maybeAutoStartTutorial } from './tutorial';
 import { settingsStore } from './settings';
 import { SpeakingSmoother, voiceViewStore } from './profiles';
+import { motionAllowed } from '../ui/motion';
 
 /** Mapa de fundo antes da primeira rodada; a partir daí vale o mapa que o servidor escolher. */
 const INITIAL_MAP = MAPS[DEFAULT_MAP_ID];
@@ -120,6 +121,10 @@ export class AppController {
       const u = uiStore.get();
       return u.screen === 'match' && !u.menuOpen && !u.settingsOpen;
     };
+    rt.input.lockAllowed = () => {
+      const u = uiStore.get();
+      return u.screen === 'match' && !u.menuOpen && !u.settingsOpen && !rt.spectating;
+    };
     uiStore.set({ sceneReady: true });
   }
 
@@ -194,7 +199,8 @@ export class AppController {
   private handlers() {
     const rt = () => this.runtime!;
     // durante a troca de mapa, o que depende da cena espera e é reaplicado em ordem
-    const later = (f: () => void) => (this.switching || !this.runtime ? this.deferred.push(f) : f());
+    // fila limitada: sem cena por muito tempo, só o mais recente importa (a tinta se ressincroniza)
+    const later = (f: () => void) => (this.switching || !this.runtime ? (this.deferred.length < 600 ? this.deferred.push(f) : 0) : f());
     return {
       onWelcome: (m: import('@borrifo/game-contracts').WelcomeMessage) => {
         uiStore.set({ welcome: m });
@@ -216,6 +222,8 @@ export class AppController {
           rt().setTeamPair(m.teamPairId);
           rt().beginRound(m.roundId, paintContextTag(m.matchId, m.mapHash));
           rt().setMode(m.mode);
+          // no banco: assiste à rodada (a confirmação de carga traz a tinta atual)
+          rt().setSpectator(!!m.spectator);
           this.conn?.send(C2S.LOADED, { roundId: m.roundId, mapHash: m.mapHash });
           return true;
         };
@@ -226,15 +234,16 @@ export class AppController {
           this.switching = null;
           const q = this.deferred;
           this.deferred = [];
-          for (const f of q) f();
+          // sem runtime (a carga do mapa falhou): o que esperava a cena é descartado
+          if (this.runtime) for (const f of q) f();
         });
       },
       onRoundCountdown: () => later(() => rt().setPhase('countdown', 3000)),
       onRoundStart: (m: import('@borrifo/game-contracts').RoundStartMessage) => later(() => {
         rt().setPhase('running', m.durationMs);
         // quem ainda não fez o treino desta versão ganha o treino rápido (não bloqueia; dá para pular)
-        if (uiStore.get().screen === 'match') maybeAutoStartTutorial(this.tutorialContext());
-        this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'in_match', matchId: this.lastLobby?.matchId });
+        if (uiStore.get().screen === 'match' && !rt().spectating) maybeAutoStartTutorial(this.tutorialContext());
+        if (!rt().spectating) this.bridge.send('ACTIVITY_SESSION_STATE_CHANGED', { state: 'in_match', matchId: this.lastLobby?.matchId });
       }),
       onRoundResult: (r: import('@borrifo/game-contracts').RoundResult) => {
         uiStore.set({ result: r });
@@ -250,9 +259,16 @@ export class AppController {
       },
       onPaintSnapshot: (s: import('@borrifo/game-contracts').PaintSnapshotWire) => later(() => rt().onPaintSnapshot(s)),
       onPaintDelta: (d: import('@borrifo/game-contracts').PaintDeltaWire) => later(() => rt().onPaintDelta(d)),
-      onNotice: (n: import('@borrifo/game-contracts').NoticeMessage) => pushNotice(n.message, n.code === 'late_join_waiting' || n.code === 'queued' ? 'info' : 'warn', 4500),
+      onNotice: (n: import('@borrifo/game-contracts').NoticeMessage) => {
+        // pedido descartado pelo servidor: a vitrine volta para a ferramenta confirmada
+        if (n.code === 'rate_limited' || n.code === 'wrong_phase') this.clearPendingWeapon();
+        pushNotice(n.message, n.code === 'late_join_waiting' || n.code === 'queued' ? 'info' : 'warn', 4500);
+      },
       onConnectionState: (s: 'connected' | 'reconnecting' | 'lost', detail?: string) => this.onConnectionState(s, detail),
-      onRtt: (ms: number) => uiStore.set({ rttMs: ms }),
+      onRtt: (ms: number) => {
+        uiStore.set({ rttMs: ms });
+        if (this.runtime) this.runtime.rttMs = ms;
+      },
     };
   }
 
@@ -275,7 +291,8 @@ export class AppController {
     const out: import('../game/render/LobbyStage').StagePlayer[] = [];
     const myId = uiStore.get().welcome?.playerId ?? 0;
     for (const p of l.players) {
-      if (p.isBot || plan.queue.includes(p.playerId)) continue;
+      // quem está no banco não aparece no palco, exceto a própria pessoa (a vitrine precisa dela)
+      if (p.isBot || (plan.queue.includes(p.playerId) && p.playerId !== myId)) continue;
       // a própria escolha aparece na hora; o servidor confirma logo depois
       const mine = p.playerId === myId && l.phase === 'lobby';
       out.push({
@@ -308,6 +325,13 @@ export class AppController {
   skipIntro() {
     this.runtime?.skipIntro();
   }
+  /** Banco: troca quem a câmera acompanha, ou volta para a visão geral. */
+  spectateNext(dir: 1 | -1) {
+    this.runtime?.cycleSpectate(dir);
+  }
+  spectateOverview() {
+    this.runtime?.spectateOverview();
+  }
   private introShown = false;
 
   private onLobby(l: LobbyState) {
@@ -315,12 +339,12 @@ export class AppController {
     const myId = uiStore.get().welcome?.playerId ?? 0;
     const me = l.players.find((p) => p.playerId === myId);
     this.runtime?.setRoster(l.players, myId);
-    if (me && uiStore.get().pendingWeapon === me.weaponId) uiStore.set({ pendingWeapon: null });
+    if (me && (uiStore.get().pendingWeapon === me.weaponId || l.phase !== 'lobby')) this.clearPendingWeapon();
     this.runtime?.setStagePlayers(this.stagePlayers(l), myId);
     // apresentação curta na primeira vez que o lobby aparece nesta sessão
     if (!this.introShown && l.phase === 'lobby' && this.runtime) {
       this.introShown = true;
-      if (!document.hidden && !settingsStore.get().reduceMotion) this.runtime.playIntro();
+      if (!document.hidden && motionAllowed()) this.runtime.playIntro();
     }
     if (l.teamPairId) this.runtime?.setTeamPair(l.teamPairId);
     let screen = uiStore.get().screen;
@@ -384,9 +408,20 @@ export class AppController {
     this.conn?.send(C2S.SET_APPEARANCE, { appearance });
     this.refreshStage();
   }
+  private pendingWeaponTimer: ReturnType<typeof setTimeout> | null = null;
   setWeapon(weaponId: WeaponId) {
     uiStore.set({ pendingWeapon: weaponId });
     this.conn?.send(C2S.SET_WEAPON, { weaponId });
+    this.refreshStage();
+    // se o servidor descartar (limite de taxa, fase errada), a escolha pendente não fica presa
+    if (this.pendingWeaponTimer) clearTimeout(this.pendingWeaponTimer);
+    this.pendingWeaponTimer = setTimeout(() => this.clearPendingWeapon(), 2000);
+  }
+  private clearPendingWeapon() {
+    if (this.pendingWeaponTimer) clearTimeout(this.pendingWeaponTimer);
+    this.pendingWeaponTimer = null;
+    if (uiStore.get().pendingWeapon === null) return;
+    uiStore.set({ pendingWeapon: null });
     this.refreshStage();
   }
   private refreshStage() {

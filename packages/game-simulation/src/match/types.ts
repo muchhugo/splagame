@@ -30,6 +30,8 @@ export interface SimPlayer {
   contactCooldowns: Map<number, number>;
   /** Controlador de bot, quando o slot é controlado pelo servidor. */
   bot: BotController | null;
+  /** Conexão caiu e ninguém controla o slot (nem bot): não pega a cápsula do Correio. */
+  suspended?: boolean;
   /** Posições recentes (tick → pés) para testes e diagnóstico. */
   lastDamagedBy: number | null;
   travel: TravelState | null;

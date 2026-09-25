@@ -33,13 +33,15 @@ export class InputManager {
   private touch = { mx: 0, my: 0, fire: false, flow: false };
   /** Quando o controle pode agir no personagem (definido pelo AppController). */
   padAllowed: () => boolean = () => true;
+  /** Travar o ponteiro só na partida (no lobby o clique na cena não pode sumir com o cursor). */
+  lockAllowed: () => boolean = () => true;
   /** Mapa aberto: A/LT escolhem o companheiro (tratado pelo mapa), não pulam. */
   private unsubPad: () => void;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     canvas.tabIndex = 0;
     this.unsubPad = gamepadHub.subscribe((e) => {
-      if (e.type === 'press') this.onPad(e.button, true);
+      if (e.type === 'press' && !e.consumed) this.onPad(e.button, true);
       else if (e.type === 'release') this.onPad(e.button, false);
     });
     this.on(canvas, 'mousedown', (e) => this.onMouseDown(e as MouseEvent));
@@ -88,7 +90,7 @@ export class InputManager {
     this.canvas.focus();
     this.onUserGesture?.();
     if (!this.locked) {
-      this.requestLock();
+      if (this.lockAllowed()) this.requestLock();
       return;
     }
     if (e.button === 0) this.mouseFire = true;
@@ -263,10 +265,22 @@ export class InputManager {
 
   /** Neutraliza entradas (perda de foco, menu, aba oculta). */
   releaseAll() {
+    const wasOpen = this.mapOpen;
     this.keys.clear();
     this.mouseFire = false;
     this.pendingActions = [];
     this.touch = { mx: 0, my: 0, fire: false, flow: false };
+    // mapa "segurado" (ex.: Tab e alt-tab): a tecla sumiu, o mapa fecha junto
+    if (wasOpen !== this.mapOpen) this.onMapChanged?.(this.mapOpen);
+  }
+
+  /** Começo/fim de rodada: nada alternado (mapa aberto, Forma Pião) atravessa para a próxima. */
+  resetRoundState() {
+    const wasOpen = this.mapOpen;
+    this.mapToggled = false;
+    this.flowToggled = false;
+    this.releaseAll();
+    if (wasOpen) this.onMapChanged?.(false);
   }
 
   dispose() {

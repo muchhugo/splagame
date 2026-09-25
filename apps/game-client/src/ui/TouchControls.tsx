@@ -18,6 +18,9 @@ export function TouchControls() {
     const rt = () => getController()?.runtime;
     const onLook = (e: PointerEvent) => {
       const s = state.current;
+      // menu ou configurações por cima: arrastar um controle não gira a câmera da partida
+      const u = uiStore.get();
+      if ((u.menuOpen || u.settingsOpen) && e.type === 'pointerdown') return;
       // metade da câmera: direita (ou esquerda, com os lados trocados)
       const lookSide = settingsStore.get().touchSwap ? e.clientX < innerWidth / 2 : e.clientX > innerWidth / 2;
       if (e.type === 'pointerdown' && lookSide && s.lookId < 0 && !(e.target as HTMLElement).closest('button')) {

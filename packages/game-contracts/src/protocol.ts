@@ -228,6 +228,8 @@ export interface RoundLoadingMessage {
   /** Par de cores/nomes desta rodada; igual para quem entra ou reconecta. */
   teamPairId: string;
   timeoutMs: number;
+  /** No banco: assiste à rodada como espectador (sem personagem, sem entradas). */
+  spectator?: boolean;
 }
 
 export interface RoundCountdownMessage {

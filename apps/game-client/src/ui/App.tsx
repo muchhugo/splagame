@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GAME_NAME } from '@borrifo/game-contracts';
 import { AppController } from '../app/AppController';
 import { settingsStore, teamColorsFor } from '../app/settings';
@@ -19,6 +19,8 @@ import { Tutorial } from './Tutorial';
 import { installGamepadNav } from './gamepadNav';
 import { deviceStore, installDeviceTracking } from '../game/input/device';
 import { familyName } from '../game/input/gamepad';
+import { hudStore } from '../game/hud';
+import { useHints } from '../app/hints';
 
 let controller: AppController | null = null;
 export function getController() {
@@ -41,17 +43,19 @@ export function App() {
   const hudScale = useStore(settingsStore, (s) => s.hudScale);
   const reduceMotion = useStore(settingsStore, (s) => s.reduceMotion);
   const [booted, setBooted] = useState(false);
-  // a interface do lobby recolhe (em vez de sumir) quando a rodada começa
+  // a interface do lobby recolhe (em vez de sumir) quando a rodada começa. Estado derivado
+  // durante o render: o MESMO Lobby continua montado e só ganha a classe de saída
+  const [prevScreen, setPrevScreen] = useState(screen);
   const [leavingLobby, setLeavingLobby] = useState(false);
-  const prevScreen = useRef(screen);
+  if (prevScreen !== screen) {
+    setPrevScreen(screen);
+    setLeavingLobby(prevScreen === 'lobby' && (screen === 'match' || screen === 'waiting'));
+  }
   useEffect(() => {
-    const was = prevScreen.current;
-    prevScreen.current = screen;
-    if (was !== 'lobby' || (screen !== 'match' && screen !== 'waiting')) return;
-    setLeavingLobby(true);
+    if (!leavingLobby) return;
     const t = setTimeout(() => setLeavingLobby(false), 700);
     return () => clearTimeout(t);
-  }, [screen]);
+  }, [leavingLobby]);
   useEffect(() => {
     document.documentElement.dataset.reduceMotion = reduceMotion ? 'true' : 'false';
   }, [reduceMotion]);
@@ -169,23 +173,54 @@ function BootScreen({ connecting }: { connecting: boolean }) {
   );
 }
 
+/**
+ * Banco: quem entrou com a partida em andamento (ou ficou fora da formação) assiste
+ * à rodada ao vivo, acompanhando qualquer participante ou a visão geral, e entra na
+ * próxima rodada. O HUD mostra placar e tempo; nada pessoal (sem mira, tinta ou vida).
+ */
 function Waiting() {
   const lobby = useStore(uiStore, (s) => s.lobby);
   const myId = useStore(uiStore, (s) => s.welcome?.playerId);
+  const target = useStore(hudStore, (s) => s.spectateTarget);
+  const spectating = useStore(hudStore, (s) => s.spectating);
+  const hints = useHints();
   const me = lobby?.players.find((p) => p.playerId === myId);
+  const c = getController();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (uiStore.get().menuOpen) return;
+      if (e.code === 'ArrowRight' || e.code === 'KeyE') c?.spectateNext(1);
+      else if (e.code === 'ArrowLeft' || e.code === 'KeyQ') c?.spectateNext(-1);
+      else if (e.code === 'KeyV') c?.spectateOverview();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [c]);
   return (
-    <div className="screen">
-      <div className="panel dialog">
-        <Logo size={56} />
-        <h2>{me?.queued ? 'Você está na fila' : 'Partida em andamento'}</h2>
-        <p className="muted">
-          {me?.queued ? 'A formação desta rodada já estava completa. Você tem prioridade na próxima revanche.' : 'Você entra na próxima rodada. Enquanto isso, a arena segue ao fundo.'}
-        </p>
-        <p className="muted">
-          {lobby?.players.filter((p) => p.inRound).length ?? 0} participantes jogando em {lobby?.map.name}.
-        </p>
+    <>
+      {spectating ? <Hud /> : null}
+      <div className="bench" role="region" aria-label="Banco">
+        <span className="bench-tag">
+          <b>No banco</b>
+          <span>{me?.queued ? 'Formação completa · você tem prioridade na próxima' : 'Você entra na próxima rodada'}</span>
+        </span>
+        <span className="bench-target" aria-live="polite">
+          <button className="round-btn" aria-label="Acompanhar o anterior" onClick={() => c?.spectateNext(-1)}>
+            ‹
+          </button>
+          <span className={`bench-name ${target ? `t${target.team}` : ''}`}>{target ? target.name : 'Visão geral'}</span>
+          <button className="round-btn" aria-label="Acompanhar o próximo" onClick={() => c?.spectateNext(1)}>
+            ›
+          </button>
+        </span>
+        <button className="btn small ghost" onClick={() => c?.spectateOverview()} aria-pressed={!target}>
+          Visão geral
+        </button>
+        {hints.device === 'teclado' ? <span className="bench-keys">Q/E trocam · V visão geral</span> : null}
       </div>
-    </div>
+    </>
   );
 }
 

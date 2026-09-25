@@ -38,7 +38,7 @@ export async function audit(page, label, groups = []) {
       return x * y;
     };
     for (const sel of groups) {
-      const els = [...document.querySelectorAll(sel)].filter(vis);
+      const els = [...document.querySelectorAll(sel)].filter(vis).filter((e) => { const r = e.getBoundingClientRect(); return r.width * r.height < 0.45 * vw * vh; });
       for (let i = 0; i < els.length; i++)
         for (let j = i + 1; j < els.length; j++) {
           if (els[i].contains(els[j]) || els[j].contains(els[i])) continue;

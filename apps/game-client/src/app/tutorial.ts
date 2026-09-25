@@ -72,8 +72,20 @@ interface Acc {
   last: TutorialSample | null;
   base: TutorialSample | null;
   value: number;
+  /** Rebase (rodada nova, troca de mapa): recomeça as leituras sem perder o avanço. */
+  keep: boolean;
 }
-const acc: Acc = { last: null, base: null, value: 0 };
+const acc: Acc = { last: null, base: null, value: 0, keep: false };
+
+/**
+ * Rodada nova ou mapa novo: as leituras (posição do spawn, contadores do runtime, que
+ * voltam a zero) recomeçam do ponto atual, sem conceder nem exigir nada a mais.
+ */
+export function tutorialRebase() {
+  acc.last = null;
+  acc.base = null;
+  acc.keep = true;
+}
 
 const NEEDED: Record<StepId, number> = {
   andar: 4, // metros
@@ -97,7 +109,8 @@ export function stepGain(step: StepId, prev: TutorialSample, cur: TutorialSample
   if (!cur.alive && step !== 'mapa') return 0;
   switch (step) {
     case 'andar':
-      return Math.hypot(cur.pos[0] - prev.pos[0], cur.pos[2] - prev.pos[2]);
+      // teleporte (reaparecer, Pião-Guia) não conta como andar
+      return Math.min(1, Math.hypot(cur.pos[0] - prev.pos[0], cur.pos[2] - prev.pos[2]));
     case 'camera': {
       const dy = Math.atan2(Math.sin(cur.yaw - prev.yaw), Math.cos(cur.yaw - prev.yaw));
       return Math.abs(dy) + Math.abs(cur.pitch - prev.pitch);
@@ -109,6 +122,8 @@ export function stepGain(step: StepId, prev: TutorialSample, cur: TutorialSample
     case 'forma':
       return cur.form === 1 ? dt : 0;
     case 'recarregar':
+      // encher o tanque também completa (com o tanque quase cheio, +18% seria impossível)
+      if (cur.form === 1 && cur.submerged && cur.ink >= 99) return NEEDED.recarregar;
       return cur.form === 1 && cur.submerged && cur.ink > prev.ink ? cur.ink - prev.ink : 0;
     case 'mapa':
       return cur.mapOpen ? 1 : 0;
@@ -137,7 +152,8 @@ export function tutorialTick(sample: TutorialSample, dt: number) {
   if (!acc.last || !acc.base) {
     acc.last = sample;
     acc.base = sample;
-    acc.value = 0;
+    if (!acc.keep) acc.value = 0;
+    acc.keep = false;
     return;
   }
   acc.value += stepGain(step, acc.last, sample, acc.base, dt);

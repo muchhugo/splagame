@@ -43,7 +43,7 @@ import { InputManager } from './input/InputManager';
 import { AIM_ASSIST_TUNING, NO_ASSIST, aimAssist, type AimAssistResult, type AimTarget } from './input/aimAssist';
 import { RUMBLE, RumbleGate, gamepadHub, type RumbleKind } from './input/gamepad';
 import { deviceStore } from './input/device';
-import { tutorialTick } from '../app/tutorial';
+import { tutorialRebase, tutorialTick } from '../app/tutorial';
 import { NAMEPLATE, nameplateVisible } from './nameplates';
 import { LocalPredictor } from './prediction/LocalPredictor';
 import { RemoteInterpolator } from './prediction/RemoteInterpolator';
@@ -103,6 +103,10 @@ export class GameRuntime {
   private cineAt = 0;
   private roundLoadAt = 0;
   private flyA0 = 0;
+  /** Banco: assiste à rodada. `specTarget` = quem a câmera acompanha (null = visão geral). */
+  spectating = false;
+  private specTarget: number | null = null;
+  private specChosen = false;
   private stagePubAt = 0;
   input: InputManager;
   audio: AudioEngine;
@@ -215,6 +219,13 @@ export class GameRuntime {
     rt.rig = new CameraRig(rt.scene, rt.physics);
     rt.scene.activeCamera = rt.rig.camera;
     rt.stage = new LobbyStage(rt.scene, rt.physics, map, colors);
+    // câmera já no enquadramento do palco: o sobrevoo de uma rodada que começa logo após a
+    // troca de mapa parte daqui (e não de uma pose padrão qualquer)
+    {
+      const sp = rt.stage.spot;
+      rt.rig.camera.position.set(sp.c[0] + sp.d[0] * sp.camDist, sp.c[1] + sp.camH, sp.c[2] + sp.d[1] * sp.camDist);
+      rt.rig.camera.setTarget(new Vector3(sp.c[0], sp.c[1] + 1, sp.c[2]));
+    }
     // luzes para personagens e objetos (o cenário usa shader próprio com a mesma luz)
     const hemi = new HemisphericLight('ceu', new Vector3(0, 1, 0), rt.scene);
     hemi.diffuse = new Color3(...map.lighting.skyTop).scale(0.55).add(new Color3(0.3, 0.3, 0.3));
@@ -223,8 +234,6 @@ export class GameRuntime {
     const sun = new DirectionalLight('sol', new Vector3(...map.lighting.sunDirection), rt.scene);
     sun.diffuse = new Color3(...map.lighting.sunColor);
     sun.intensity = 1.05;
-    rt.rig.camera.position.set(-40, 18, -26);
-    rt.rig.camera.setTarget(Vector3.Zero());
     onProgress(0.3, 'Assando luz e sombras…');
     await rt.level.atlas.bakeLighting(rt.physics, map.lighting.sunDirection, (p) => onProgress(0.3 + p * 0.6, 'Assando luz e sombras…'));
     rt.level.flushTexture();
@@ -303,11 +312,18 @@ export class GameRuntime {
   }
 
   beginRound(roundId: number, contextTag: number) {
+    const sameRound = roundId === this.roundId && this.roundId !== 0;
     this.roundId = roundId;
-    // a interface recolhe; a câmera sai do palco num sobrevoo até o spawn
+    // teclas e ações apertadas fora da rodada não entram no primeiro input
+    this.input.resetRoundState();
+    tutorialRebase();
+    // a interface recolhe; a câmera sai do palco num sobrevoo até o spawn (numa reconexão
+    // à MESMA rodada, a apresentação não se repete)
     const from = this.rig.camera;
-    this.cineFrom = { pos: from.position.clone(), rot: from.rotation.clone(), fov: from.fov };
-    this.roundLoadAt = performance.now();
+    if (!sameRound) {
+      this.cineFrom = { pos: from.position.clone(), rot: from.rotation.clone(), fov: from.fov };
+      this.roundLoadAt = performance.now();
+    } else this.cineFrom = null;
     this.cineAt = 0;
     {
       const { min, max } = this.map.bounds;
@@ -341,6 +357,10 @@ export class GameRuntime {
 
   /** De volta ao lobby: some com os bonecos da rodada e o palco reaparece. */
   private backToLobby() {
+    // nada da rodada fica na arena do lobby (Moringas, Rodas, marcadores do objetivo)
+    this.effects.clearAll();
+    this.modeView.setSnapshot(undefined, undefined);
+    this.input.resetRoundState();
     for (const v of this.views.values()) v.dispose();
     this.views.clear();
     this.interp.clear();
@@ -349,7 +369,45 @@ export class GameRuntime {
     this.lastSnapshot = null;
     this.cineFrom = null;
     this.roundLoadAt = 0;
+    this.setSpectator(false);
     this.stage.show();
+  }
+
+  /* ------------------------------ banco (espectador) ------------------------------ */
+
+  setSpectator(on: boolean) {
+    this.spectating = on;
+    this.specTarget = null;
+    this.specChosen = false;
+    hudStore.set({ spectating: on, spectateTarget: null });
+  }
+
+  /** Quem pode ser acompanhado: participantes da rodada com amostra recebida, em ordem estável. */
+  private spectateCandidates(): number[] {
+    return this.interp
+      .ids()
+      .filter((id) => this.roster.get(id)?.inRound)
+      .sort((a, b) => (this.roster.get(a)!.team - this.roster.get(b)!.team) || a - b);
+  }
+
+  /** Próximo (+1) ou anterior (-1) participante; da visão geral vai para o primeiro. */
+  cycleSpectate(dir: 1 | -1) {
+    const ids = this.spectateCandidates();
+    this.specChosen = true;
+    if (!ids.length) return this.setSpectateTarget(null);
+    const i = this.specTarget === null ? (dir > 0 ? -1 : 0) : ids.indexOf(this.specTarget);
+    this.setSpectateTarget(ids[(i + dir + ids.length) % ids.length]);
+  }
+
+  spectateOverview() {
+    this.specChosen = true;
+    this.setSpectateTarget(null);
+  }
+
+  private setSpectateTarget(id: number | null) {
+    this.specTarget = id;
+    const p = id === null ? null : this.roster.get(id);
+    hudStore.set({ spectateTarget: p ? { id: p.playerId, name: p.displayName, team: p.team } : null });
   }
 
   /* ------------------------------ palco do lobby ------------------------------ */
@@ -411,6 +469,7 @@ export class GameRuntime {
     const out: string[] = [];
     try {
       await scene.whenReadyAsync();
+      if (this.disposed) return [];
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = size;
       const ctx = canvas.getContext('2d')!;
@@ -421,6 +480,7 @@ export class GameRuntime {
         rtt.renderList = v.root.getChildMeshes(false).filter((m) => m.isEnabled() && m.isVisible && !m.name.startsWith('sombra'));
         rtt.render();
         const px = (await rtt.readPixels()) as Uint8Array | null;
+        if (this.disposed) return [];
         v.root.setEnabled(false);
         if (!px) {
           out.push('');
@@ -437,10 +497,14 @@ export class GameRuntime {
         ctx.putImageData(img, 0, 0);
         out.push(canvas.toDataURL('image/png'));
       }
+    } catch {
+      return [];
     } finally {
-      for (const v of views) v.dispose();
-      rtt.dispose();
-      cam.dispose();
+      if (!this.disposed) {
+        for (const v of views) v.dispose();
+        rtt.dispose();
+        cam.dispose();
+      }
     }
     return out;
   }
@@ -465,6 +529,9 @@ export class GameRuntime {
   setPhase(phase: RoomPhase, remainingMs: number | null) {
     const prev = this.phase;
     this.phase = phase;
+    // a fase vai para o HUD na hora: quem decide abrir o menu ao soltar o ponteiro (fim da
+    // rodada) não pode ler a fase antiga, publicada a 15 Hz
+    if (prev !== phase) hudStore.set({ phase });
     if (remainingMs !== null) {
       this.timeLeftMs = remainingMs;
       this.timeLeftAt = performance.now();
@@ -524,7 +591,8 @@ export class GameRuntime {
         const kind = e.w === 'flick' ? 'shot_flick' : 'shot_esguicho';
         if (e.pid === this.myId) {
           // normalmente a previsão já soou; só um disparo que ela perdeu (quadro travado) soa aqui
-          const gap = kind === 'shot_flick' ? 0.6 : 0.25;
+          // a confirmação do servidor chega um RTT depois: a janela cresce com a latência medida
+          const gap = (kind === 'shot_flick' ? 0.6 : 0.25) + this.rttMs / 1000;
           if (performance.now() - (this.lastLocalShotAt.get(kind) ?? -1e9) < gap * 1000) return;
           this.effects.shot(e.p, e.v, e.gd, e.g, e.life, teamOf(e.pid));
           this.play(kind, undefined, teamOf(e.pid), kind === 'shot_flick' ? 1 : 0.7);
@@ -732,7 +800,8 @@ export class GameRuntime {
     const now = performance.now();
     // suspensa/oculta: mantém rede e estado em ritmo baixo, sem desenhar a cena
     const budget = this.visible ? this.frameBudgetMs : 250;
-    if (budget > 0 && now - this.lastRenderAt < budget) return;
+    // tolerância de 1,5 ms: o rAF oscila em torno do intervalo e não pode descartar quadros bons
+    if (budget > 0 && now - this.lastRenderAt < budget - 1.5) return;
     this.lastRenderAt = now;
     const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
@@ -823,6 +892,8 @@ export class GameRuntime {
           return g ? g.point[1] : null;
         });
         if (this.stage.introPlaying !== stageStore.get().intro) stageStore.set({ intro: this.stage.introPlaying });
+      } else if (this.spectating && this.spectateCamera(dt, now)) {
+        /* câmera do banco acompanhando alguém */
       } else this.mapFlyover(now, dt);
     }
     const rTick = this.interp.renderTick(now);
@@ -910,7 +981,7 @@ export class GameRuntime {
       if (!smp) continue;
       const f = smp.flags;
       if (!(f & PFLAG_ALIVE) || f & PFLAG_SUBMERGED || f & PFLAG_PROTECTED) continue;
-      const c: Vec3 = [smp.pos[0], smp.pos[1] + MOVEMENT.combatHitHeight * 0.55, smp.pos[2]];
+      const c: Vec3 = [smp.pos[0], smp.pos[1] + (smp.form === 1 ? MOVEMENT.flowHitHeight : MOVEMENT.combatHitHeight) * 0.55, smp.pos[2]];
       const d: Vec3 = [c[0] - camPos[0], c[1] - camPos[1], c[2] - camPos[2]];
       const dist = Math.hypot(d[0], d[1], d[2]);
       if (dist > AIM_ASSIST_TUNING.range || dist < 0.5) continue;
@@ -944,7 +1015,8 @@ export class GameRuntime {
     const rTick = this.interp.renderTick(performance.now());
     for (const id of this.interp.ids()) {
       const smp = this.interp.sample(id, rTick);
-      if (!smp || !(smp.flags & PFLAG_ALIVE) || this.roster.get(id)?.team === this.myTeam) continue;
+      // submerso é invisível: a mira não pode "grudar" em quem não se vê
+      if (!smp || !(smp.flags & PFLAG_ALIVE) || smp.flags & PFLAG_SUBMERGED || this.roster.get(id)?.team === this.myTeam) continue;
       const t = segmentCapsuleHit(camPos, end, smp.pos, smp.form === 1 ? MOVEMENT.flowHitHeight : MOVEMENT.combatHitHeight, MOVEMENT.hitRadius);
       if (t >= 0 && t * tDist < tDist) tDist = t * tDist;
     }
@@ -1078,6 +1150,8 @@ export class GameRuntime {
   private chargeLoopOn = false;
   private lastLocalReleaseAt = -1e9;
   private lastLocalShotAt = new Map<string, number>();
+  /** RTT medido pela conexão (ms), para janelas que dependem da latência. */
+  rttMs = 0;
   private dragLoopOn = false;
   private remoteLoops = new Set<string>();
   private swimLoopOn = false;
@@ -1110,7 +1184,8 @@ export class GameRuntime {
     if (drag !== this.dragLoopOn || drag) this.audio.setLoop('rodo', 'rodo_drag', drag, { param: Math.min(1, Math.hypot(s.vel[0], s.vel[2]) / 4.4) });
     this.dragLoopOn = drag;
     const enemy = s.groundState === GROUND_ENEMY && s.grounded;
-    if (enemy !== this.enemyLoopOn) this.audio.setLoop('enemy_ink', 'enemy_ink', enemy);
+    // reafirma enquanto ligado (como os outros loops): se a primeira tentativa falhou, tenta de novo
+    if (enemy !== this.enemyLoopOn || enemy) this.audio.setLoop('enemy_ink', 'enemy_ink', enemy);
     this.enemyLoopOn = enemy;
     if (s.ink < INK.lowThreshold && this.prevInk >= INK.lowThreshold) this.play('ink_low');
     if (s.ink >= INK.capacity - 0.01 && this.prevInk < INK.capacity - 0.01 && s.submerged) this.play('refill_done');
@@ -1143,7 +1218,8 @@ export class GameRuntime {
     if (roundId === this.resultSoundRound) return;
     this.resultSoundRound = roundId;
     const wait = Math.max(0, 1100 - (performance.now() - this.roundEndAt));
-    const id: SfxId = winner === 'draw' ? 'draw' : winner === this.myTeam ? 'victory' : 'defeat';
+    // quem assistiu do banco ouve o sino neutro, não vitória nem derrota
+    const id: SfxId = winner === 'draw' || this.spectating ? 'draw' : winner === this.myTeam ? 'victory' : 'defeat';
     this.resultTimer = setTimeout(() => {
       this.resultTimer = null;
       if (!this.disposed) this.play(id);
@@ -1259,12 +1335,14 @@ export class GameRuntime {
       const c = this.rig.camera.position;
       const cam: Vec3 = [c.x, c.y, c.z];
       const rTick = this.interp.renderTick(now);
+      // no banco, a visão é a de quem está sendo acompanhado (visão geral: ninguém é aliado)
+      const viewTeam: TeamId | null = this.spectating ? (this.specTarget !== null ? (this.roster.get(this.specTarget)?.team ?? null) : null) : this.myTeam;
       for (const id of this.interp.ids()) {
         const lp = this.roster.get(id);
-        if (id === this.myId || !lp) continue;
+        if (id === this.myId || id === this.specTarget || !lp) continue;
         const smp = this.interp.sample(id, rTick);
         if (!smp) continue;
-        const ally = lp.team === this.myTeam;
+        const ally = viewTeam !== null && lp.team === viewTeam;
         const head: Vec3 = [smp.pos[0], smp.pos[1] + (smp.form === FORM_FLOW ? 1.0 : 2.15), smp.pos[2]];
         const d = dist3(cam, head);
         let los = true;
@@ -1359,9 +1437,36 @@ export class GameRuntime {
     this.cineAt = 0;
   }
 
+  /**
+   * Câmera do banco: terceira pessoa atrás de quem está sendo acompanhado (posição e rumo
+   * interpolados, sem a mira dessa pessoa). Sem escolha, acompanha o primeiro participante
+   * assim que ele aparece; quem sai de cena passa para o próximo.
+   */
+  private spectateCamera(dt: number, now: number): boolean {
+    if (this.phase !== 'running' && this.phase !== 'countdown' && this.phase !== 'finishing') return false;
+    if (this.specTarget !== null && !this.interp.latest(this.specTarget)) this.specTarget = null;
+    if (this.specTarget === null && !this.specChosen) {
+      const first = this.spectateCandidates()[0];
+      if (first === undefined) return false;
+      this.setSpectateTarget(first);
+    }
+    if (this.specTarget === null) return false;
+    const smp = this.interp.sample(this.specTarget, this.interp.renderTick(now));
+    if (!smp) return false;
+    this.rig.update(dt, smp.pos, smp.yaw, 0.18, smp.form === FORM_FLOW);
+    this.blendCine(dt);
+    return true;
+  }
+
   /** Mistura a câmera cinematográfica com a do ombro no começo da contagem (~1,4 s). */
   private blendCine(dt: number) {
     if (!this.cineFrom) return;
+    // com a rodada valendo, a câmera é a da mira (misturar desviaria os tiros)
+    if (this.phase === 'running' && !this.spectating) {
+      this.cineFrom = null;
+      this.rig.setFov(settingsStore.get().fov);
+      return;
+    }
     const T = 1.4;
     this.cineAt += dt;
     const k = Math.min(1, this.cineAt / T);
@@ -1377,13 +1482,19 @@ export class GameRuntime {
     if (k >= 1) this.cineFrom = null;
   }
 
+  /** Retângulo do canvas lido uma vez por quadro (ler no meio das escritas força layout). */
+  private rectCache: { at: number; r: DOMRect } | null = null;
+  private canvasRect(): DOMRect {
+    const now = performance.now();
+    if (!this.rectCache || now - this.rectCache.at > 250) this.rectCache = { at: now, r: this.canvas.getBoundingClientRect() };
+    return this.rectCache.r;
+  }
+
   private projectToScreen(p: Vec3): [number, number] | null {
-    const w = this.engine.getRenderWidth();
-    const h = this.engine.getRenderHeight();
     const m = this.scene.getTransformMatrix();
-    const out = Vector3.TransformCoordinates(new Vector3(...p), m);
+    const out = Vector3.TransformCoordinates(new Vector3(p[0], p[1], p[2]), m);
     if (out.z < 0 || out.z > 1) return null;
-    const rect = this.canvas.getBoundingClientRect();
+    const rect = this.canvasRect();
     return [((out.x + 1) / 2) * rect.width, ((1 - out.y) / 2) * rect.height];
   }
 
@@ -1536,6 +1647,8 @@ export class GameRuntime {
     this.physics?.dispose();
     if (keepAudio) {
       this.audio.stopMusic(0);
+      // loops locais (nado, carga, rodo, tinta inimiga, rodas) não sobrevivem ao runtime
+      this.audio.stopAllLoops();
       for (const k of this.remoteLoops) this.audio.setLoop(k, 'charge', false, { pos: [0, 0, 0] });
     } else void this.audio.dispose();
     hudStore.set({ active: false });

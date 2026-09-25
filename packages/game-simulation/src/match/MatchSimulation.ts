@@ -234,6 +234,29 @@ export class MatchSimulation {
     for (const p of this.players.values()) applyModifiers(p, p.mode);
   }
 
+  /**
+   * O controle do slot mudou de mãos (reconexão com cliente novo, ou bot assumindo):
+   * o novo controlador recomeça as sequências e os ids de ação do zero, então a fila,
+   * a última sequência processada e o último id de ação são zerados. Sem isso, as
+   * entradas novas seriam descartadas como antigas e o personagem ficaria parado.
+   */
+  resetInputStream(id: number) {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.inputQueue.length = 0;
+    p.lastProcessedSeq = 0;
+    p.staleTicks = 0;
+    p.inputDebt = 0;
+    p.state.lastActionId = 0;
+    p.lastInput = neutralInput(0, p.state.yaw, p.state.pitch);
+  }
+
+  /** Slot sem controle (queda de conexão, antes de virar bot): não coleta objetivos. */
+  setSuspended(id: number, on: boolean) {
+    const p = this.players.get(id);
+    if (p) p.suspended = on;
+  }
+
   /** Portador desconectou (servidor): a cápsula cai; o slot segue na rodada. */
   dropObjective(id: number) {
     this.correio?.drop(id);

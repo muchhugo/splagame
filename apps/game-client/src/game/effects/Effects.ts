@@ -382,6 +382,8 @@ export class Effects {
       m = { mesh, life: 0 };
       this.markers.set(id, m);
     }
+    // cor sempre da equipe atual (par da rodada, paleta de acessibilidade)
+    (m.mesh.material as StandardMaterial).emissiveColor = this.teamColors[team];
     m.mesh.position.set(p[0], p[1] + 0.06, p[2]);
     m.life = 2.5;
     m.mesh.setEnabled(true);

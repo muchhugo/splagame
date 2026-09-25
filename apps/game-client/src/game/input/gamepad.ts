@@ -139,7 +139,8 @@ export interface PadInfo {
   rumble: boolean;
 }
 
-type PadEvent = { type: 'connected' | 'disconnected'; info: PadInfo } | { type: 'press' | 'release'; button: number } | { type: 'activity' };
+/** `consumed`: a navegação da interface já tratou este aperto (o jogo não deve reagir a ele). */
+type PadEvent = { type: 'connected' | 'disconnected'; info: PadInfo } | { type: 'press' | 'release'; button: number; consumed?: boolean } | { type: 'activity' };
 
 interface PadLike {
   index: number;

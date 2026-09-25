@@ -25,7 +25,8 @@ export function Results() {
   const me = r.players.find((p) => p.playerId === myId);
   const isHost = lobby.hostPlayerId === myId;
   const votes = new Set(lobby.rematchVotes);
-  const title = r.winner === 'draw' ? 'Empate!' : `Vitória da Turma ${teams[r.winner].name}`;
+  // rodada interrompida não tem vencedor: o título não pode dizer "Empate!"
+  const title = r.status === 'interrupted' ? 'Rodada interrompida' : r.winner === 'draw' ? 'Empate!' : `Vitória da Turma ${teams[r.winner].name}`;
   const mine = r.winner !== 'draw' && me ? (me.team === r.winner ? 'Sua turma venceu!' : 'Não foi desta vez.') : '';
   const humans = lobby.players.filter((p) => !p.isBot && p.connection === 'connected');
   const secs = lobby.phaseRemainingMs !== null ? Math.ceil(lobby.phaseRemainingMs / 1000) : null;
@@ -53,7 +54,7 @@ export function Results() {
             </b>
           </div>
         ) : null}
-        {r.status === 'interrupted' ? <div className="chip warn">Rodada interrompida — sem vencedor oficial</div> : null}
+        {r.status === 'interrupted' ? <div className="chip warn">Sem vencedor oficial</div> : null}
         <div className={`bigbar ${correio ? 'secondary' : ''}`} aria-label="Território final" data-enter>
           <div style={{ width: `${r.percent[0]}%`, background: 'var(--team0)' }}>
             {teams[0].symbol} {r.percent[0].toFixed(1)}%
