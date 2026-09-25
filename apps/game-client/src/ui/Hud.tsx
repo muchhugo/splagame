@@ -75,7 +75,7 @@ export function Hud() {
       </div>
       <div className="status-tl">
         {conn !== 'connected' ? <span className="chip warn">{conn === 'reconnecting' ? 'Reconectando…' : 'Sem conexão'}</span> : <span className={`chip ${rtt !== null && rtt < 120 ? 'ok' : 'warn'}`}>{rtt ?? '–'} ms</span>}
-        <VoiceChip />
+        <VoiceChip compact />
       </div>
 
       {h.alive && !spec ? (

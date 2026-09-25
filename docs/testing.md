@@ -169,3 +169,37 @@ spawn virado para a parede.
 
 Compilar sem erros de TypeScript não é tratado como prova de gameplay, integração, desempenho
 ou segurança. Cada item acima só é dado como verificado quando foi exercitado.
+
+## Rede, banco e caça a bugs (25/09/2026)
+
+Pilha própria em portas livres, SwiftShader:
+
+- `pnpm test`: **219 de 219**, em 19 arquivos. Os testes novos cobrem a Roda de Oleiro
+  (ondas, linha de visão, aliado, quebra por tiros), a cápsula largada por quem cai e a
+  reposição do fluxo de entradas, a janela de reconexão que vence e vira bot, a entrada
+  tardia no banco, a expulsão por abuso (80 INPUT inválidos) e a configuração do servidor
+  (`config.test.ts`).
+- `pnpm -r typecheck`: sem erros.
+- `e2e/rede-adversa.mjs` (proxy TCP com atraso, jitter e picos de retransmissão; duas
+  pessoas em zigue-zague por 12 s; cliente a 10 fps no SwiftShader):
+
+  | RTT alvo | RTT medido | correção p95 | correção máx. | grandes (> 2,5 m) | remoto congelado | remoto extrapolado | buffer |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | 0 ms | 3 ms | 0,37 m | 0,40 m | 0 | 2,7% | 0% | 4,8 ticks |
+  | 80 ms | 118 ms | 0,38 m | 0,61 m | 0 | 0% | 0% | 7,5 ticks |
+  | 150 ms | 190 ms | 0,37 m | 0,53 m | 0 | 0% | 4,3% | 7,5 ticks |
+
+  Antes do buffer adaptativo, os remotos ficavam congelados em 25,7% a 28,9% dos quadros
+  com 80 e 150 ms. A correção p95 de ~0,37 m aparece até com RTT 0: a 10 fps o cliente
+  manda entradas em rajadas, o servidor repete a última entrada e descarta o excesso, e
+  as duas simulações divergem na troca de direção. Numa GPU real (60 fps) as rajadas
+  somem; o número a conferir lá é esse.
+- `e2e/banco.mjs`: **15 de 15**. Quem entra com a rodada em andamento vai para o banco,
+  assiste ao vivo, troca quem acompanha e joga a revanche.
+- `e2e/menus.mjs`: **todas as verificações passaram**. O trecho de celular agora é: em pé,
+  a tela de girar; deitado, painel lateral, vitrine, ação principal sem sobreposição e
+  todas as categorias das configurações alcançáveis. No 8 × 8, nenhuma etiqueta do palco
+  fica em cima de outra. O "Valendo!" (1,3 s) é registrado por um observador na página,
+  porque a captura de tela no SwiftShader pode durar mais que ele.
+- Passaram também, um por vez: `gamepad.mjs`, `gameplay.mjs`, `tutorial.mjs`.
+

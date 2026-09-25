@@ -84,7 +84,7 @@ Legenda:
 | 5 | Dois clientes independentes pelo transporte real | Atendido: 2 navegadores (E2E) e 8 clientes headless |
 | 6 | Disparo, tinta, dano, eliminação, reaparecimento e cronômetro autoritativos | Atendido |
 | 7 | Tinta afeta deslocamento, recarga, escalada e resultado | Atendido |
-| 8 | 3 ferramentas, 1 dispositivo e 1 especial funcionando | Atendido (a Roda de Oleiro tem teste parcial) |
+| 8 | 3 ferramentas, 1 dispositivo e 1 especial funcionando | Atendido (Roda de Oleiro com testes de ondas, linha de visão, aliado e quebra) |
 | 9 | Resultado territorial consistente entre clientes | Atendido (8 clientes com o mesmo resultado; réplica confere) |
 | 10 | Lobby, HUD, resultado, revanche, erro e reconexão | Atendido |
 | 11 | Voice adapter respeita a conexão LiveKit do host | Laboratório: LiveKit local com mídia simulada (`e2e/voz.mjs`); falta chamada real |
@@ -99,11 +99,11 @@ Legenda:
 |---|---|
 | 0: inspeção e decisões | Concluída (repositório vazio; laboratório próprio) |
 | 1: primeira partida de ponta a ponta | Concluída |
-| 2: multiplayer real e arsenal | Concluída (sem latência real) |
+| 2: multiplayer real e arsenal | Concluída (latência emulada no laboratório; rede real pendente) |
 | 3: Atividade e LiveKit | Contrato e host de laboratório concluídos; **LiveKit e Trivo reais pendentes** |
 | 4: acabamento | Em grande parte feita (arte, áudio, HUD, acessibilidade); falta playtest com pessoas |
-| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; faltam GPU real, rede emulada, várias salas e persistência de produção |
-| 6: modos e conteúdo | Não iniciada |
+| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; rede emulada feita; faltam GPU real, várias salas e persistência de produção |
+| 6: modos e conteúdo | Em andamento no laboratório: Correio do Ara, buffs, Mutirão, dois mapas com variantes, formação flexível e banco de espectadores; falta playtest |
 
 ## Próximo ponto de continuação
 
@@ -124,19 +124,19 @@ infraestrutura existente, em ordem sugerida:
    registrar FPS e tempo de quadro por qualidade em `docs/performance.md`. Se preciso: importar o
    Babylon por subcaminhos (`@babylonjs/core/...`) para reduzir os 1,5 MB gzip e fundir as peças
    estáticas de cada personagem.
-5. **Rede sob latência.** Emular 80 a 150 ms, jitter e perda (`tc netem` ou proxy) entre cliente
-   e servidor. *Feito quando:* as correções de previsão forem medidas e a interpolação não
-   travar; revisar o [ADR 0004](decisions/0004-sem-compensacao-de-latencia.md) com dados.
-6. **Testes que faltam:** Roda de Oleiro (ondas, dano, destruição) em `match.test.ts`; slot que
-   vira bot após a janela de reconexão em `network.test.ts`.
+5. **Rede sob latência: feito no laboratório** (`e2e/rede-adversa.mjs`, proxy com 0, 80
+   e 150 ms). Nenhuma correção grande; remotos sem congelar com o buffer adaptativo. Falta
+   repetir numa GPU real, onde o cliente roda a 60 fps.
+6. **Testes que faltavam: feitos.** Roda de Oleiro em `match.test.ts`; vaga que vira bot
+   depois da janela de reconexão em `network.test.ts`.
 7. **Integração com o Trivo** (exige acesso e autorização): o host real implementa o
    `ActivityHost` e o endpoint de credencial com JWKS; o servidor de partidas roda em
    `MATCH_AUTH_MODE=jwks`. Seguir [activity-integration.md](activity-integration.md#como-um-host-real-integraria).
    Não fazer merge automático nem tocar produção.
 8. **Playtest com pessoas** e ajuste de `packages/game-content/src/tuning.ts` e
    `equipment.ts`, registrando as mudanças em `docs/game-design.md`.
-9. **Mobile:** verificar `TouchControls` e desempenho num dispositivo real antes de declarar
-   suporte.
+9. **Mobile (só na horizontal):** verificar `TouchControls`, a trava de orientação e o
+   desempenho num dispositivo real antes de declarar suporte.
 10. **Briefing mestre, fases 1, 2, 4 e 5:** redesign das telas, personagens, mapas Toca do Ara e
     Clube da Maré, formação flexível e Correio do Ara ([plano-evolucao.md](plano-evolucao.md)).
 

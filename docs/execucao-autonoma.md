@@ -100,6 +100,47 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 - **Validação numa worktree isolada** do commit, com pilha própria em portas livres: valida
   o que está commitado e não interfere na pilha de desenvolvimento.
 
+- **Celular só na horizontal.** Pedido do usuário. Em pé, uma tela pede para girar o
+  aparelho (e o jogo tenta `screen.orientation.lock('landscape')`). O layout de folha do
+  lobby ficou só para janelas estreitas de desktop.
+- **Quem entra no meio vai para o banco.** Pedido do usuário. O servidor manda a rodada
+  como espectador (`ROUND_LOADING.spectator`), com tinta e posições, sem eventos pessoais;
+  o cliente acompanha alguém ou a visão geral e a pessoa joga a próxima rodada.
+- **Buffer de interpolação adaptativo** (3 a 9 ticks, segue o jitter medido) e
+  extrapolação curta (até 3 ticks). Continua sem compensação de latência no servidor
+  ([ADR 0004](decisions/0004-sem-compensacao-de-latencia.md)): as medições em
+  [testing.md](testing.md) não mostram correção grande até 150 ms.
+
+### Pendências conhecidas da caça a bugs (não corrigidas)
+
+- **S6:** o limitador por IP confia no endereço de conexão e não tem LRU; atrás de proxy
+  reverso precisa de `trust proxy` configurado e de um teto de entradas.
+- **S19:** o teto de velocidade no ar e o fim do Embalo não são previstos no cliente; geram
+  pequenas correções nessas transições.
+- **S22:** a posição de quem está submerso vai para todos os clientes (a interface esconde,
+  mas um cliente modificado veria). Corrigir exige filtrar o snapshot por pessoa.
+- **G24 / L21:** ainda há alocações por quadro em trechos do HUD e das etiquetas.
+- Freio falso nos remotos quando falta amostra: mitigado pela extrapolação, não eliminado.
+
+### Auditoria de UI/UX (25/09/2026)
+
+Automatizada (sobreposição, texto cortado, fora da tela, alvos pequenos, contraste) em
+1920, 1280, 1024, celular deitado e em pé, mais leitura das capturas. Corrigido:
+
+- etiquetas do palco empilhadas no 8 × 8: agora você, depois quem está pronto, as pessoas
+  e por último os bots; uma pessoa sobe um degrau, um bot que cairia em cima some do palco;
+- configurações no celular deitado: a lista de categorias cortava "Acessibilidade"; agora
+  rola, com cabeçalho enxuto;
+- aba ativa das configurações com degradê esverdeado: agora ouro sólido, como as outras;
+- no HUD da partida, a pastilha "Voz não configurada neste ambiente" batia na barra de
+  território: no HUD fica "Sem voz" (o texto completo segue no lobby e no menu);
+- botões e analógico de toque quase invisíveis sobre cenário claro: fundo escuro
+  translúcido, aro e sombra no texto.
+
+Falsos positivos descartados: contraste 1:1 em botões com degradê (a ferramenta não lê o
+fundo), itens "fora da tela" capturados no meio da animação de recolher, e alvos de 42 px
+de altura no desktop.
+
 ## Voz: diagnóstico (24/09/2026)
 
 **Método:** `e2e/voz-diagnostico.mjs` amostra a cada 50 ms, na janela da Ana, as camadas
@@ -174,3 +215,7 @@ durante o teste não recarrega as páginas.
   efeito real; E2E atualizados.
 - **CP6** (`e32ce54` e seguintes): desempenho medido, validação agregada executada e
   documentação.
+- **CP7** (`984afce`, `5b54030`, `0c2b76f`): rede sob latência emulada, buffer adaptativo,
+  banco de espectadores, caça a bugs de cliente e servidor; 219 testes.
+- **CP8** (`4a6fc02` e seguinte): celular só na horizontal e correções da auditoria de UI/UX.
+

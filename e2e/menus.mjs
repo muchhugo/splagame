@@ -169,6 +169,18 @@ st = await stage(A.page);
 check(st.n <= 10 && st.hidden[0] + st.hidden[1] >= 6, `8 × 8: no palco ${st.n} personagens, ${st.hidden[0] + st.hidden[1]} só na lista`);
 check((await A.page.$$('.prow')).length >= 16, 'a lista mostra os 16 (pessoas e bots)');
 console.log(`malhas ativas do palco em 8 × 8: ${st.meshes}`);
+const tagOverlaps = await rt(A.page, () => {
+  const r = [...document.querySelectorAll('.stag')].map((e) => e.getBoundingClientRect());
+  let n = 0;
+  for (let i = 0; i < r.length; i++)
+    for (let j = i + 1; j < r.length; j++) {
+      const x = Math.min(r[i].right, r[j].right) - Math.max(r[i].left, r[j].left);
+      const y = Math.min(r[i].bottom, r[j].bottom) - Math.max(r[i].top, r[j].top);
+      if (x > 2 && y > 2) n++;
+    }
+  return n;
+});
+check(tagOverlaps === 0, `8 × 8: nenhuma etiqueta do palco em cima de outra (${tagOverlaps})`);
 await A.page.screenshot({ path: `${DIR}08-oito.png` });
 check(A.errs.length === 0 && B.errs.length === 0, `sem erros de página${[...A.errs, ...B.errs].length ? `: ${[...A.errs, ...B.errs].slice(0, 3).join(' | ')}` : ''}`);
 await B.ctx.close();
@@ -197,6 +209,16 @@ const panel = await C.page.locator('.hub-panel').boundingBox();
 const btn = await C.page.locator('.go-btn').boundingBox();
 check(btn && btn.height >= 48 && btn.y + btn.height <= 390, `celular deitado: ação principal grande e inteira na tela (${btn && Math.round(btn.height)} px)`);
 check(panel && btn && (panel.x + panel.width <= btn.x || panel.y + panel.height <= btn.y), 'celular deitado: painel e ação principal não se sobrepõem');
+// configurações no celular deitado: todas as categorias alcançáveis
+await C.page.tap('.hub-gear, button[aria-label="Configurações"]').catch(() => null);
+await C.page.waitForSelector('.settings, .menu', { timeout: 5000 });
+if (!(await C.page.isVisible('.settings'))) await C.page.tap('.menu button:has-text("Configurações")');
+const acc = C.page.locator('.set-tab:has-text("Acessibilidade")');
+await acc.scrollIntoViewIfNeeded();
+await acc.tap();
+const accBox = await acc.boundingBox();
+check((await C.page.textContent('.set-tab[aria-selected=true]')) === 'Acessibilidade' && accBox && accBox.y + accBox.height <= 390, 'celular deitado: a última categoria das configurações é alcançável');
+await C.page.keyboard.press('Escape');
 check(C.errs.length === 0, `celular sem erros de página${C.errs.length ? `: ${C.errs.slice(0, 3).join(' | ')}` : ''}`);
 await C.ctx.close();
 

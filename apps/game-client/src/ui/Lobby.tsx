@@ -9,6 +9,7 @@ import { useHints, type HintAction } from '../app/hints';
 import { useVoiceByUser, type VoiceInfo } from '../app/profiles';
 import { useTeams } from '../app/teams';
 import { stageStore } from '../game/stage';
+import type { StageTag } from '../game/render/LobbyStage';
 import { gamepadHub } from '../game/input/gamepad';
 import { HAIR_COLORS, HAIR_COLOR_NAMES, HAIR_STYLE_NAMES, SKIN_TONES } from '../game/render/CharacterView';
 import { Avatar } from './Avatar';
@@ -228,12 +229,12 @@ function IntroCard({ lobby }: { lobby: LobbyState }) {
 function StageTags({ lobby, myId }: { lobby: LobbyState; myId: number }) {
   const tags = useStore(stageStore, (s) => s.tags);
   const voices = useVoiceByUser();
+  const placed = declutter(tags, lobby, myId);
   return (
     <div className="stage-tags" aria-hidden="true">
-      {tags.map((t) => {
+      {placed.map(({ t, y, scale }) => {
         const p = lobby.players.find((x) => x.playerId === t.playerId);
-        const scale = Math.max(0.72, Math.min(1.1, 9 / t.dist));
-        const style = { transform: `translate(${t.x.toFixed(1)}px, ${t.y.toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})` };
+        const style = { transform: `translate(${t.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})` };
         if (!p)
           return (
             <div key={t.playerId} className="stag bot" style={style}>
@@ -253,6 +254,39 @@ function StageTags({ lobby, myId }: { lobby: LobbyState; myId: number }) {
       })}
     </div>
   );
+}
+
+/**
+ * Etiquetas sem sobreposição: você primeiro, depois quem está pronto, as outras pessoas
+ * e por último os bots. Uma pessoa que cairia em cima de outra etiqueta sobe um degrau
+ * (até três); um bot que cairia em cima de algo some do palco (continua na lista).
+ */
+function declutter(tags: StageTag[], lobby: LobbyState, myId: number) {
+  const rank = (t: StageTag) => {
+    const p = lobby.players.find((x) => x.playerId === t.playerId);
+    if (!p) return 3;
+    if (p.playerId === myId) return 0;
+    return p.ready ? 1 : 2;
+  };
+  const boxes: { l: number; r: number; t: number; b: number }[] = [];
+  const hit = (l: number, r: number, t: number, b: number) => boxes.some((o) => l < o.r && r > o.l && t < o.b && b > o.t);
+  const out: { t: StageTag; y: number; scale: number }[] = [];
+  for (const t of [...tags].sort((a, b) => rank(a) - rank(b) || a.dist - b.dist)) {
+    const scale = Math.max(0.72, Math.min(1.1, 9 / t.dist));
+    const p = lobby.players.find((x) => x.playerId === t.playerId);
+    const w = (p ? 64 + 8 * Math.min(18, (p.playerId === myId ? 4 : p.displayName.length)) : 62) * scale;
+    const h = 32 * scale;
+    let y = t.y;
+    let ok = !hit(t.x - w / 2, t.x + w / 2, y - h, y);
+    for (let step = 0; !ok && p && step < 3; step++) {
+      y -= h + 2;
+      ok = !hit(t.x - w / 2, t.x + w / 2, y - h, y);
+    }
+    if (!ok) continue;
+    boxes.push({ l: t.x - w / 2, r: t.x + w / 2, t: y - h, b: y });
+    out.push({ t, y, scale });
+  }
+  return out;
 }
 
 /* ------------------------------ Sala ------------------------------ */
