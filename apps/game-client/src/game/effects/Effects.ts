@@ -500,6 +500,27 @@ export class Effects {
     for (const o of this.objects.values()) if (o.kind === 'wheel') o.node.rotation.y += dt * 9;
   }
 
+  /** Libera mira laser e marcador de chegada de quem não está mais na sala (bots de rodadas antigas). */
+  prunePlayers(keep: Set<number>) {
+    for (const [id, b] of this.lasers) {
+      if (keep.has(id)) continue;
+      b.mesh.dispose();
+      this.objectMats = this.objectMats.filter((x) => x !== b.mat);
+      b.mat.dispose();
+      this.lasers.delete(id);
+    }
+    for (const [id, m] of this.markers) {
+      if (keep.has(id)) continue;
+      const mat = m.mesh.material as StandardMaterial | null;
+      m.mesh.dispose();
+      if (mat) {
+        this.objectMats = this.objectMats.filter((x) => x !== mat);
+        mat.dispose();
+      }
+      this.markers.delete(id);
+    }
+  }
+
   clearAll() {
     this.projectiles = [];
     this.droplets.clear();

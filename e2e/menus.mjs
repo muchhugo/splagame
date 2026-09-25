@@ -2,7 +2,7 @@
 // na rodada), com dois navegadores na mesma sala e um celular emulado.
 //   E2E_SWIFTSHADER=1 node e2e/menus.mjs
 import { mkdirSync } from 'node:fs';
-import { OUT, check, done, launch, openStandalone, watchErrors } from './lib.mjs';
+import { GAME_URL, OUT, check, done, launch, openStandalone, watchErrors } from './lib.mjs';
 
 const DIR = `${OUT}capturas/menus/`;
 mkdirSync(DIR, { recursive: true });
@@ -121,6 +121,17 @@ await A.page.waitForTimeout(300);
 check(!(await A.page.isVisible('.settings')), 'Esc fecha as configurações');
 
 // ---------------------------------------------------------------- lobby → partida
+// o "Valendo!" dura ~1,3 s: um observador na página registra a aparição (a captura lenta pode cobri-la)
+await A.page.evaluate(() => {
+  window.__goSeen = false;
+  const mo = new MutationObserver(() => {
+    if (document.querySelector('.go-splash')) {
+      window.__goSeen = true;
+      mo.disconnect();
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+});
 await A.page.click('text=Começar partida');
 await A.page.waitForSelector('.hub.is-leaving', { timeout: 5000 }).catch(() => null);
 check(!!(await A.page.$('.hub.is-leaving')) || (await rt(A.page, () => window.__borrifo.uiStore.get().lobby.phase)) !== 'lobby', 'a interface do lobby recolhe (não some de uma vez)');
@@ -131,8 +142,8 @@ check(st.active === false && st.n === 0, 'palco liberado ao começar (os bonecos
 await A.page.waitForSelector('.ri-teams', { timeout: 20000 });
 check(await A.page.isVisible('.ri-count'), 'as duas turmas aparecem frente a frente na contagem');
 await A.page.screenshot({ path: `${DIR}06-contagem.png` });
-await A.page.waitForSelector('.go-splash', { timeout: 15000 });
-await A.page.screenshot({ path: `${DIR}07-valendo.png` });
+await A.page.waitForFunction(() => window.__goSeen, null, { timeout: 45000 });
+if (await A.page.isVisible('.go-splash')) await A.page.screenshot({ path: `${DIR}07-valendo.png` });
 check(true, '"Valendo!" na largada');
 await A.page.waitForTimeout(2500);
 const fov = await rt(A.page, () => Math.round((window.__borrifo.controller.runtime.rig.camera.fov * 180) / Math.PI));
@@ -163,26 +174,29 @@ check(A.errs.length === 0 && B.errs.length === 0, `sem erros de página${[...A.e
 await B.ctx.close();
 await A.ctx.close();
 
-// ---------------------------------------------------------------- celular em pé
-const C = await open('carla', { width: 390, height: 844 }, { isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+// ---------------------------------------------------------------- celular: só na horizontal
+// em pé a tela de girar cobre tudo, inclusive a entrada do laboratório
+const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+const P = { ctx: pctx, page: await pctx.newPage() };
+await P.page.goto(GAME_URL);
+await P.page.waitForSelector('.rotate-screen', { timeout: 15000 }).catch(() => null);
+check(await P.page.isVisible('.rotate-screen'), 'celular em pé: pede para girar o aparelho (o jogo é só na horizontal)');
+await P.page.screenshot({ path: `${DIR}09-celular-em-pe.png` });
+await P.ctx.close();
+const C = await open('elis', { width: 844, height: 390 }, { isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 await C.page.evaluate(() => window.__borrifo.controller.skipIntro());
 await C.page.waitForTimeout(1200);
-check(await C.page.$('.hub.is-narrow'), 'celular: cena em cima, painel em folha embaixo');
+check(!(await C.page.isVisible('.rotate-screen')) && !(await C.page.$('.hub.is-narrow')), 'celular deitado: lobby com painel lateral (sem tela de girar)');
 await C.page.tap('[role=tab]:has-text("Você")');
-await C.page.waitForTimeout(800);
-const framing = await rt(C.page, () => window.__borrifo.controller.runtime.stage.framing);
-check(framing === 'topo', 'celular: o personagem fica na faixa de cima');
-const scrolls = await rt(C.page, () => { const r = document.querySelector('.customize.carousel .tool-row'); return r ? getComputedStyle(r).overflowX : ''; });
-check(scrolls === 'auto', 'celular: ferramentas em carrossel horizontal');
+await C.page.waitForTimeout(1500);
+check((await rt(C.page, () => window.__borrifo.controller.runtime.stage.mode)) === 'vitrine', 'celular deitado: vitrine do personagem');
 await C.page.tap('.tool-tile:has-text("Rodo")');
 await C.page.waitForTimeout(1500);
-await C.page.screenshot({ path: `${DIR}09-celular-voce.png` });
-await C.page.tap('.sheet-grip');
-await C.page.waitForTimeout(600);
-check(await C.page.$('.hub.sheet-closed'), 'celular: a folha recolhe para mostrar a cena');
-await C.page.screenshot({ path: `${DIR}10-celular-folha.png` });
+await C.page.screenshot({ path: `${DIR}10-celular-deitado-voce.png` });
+const panel = await C.page.locator('.hub-panel').boundingBox();
 const btn = await C.page.locator('.go-btn').boundingBox();
-check(btn && btn.y + btn.height > 844 - 120 && btn.height >= 56, 'celular: ação principal grande, ao alcance do polegar');
+check(btn && btn.height >= 48 && btn.y + btn.height <= 390, `celular deitado: ação principal grande e inteira na tela (${btn && Math.round(btn.height)} px)`);
+check(panel && btn && (panel.x + panel.width <= btn.x || panel.y + panel.height <= btn.y), 'celular deitado: painel e ação principal não se sobrepõem');
 check(C.errs.length === 0, `celular sem erros de página${C.errs.length ? `: ${C.errs.slice(0, 3).join(' | ')}` : ''}`);
 await C.ctx.close();
 

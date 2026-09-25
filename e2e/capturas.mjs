@@ -1,6 +1,6 @@
 // Capturas comparáveis do jogo EXECUTADO (não são imagens de conceito), para o
 // antes/depois do marco visual. Desktop (1280×720) e celular EMULADO (Playwright
-// isMobile/hasTouch, 844×390 deitado e 390×844 em pé). SwiftShader: a imagem é
+// isMobile/hasTouch, 844×390 deitado; em pé só a tela de girar o aparelho). SwiftShader: a imagem é
 // fiel, a taxa de quadros não.
 //
 //   ROUND_DURATION_SECONDS=40 no servidor para chegar ao resultado rápido.
@@ -108,13 +108,13 @@ const flows = {
   'celular-correio': () => fluxo('celular-correio', { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 }, 'elis', 'correio'),
 };
 for (const k of SO.split(',')) await flows[k]();
-// em pé: só telas de menu
+// em pé: o jogo é só na horizontal; a captura mostra a tela que pede para girar
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   await openStandalone(page, 'carla', `cap-pe-${Date.now().toString(36)}`);
   await page.waitForTimeout(900);
-  await shot(page, 'celular-em-pe-lobby');
+  await shot(page, 'celular-em-pe-girar');
   await ctx.close();
 }
 await browser.close();

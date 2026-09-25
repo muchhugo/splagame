@@ -81,7 +81,7 @@ com 347 malhas ativas.
 - Lente de 44° no grupo e 34° na vitrine; na partida, vale o campo de visão das
   configurações.
 - O enquadramento desloca câmera e alvo juntos, para o grupo cair no espaço livre da
-  interface: à direita no desktop, em cima no celular em pé.
+  interface: à direita no desktop e no celular deitado, em cima na janela estreita.
 
 ## Aba Você: o personagem de verdade
 
@@ -124,15 +124,32 @@ Controles · Toque · Acessibilidade**.
   lados trocados para canhotos.
 - L1/R1 trocam de categoria. Esc ou B fecham.
 
-## Celular
+## Celular: só na horizontal
 
-O celular em pé não é o desktop comprimido:
+O jogo, no celular, é jogado **deitado**. Em pé (toque como ponteiro principal e
+orientação retrato), uma tela cobre tudo e pede para girar o aparelho; onde o navegador
+permite, o jogo também pede a trava de orientação em paisagem (`screen.orientation.lock`).
+A tela some sozinha quando o aparelho gira, sem recarregar nada.
 
-- a cena fica em cima, com o personagem ou o grupo na faixa superior;
-- o painel vira uma **folha** embaixo, que recolhe pela alça para mostrar a cena;
-- ferramentas e cabelos passam em **carrossel** horizontal;
-- a ação principal fica grande (≥ 56 px), ao alcance do polegar;
-- no celular deitado, o painel fica lateral, mais estreito, e o cartaz fica enxuto.
+No celular deitado:
+
+- o painel fica lateral e mais estreito, e o cartaz fica enxuto;
+- a cena ocupa o espaço à direita do painel, com o grupo ou o personagem;
+- a ação principal fica grande (≥ 48 px) e não encosta no painel.
+
+O layout de **folha** (painel embaixo, recolhido pela alça, carrosséis horizontais)
+continua existindo, mas só para janelas estreitas de desktop (ponteiro fino).
+
+## Banco (entrada com a partida em andamento)
+
+Quem entra com a rodada já rolando fica **no banco**: assiste ao vivo, sem personagem
+próprio, e joga a próxima rodada.
+
+- A câmera acompanha alguém sozinha; E/→ e Q/← trocam, V (ou o botão) mostra a visão
+  geral. No toque (ou navegando com o controle), os botões da faixa fazem o mesmo.
+- O HUD mostra tempo e placar; mira, tanque e vida ficam escondidos.
+- Nada do banco move alguém nem trava o ponteiro; o servidor não manda eventos pessoais.
+- Validado em `e2e/banco.mjs`.
 
 ## O que foi preservado
 
@@ -158,7 +175,8 @@ celular emulado. Todas as verificações passaram em SwiftShader:
   "Valendo!", campo de visão da partida;
 - volta ao lobby sem sobras da rodada;
 - 8 × 8 com o palco limitado;
-- celular: folha, enquadramento em cima, carrossel, folha recolhida e ação grande.
+- celular em pé: tela de girar o aparelho;
+- celular deitado: painel lateral, vitrine, ação grande sem sobreposição.
 
 As capturas ficam em `e2e/out/capturas/menus/`.
 

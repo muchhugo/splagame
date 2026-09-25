@@ -151,6 +151,7 @@ export function App() {
       {screen === 'closed' ? <Closed /> : null}
       {menuOpen && (screen === 'match' || screen === 'lobby' || screen === 'results' || screen === 'waiting') ? <Menu /> : null}
       <Notices />
+      <RotateToLandscape />
     </>
   );
 }
@@ -221,6 +222,38 @@ function Waiting() {
         {hints.device === 'teclado' ? <span className="bench-keys">Q/E trocam · V visão geral</span> : null}
       </div>
     </>
+  );
+}
+
+/**
+ * No celular o jogo é só na horizontal: em pé, uma tela pede para girar o aparelho
+ * (a partida continua para os outros; nada é pausado). Tenta travar a orientação
+ * quando o navegador permite (tela cheia); se não permitir, a tela de girar basta.
+ */
+function RotateToLandscape() {
+  const q = '(pointer: coarse) and (orientation: portrait)';
+  const [portrait, setPortrait] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const m = matchMedia(q);
+    const on = () => setPortrait(m.matches);
+    m.addEventListener('change', on);
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    void o?.lock?.('landscape').catch(() => {});
+    return () => m.removeEventListener('change', on);
+  }, []);
+  if (!portrait) return null;
+  return (
+    <div className="rotate-screen" role="alertdialog" aria-labelledby="rotate-title">
+      <svg viewBox="0 0 120 120" className="rotate-phone" aria-hidden="true">
+        <rect x="38" y="18" width="44" height="80" rx="9" fill="var(--creme)" stroke="var(--barro-900)" strokeWidth="5" />
+        <rect x="45" y="28" width="30" height="58" rx="3" fill="var(--ouro)" />
+        <path d="M22 70 a40 40 0 0 0 26 34" fill="none" stroke="var(--creme)" strokeWidth="6" strokeLinecap="round" />
+        <path d="M40 98 l9 7 -10 5" fill="none" stroke="var(--creme)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <h2 id="rotate-title">Gire o celular</h2>
+      <p>O Borrifo é jogado com o celular deitado.</p>
+    </div>
   );
 }
 

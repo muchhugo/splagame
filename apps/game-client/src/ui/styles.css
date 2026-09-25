@@ -2815,3 +2815,47 @@ html[data-reduce-motion='true'] .round-intro * {
     display: none;
   }
 }
+
+/* ---------------- celular em pé: o jogo é só na horizontal ---------------- */
+.rotate-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(900px 600px at 50% 30%, rgba(242, 74, 28, 0.25), transparent 60%), var(--barro-900);
+}
+.rotate-screen h2 {
+  margin: 8px 0 0;
+  font-size: 30px;
+  font-weight: 900;
+  transform: rotate(-2deg);
+}
+.rotate-screen p {
+  margin: 0;
+  color: rgba(255, 244, 230, 0.8);
+}
+.rotate-phone {
+  width: 120px;
+  height: 120px;
+  animation: rotate-hint 2.2s ease-in-out infinite;
+}
+@keyframes rotate-hint {
+  0%,
+  30% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-phone {
+    animation: none;
+  }
+}

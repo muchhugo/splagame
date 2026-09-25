@@ -307,6 +307,7 @@ export class GameRuntime {
   setRoster(players: LobbyPlayer[], myId: number) {
     this.myId = myId;
     this.roster = new Map(players.map((p) => [p.playerId, p]));
+    this.effects?.prunePlayers(new Set(this.roster.keys()));
     const me = this.roster.get(myId);
     if (me) this.myTeam = me.team;
   }

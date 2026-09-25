@@ -37,8 +37,9 @@ const TABS: Array<[Tab, string]> = [
 
 /** Tela estreita (celular em pé): a cena fica em cima e o painel vira folha embaixo. */
 function useNarrow(): boolean {
-  // só retrato: celular deitado usa o painel lateral compacto (não a folha)
-  const q = '(max-width: 760px) and (orientation: portrait), (max-aspect-ratio: 4/5)';
+  // celular é só na horizontal (em pé, a tela pede para girar); a folha fica para janelas
+  // estreitas de desktop (ex.: Atividade ao lado do chat), sem ponteiro de toque
+  const q = '(pointer: fine) and (max-width: 760px), (pointer: fine) and (max-aspect-ratio: 4/5)';
   const [n, setN] = useState(() => typeof matchMedia === 'function' && matchMedia(q).matches);
   useEffect(() => {
     if (typeof matchMedia !== 'function') return;
