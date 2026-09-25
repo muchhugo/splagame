@@ -361,6 +361,12 @@ export const PFLAG_CARRIER = 1 << 13;
 export const PFLAG_EMBALO = 1 << 14;
 export const PFLAG_FOLEGO = 1 << 15;
 export const PFLAG_MUTIRAO = 1 << 16;
+/**
+ * Oculto para quem recebe: a posição é a ÚLTIMA vista (congelada), sem velocidade, mira
+ * nem estado de ação. O servidor só manda isso a adversários e ao banco; aliados recebem
+ * a posição real. O cliente não desenha, não toca som nem mira em quem vem oculto.
+ */
+export const PFLAG_HIDDEN = 1 << 17;
 
 export type BuffKind = 'embalo' | 'folego';
 

@@ -137,3 +137,27 @@ export const MATCH: MatchTuning = {
   finishingSeconds: 2.5,
   resultsTimeoutSeconds: 60,
 };
+
+/**
+ * Furtividade de quem está imerso na própria tinta. Regra única, aplicada pelo SERVIDOR
+ * na filtragem por interesse (quem não deve ver não recebe a posição) e pelo cliente só
+ * para apresentação. Imerso fica exposto se anda rápido (ondulação), está perto de um
+ * adversário, carrega a cápsula, acabou de levar dano, pegar buff ou fazer Mutirão.
+ */
+export interface StealthTuning {
+  /** Distância (m) em que um adversário vivo enxerga quem está imerso. */
+  revealRadius: number;
+  /** Velocidade (m/s) acima da qual a ondulação denuncia quem está imerso. */
+  revealSpeed: number;
+  /** Tempo (s) sem nenhuma exposição até a posição deixar de ser enviada. */
+  concealDelay: number;
+  /** Tempo (s) exposto depois de levar dano, pegar buff ou fazer Mutirão. */
+  eventReveal: number;
+}
+
+export const STEALTH: StealthTuning = {
+  revealRadius: 3.5,
+  revealSpeed: 1.5,
+  concealDelay: 0.4,
+  eventReveal: 1.0,
+};

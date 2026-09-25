@@ -19,6 +19,7 @@ import {
   PFLAG_PROTECTED,
   PFLAG_SPECIAL_READY,
   PFLAG_SUBMERGED,
+  PFLAG_HIDDEN,
   PFLAG_SWINGING,
   PFLAG_TRAVEL_FLY,
   PFLAG_TRAVEL_PREP,
@@ -927,9 +928,12 @@ export class GameRuntime {
         embalo: (f & PFLAG_EMBALO) !== 0,
         folego: (f & PFLAG_FOLEGO) !== 0,
         mutirao: (f & PFLAG_MUTIRAO) !== 0,
+        hidden: (f & PFLAG_HIDDEN) !== 0,
       };
       this.updateView(id, vis, dt);
-      this.remoteCosmetics(id, vis, dt);
+      // oculto: sem laser, jato, som nem ondulação (a posição é só a última vista)
+      if (!vis.hidden) this.remoteCosmetics(id, vis, dt);
+      else this.remoteCosmetics(id, { ...vis, alive: false }, dt);
     }
 
     this.effects.cameraPos = [this.rig.camera.position.x, this.rig.camera.position.y, this.rig.camera.position.z];

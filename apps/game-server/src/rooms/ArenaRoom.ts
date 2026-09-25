@@ -80,6 +80,7 @@ import { KeyedRateLimiter, TokenBucket } from '../rateLimit';
 import type { ResultSink } from '../results';
 import { staticWorld, type StaticWorld } from '../world';
 import { planFormation, type Formation } from '../formation';
+import { StealthFilter, type StealthSubject } from '../visibility';
 
 interface RoomPlayer {
   playerId: number;
@@ -153,6 +154,9 @@ export class ArenaRoom extends Room {
   private phaseDeadlineTick = 0;
   private tickCount = 0;
   private pendingEvents: Array<{ ev: GameEvent; to?: number }> = [];
+  /** Filtragem por interesse de quem está imerso (posição só para quem pode ver). */
+  private stealth = new StealthFilter();
+  private stealthTick = -1;
   private lastResult: RoundResult | null = null;
   private replacedSessions = new Set<string>();
   private botSeed = 1;
@@ -324,6 +328,7 @@ export class ArenaRoom extends Room {
     } else {
       this.players.delete(p.playerId);
       this.sim?.removePlayer(p.playerId);
+      this.stealth.remove(p.playerId);
       log('info', 'player.left', { activitySessionId: this.activitySessionId, matchId: this.matchId, playerId: p.playerId });
     }
     this.promoteHostIfNeeded();
@@ -713,6 +718,8 @@ export class ArenaRoom extends Room {
     const seed = (Math.random() * 2 ** 31) | 0;
     this.teamPairId = pickTeamPair(this.paletteSeed, this.roundId).id;
     const modeDef = MODES[this.mode];
+    this.stealth.reset();
+    this.stealthTick = -1;
     this.sim = new MatchSimulation({
       map: this.world.map,
       layout: this.world.layout,
@@ -803,7 +810,10 @@ export class ArenaRoom extends Room {
       case 'running': {
         const sim = this.sim!;
         sim.step();
-        for (const e of sim.drainEvents()) this.pendingEvents.push(e);
+        for (const e of sim.drainEvents()) {
+          this.stealth.observe(e.ev);
+          this.pendingEvents.push(e);
+        }
         if (this.phase === 'countdown' && sim.phase === 'running') {
           this.phase = 'running';
           this.broadcast(S2C.ROUND_START, { roundId: this.roundId, durationMs: sim.phaseRemainingMs, startTick: sim.startTick });
@@ -858,7 +868,20 @@ export class ArenaRoom extends Room {
     const sim = this.sim;
     if (!sim) return;
     const tuples: RemotePlayerTuple[] = [];
-    for (const sp of sim.players.values()) tuples.push(remoteTuple(sp, sim.isCarrier(sp.id)));
+    const subjects: StealthSubject[] = [];
+    for (const sp of sim.players.values()) {
+      const carrier = sim.isCarrier(sp.id);
+      tuples.push(remoteTuple(sp, carrier));
+      const st = sp.state;
+      subjects.push({ id: sp.id, team: sp.team, alive: st.alive, submerged: st.submerged, pos: st.pos, speed: Math.hypot(st.vel[0], st.vel[1], st.vel[2]), carrier, exposedByState: st.spawnProtect > 0 || st.travelPhase > 0 });
+    }
+    // quem não pode ver um imerso oculto recebe só a última posição vista (ver visibility.ts)
+    const dt = this.stealthTick < 0 ? 0 : Math.max(0, sim.tick - this.stealthTick) / TICK_RATE;
+    this.stealthTick = sim.tick;
+    const masked = this.stealth.update(subjects, tuples, dt);
+    const view = (team: TeamId | null) => tuples.map((t, i) => (subjects[i].team === team ? t : masked[i]));
+    const byTeam: Record<TeamId, RemotePlayerTuple[]> = { 0: view(0), 1: view(1) };
+    const bench = masked;
     const objects: WorldObjectState[] = sim.objects.map((o) =>
       o.kind === 'moringa'
         ? { id: o.id, kind: 'moringa', team: o.team, owner: o.owner, p: r2(o.pos), t: o.armed ? Math.max(0, 1 - o.fuse / MORINGA.fuse) : 0 }
@@ -880,7 +903,7 @@ export class ArenaRoom extends Room {
         ph: this.phase,
         tl: Math.round(sim.phaseRemainingMs),
         me: sp ? { ...toSelfSnapshot(sp.state), bf: sp.mode.buff, bt: Math.round(sp.mode.buffTicks / TICK_RATE * 10) / 10, mt: Math.round(sp.mode.mutiraoTicks / TICK_RATE * 10) / 10, mc: Math.round(sp.mode.mutiraoCooldownTicks / TICK_RATE * 10) / 10 } : null,
-        pl: tuples,
+        pl: sp ? byTeam[sp.team] : bench,
         ob: objects,
         ev: events.filter((e) => e.to === undefined || (p.inRound && e.to === p.playerId)).map((e) => e.ev),
         sc,

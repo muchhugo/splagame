@@ -1,6 +1,7 @@
 import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, DynamicTexture } from '@babylonjs/core';
 import type { AppearanceId, AppearanceParts, TeamId, WeaponId } from '@borrifo/game-contracts';
 import { DEFAULT_APPEARANCE, parseAppearanceId } from '@borrifo/game-contracts';
+import { STEALTH } from '@borrifo/game-content';
 import { sharedToon, ToonMaterial, type ToonMeshState } from './ToonMaterial';
 
 /** Estado visual por frame (derivado da previsão local ou da interpolação remota). */
@@ -33,6 +34,8 @@ export interface CharacterVisual {
   embalo?: boolean;
   folego?: boolean;
   mutirao?: boolean;
+  /** Oculto pelo servidor (imerso fora do alcance de quem vê): a pose é a última vista. */
+  hidden?: boolean;
 }
 
 /** Tons de pele escolhidos pelo jogador (nunca deduzidos). */
@@ -699,10 +702,21 @@ export class CharacterView {
 
     // exposição reduzida imerso (não é invisibilidade absoluta)
     let vis = 1;
-    if (v.submerged) vis = this.isEnemy ? (v.speed > 1.5 ? 0.14 : 0.05) : 0.45;
+    if (v.submerged) vis = this.isEnemy ? (v.speed > STEALTH.revealSpeed ? 0.14 : 0.05) : 0.45;
     if (v.inEnemyInk) vis = 1;
+    // oculto: o servidor nem mandou a posição atual; some de vez (a pose é a última vista)
+    if (v.hidden) vis = 0;
     vis = Math.min(vis, this.nearFade);
     this.visibleFactor += (vis - this.visibleFactor) * Math.min(1, dt * 10);
+    if (v.hidden && this.visibleFactor < 0.02) {
+      // some de vez; ao reaparecer em outro lugar não herda passo, pouso nem velocidade
+      this.visibleFactor = 0;
+      this.root.setEnabled(false);
+      this.foot.step = false;
+      this.foot.landed = 0;
+      this.prevPos = null;
+      return;
+    }
     const translucent = this.visibleFactor < 0.98;
     for (const m of this.meshes) if (m !== this.swirl) m.visibility = this.visibleFactor;
     // LOD por distância (menos desenho com 16 em campo): o contorno é uma passada extra

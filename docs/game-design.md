@@ -28,8 +28,11 @@ foram ajustados em partidas com bots, não em testes com pessoas.
 | Atirar | sim | não (pedir disparo sai do fluxo e só atira depois da transição) |
 | Transição | 0,12 s para fluxo | 0,16 s para combate |
 
-- Submerso na própria tinta, o jogador fica pouco visível para o adversário (5% parado, 14% em
-  movimento), mas **nunca invisível** dentro de tinta inimiga.
+- Submerso na própria tinta, o jogador fica pouco visível para o adversário por perto (5%
+  parado, 14% em movimento, com ondulação acima de 1,5 m/s) e **oculto** parado ou devagar
+  longe de todo adversário (mais de 3,5 m): nesse caso o servidor nem manda a posição. Levar
+  dano, pegar buff, fazer Mutirão, carregar a cápsula ou andar rápido revelam. **Nunca
+  invisível** dentro de tinta inimiga. Detalhes em [networking.md](networking.md#filtragem-por-interesse-quem-está-imerso).
 - **Escalada:** na forma Pião, contra uma parede com tinta própria na face tocada, sobe a
   6,2 m/s. No topo, sai com um salto de borda (sem teleporte). Perde a aderência se o inimigo
   pinta a face.

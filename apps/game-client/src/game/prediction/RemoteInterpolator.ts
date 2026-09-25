@@ -1,4 +1,4 @@
-import type { RemotePlayerTuple } from '@borrifo/game-contracts';
+import { PFLAG_HIDDEN, type RemotePlayerTuple } from '@borrifo/game-contracts';
 
 export interface RemoteSample {
   tick: number;
@@ -88,8 +88,9 @@ export class RemoteInterpolator {
       if (a.tick <= tick) {
         const b = arr[i + 1];
         if (!b) return a;
-        // teleporte (reaparecimento/deslocamento): não interpola
-        const jump = Math.hypot(b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]) > 4;
+        // teleporte (reaparecimento/deslocamento) ou troca oculto ↔ visível: não interpola
+        // (a posição oculta é a última vista; deslizar dela até a real inventaria um trajeto)
+        const jump = (a.flags ^ b.flags) & PFLAG_HIDDEN || Math.hypot(b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]) > 4;
         const t = jump ? 1 : (tick - a.tick) / Math.max(1, b.tick - a.tick);
         return {
           ...b,
@@ -97,8 +98,8 @@ export class RemoteInterpolator {
           yaw: lerpAngle(a.yaw, b.yaw, t),
           pitch: a.pitch + (b.pitch - a.pitch) * t,
           charge: a.charge + (b.charge - a.charge) * t,
-          flags: t < 0.5 ? a.flags : b.flags,
-          form: t < 0.5 ? a.form : b.form,
+          flags: jump ? b.flags : t < 0.5 ? a.flags : b.flags,
+          form: jump ? b.form : t < 0.5 ? a.form : b.form,
         };
       }
     }

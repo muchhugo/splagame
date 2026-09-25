@@ -85,8 +85,39 @@ sc   placar parcial em unidades internas
 
 ## Remotos
 
-`RemoteInterpolator` guarda um pequeno buffer e renderiza 3 ticks atrás, interpolando posição
-e ângulos. Sem amostra nova, ele segura a última, sem extrapolar sem limite.
+`RemoteInterpolator` guarda um pequeno buffer com atraso adaptativo (3 a 9 ticks, segue o
+jitter medido) e interpola posição e ângulos. Sem amostra nova, extrapola pela velocidade
+por até 3 ticks e depois segura a última pose. Não interpola através de um teleporte
+(> 4 m) nem através da troca oculto ↔ visível.
+
+## Filtragem por interesse: quem está imerso
+
+O servidor não manda a posição atual de quem está oculto para quem não deve ver
+(`apps/game-server/src/visibility.ts`, regra em `STEALTH` no `tuning.ts`). A interface não
+é a camada de segurança.
+
+- **Oculto** = vivo, imerso na própria tinta, devagar (≤ 1,5 m/s, sem ondulação), sem
+  adversário vivo a até 3,5 m, sem cápsula, sem proteção de reaparecimento nem
+  deslocamento tático, e sem dano, buff, Mutirão, arremesso ou especial no último 1 s.
+- Só esconde depois de 0,4 s seguidos nessa condição (sem piscar na borda da regra); volta
+  a ser visível **no mesmo snapshot** em que qualquer condição deixa de valer.
+- **Quem recebe o quê:** aliados, a posição real; adversários e o banco, enquanto oculto,
+  a **última tupla vista, congelada**: mesma posição e rotação, pitch, carga e velocidade
+  zerados, flags reduzidas às públicas (vivo, especial pronto, proteção, buffs) mais
+  `PFLAG_SUBMERGED | PFLAG_HIDDEN`. O banco conta como adversário: a chamada de voz é
+  compartilhada por todas as turmas.
+- O filtro vale em todo caminho de envio, inclusive o snapshot de ressincronização de quem
+  entra ou volta com a rodada em andamento.
+- **Cliente:** `PFLAG_HIDDEN` apaga o personagem (sem ondulação, som, laser, nome ou mira
+  assistida) e não interpola entre a pose congelada e a real ao reaparecer.
+- **Bots** rodam no servidor e usam a própria regra (mais fraca: só enxergam imersos a até
+  3,5 m ou muito rápidos); não recebem snapshot.
+- **Testes:** `apps/game-server/test/visibility.test.ts` (regras) e
+  `apps/game-server/test/stealth.test.ts`, que confere o **payload recebido** por
+  adversários, aliado, banco e por um adversário que reconecta, com a pessoa imersa
+  andando devagar de verdade na simulação; e `apps/game-client/test/interpolator.test.ts`.
+- **Não filtrado ainda:** eventos que já são públicos por regra (acerto, buff, Mutirão)
+  revelam de propósito; a tinta pintada revela onde alguém esteve, como no jogo.
 
 ## Sem compensação de latência
 

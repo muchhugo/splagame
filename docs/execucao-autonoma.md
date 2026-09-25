@@ -117,8 +117,9 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
   reverso precisa de `trust proxy` configurado e de um teto de entradas.
 - **S19:** o teto de velocidade no ar e o fim do Embalo não são previstos no cliente; geram
   pequenas correções nessas transições.
-- **S22:** a posição de quem está submerso vai para todos os clientes (a interface esconde,
-  mas um cliente modificado veria). Corrigir exige filtrar o snapshot por pessoa.
+- ~~**S22**~~ **resolvido:** filtragem por interesse no servidor; adversários e banco
+  recebem só a última posição vista de quem está oculto
+  ([networking.md](networking.md#filtragem-por-interesse-quem-está-imerso)).
 - **G24 / L21:** ainda há alocações por quadro em trechos do HUD e das etiquetas.
 - Freio falso nos remotos quando falta amostra: mitigado pela extrapolação, não eliminado.
 
