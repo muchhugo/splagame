@@ -1,4 +1,4 @@
-import { Color3, Constants, Mesh, RawTexture, Scene, ShaderMaterial, Texture, Vector2, Vector3, VertexData } from '@babylonjs/core';
+import { Color3, Constants, Mesh, RawTexture, Scene, ShaderMaterial, Texture, Vector2, Vector3, VertexData } from '../babylon';
 import type { MapSpec, MaterialId } from '@borrifo/game-content';
 import type { MapFace, PaintLayout } from '@borrifo/game-simulation';
 import { facePoint } from '@borrifo/game-simulation';

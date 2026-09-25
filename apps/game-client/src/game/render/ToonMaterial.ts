@@ -1,4 +1,4 @@
-import { Color3, Effect, Scene, ShaderMaterial, Vector3, VertexBuffer, type AbstractMesh, type SubMesh } from '@babylonjs/core';
+import { Color3, Effect, Scene, ShaderMaterial, Vector3, VertexBuffer, type AbstractMesh, type SubMesh } from '../babylon';
 
 /**
  * Cel shading suave para personagens, ferramentas e objetos de jogo:

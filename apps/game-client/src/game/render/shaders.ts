@@ -1,4 +1,4 @@
-import { Effect } from '@babylonjs/core';
+import { Effect } from '../babylon';
 
 /**
  * Shaders próprios do cenário e do céu (direção de arte cartoon):

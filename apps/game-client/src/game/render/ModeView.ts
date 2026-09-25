@@ -1,4 +1,4 @@
-import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '../babylon';
 import type { ObjectiveSnapshot, PickupSnapshot, TeamId, Vec3 } from '@borrifo/game-contracts';
 import { CORREIO, type MapSpec } from '@borrifo/game-content';
 import { ToonMaterial } from './ToonMaterial';

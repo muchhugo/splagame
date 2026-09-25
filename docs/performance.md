@@ -12,7 +12,7 @@
 | 60 FPS em desktop de referência | **Não medido.** Não houve GPU; o FPS com SwiftShader (~4) não tem relação com hardware real |
 | 30 FPS em mobile | **Não medido** |
 | Servidor a 30 Hz sem atraso acumulado | Atendido no laboratório: tick p99 de 2,4 ms num orçamento de 33,3 ms (8 jogadores) |
-| Recursos comprimidos ≤ 25 MB | Atendido: ~2,9 MB gzip no carregamento inicial |
+| Recursos comprimidos ≤ 25 MB | Atendido: ~1,7 MB gzip de JS no carregamento inicial (era ~2,8 MB) |
 | Sem crescimento contínuo de memória | Atendido no que foi medido (60 s de partida e abrir/fechar 10×); não houve sessão longa |
 
 ## Execução autônoma: antes e depois (24/09/2026)
@@ -105,18 +105,23 @@ A banda de voz do LiveKit é separada e **não foi medida**.
 
 ### Build de produção (`pnpm --filter @borrifo/game-client build`)
 
-| Arquivo | Tamanho | gzip |
+| Arquivo | Antes (raiz `@babylonjs/core`) | Depois (subcaminhos, 25/09/2026) |
 |---|---|---|
-| `babylon-*.js` | 7.068 KB | 1.548 KB |
-| `rapier-*.js` (WASM embutido) | 2.852 KB | 1.094 KB |
-| `index-*.js` (jogo, UI, rede, áudio, controle, treino, perfis) | 725 KB | 230 KB |
-| CSS | 18 KB | 5 KB |
-| Fontes Fredoka (3 pesos, woff2) | 49 KB | — |
-| **Total do carregamento inicial** | ≈ 10,7 MB | **≈ 2,9 MB** |
-| Efeitos sonoros (`public/audio/sfx`, baixados depois da abertura) | ≈ 1,3 MB (62 MP3 + 4 WAV de loop) | — (MP3 já é comprimido) |
+| `babylon-*.js` | 7.068 KB · gzip 1.548 KB | **1.917 KB · gzip 443 KB** |
+| `rapier-*.js` (WASM embutido) | 2.852 KB · gzip 1.094 KB | igual |
+| `index-*.js` (jogo, UI, rede, áudio, controle, treino, perfis) | 916 KB · gzip 297 KB | igual |
+| **JS do carregamento inicial (gzip)** | **≈ 2,8 MB** | **≈ 1,7 MB** |
+| Efeitos sonoros (`public/audio/sfx`, baixados depois da abertura) | ≈ 1,3 MB (62 MP3 + 4 WAV de loop) | igual |
 
-O pacote do Babylon é importado pela raiz `@babylonjs/core` e leva a engine inteira. Importar
-por subcaminhos reduziria bastante esse arquivo; isso fica como próximo passo.
+O Babylon agora entra por um único módulo, `apps/game-client/src/game/babylon.ts`, com
+importações por subcaminho e os módulos de efeito colateral que o jogo usa: contorno,
+instâncias finas, texturas dinâmicas, brutas e de render e leitura de textura. O
+`sideEffects` do Babylon lista cada um deles, e o build de produção mantém o código de
+registro (conferido no bundle). Com o novo módulo passaram `gameplay`, `personagens`,
+`menus`, `tutorial`, `banco`, `gamepad` e `capturas`, sem erro de página.
+
+Recurso novo do Babylon deve ser importado em `babylon.ts`. Se faltar um efeito colateral,
+o erro só aparece em tempo de execução, e os testes de navegador são a rede de proteção.
 
 ### Cena e memória (60 s de partida, 1 humano + 7 bots, andando e atirando)
 

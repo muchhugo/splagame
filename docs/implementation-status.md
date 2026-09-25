@@ -121,9 +121,9 @@ infraestrutura existente, em ordem sugerida:
    PostgreSQL de verdade (PGlite). Falta um banco gerenciado real (exige autorização e
    custo; não foi criado).
 4. **Medir numa GPU real.** Rodar `pnpm e2e` sem `E2E_SWIFTSHADER` numa máquina com GPU e
-   registrar FPS e tempo de quadro por qualidade em `docs/performance.md`. Se preciso: importar o
-   Babylon por subcaminhos (`@babylonjs/core/...`) para reduzir os 1,5 MB gzip e fundir as peças
-   estáticas de cada personagem.
+   registrar FPS e tempo de quadro por qualidade em `docs/performance.md`. O Babylon já entra
+   por subcaminhos (1,5 MB → 443 KB gzip); fundir as peças estáticas de cada personagem
+   fica para depois de medir na GPU.
 5. **Rede sob latência: feito no laboratório** (`e2e/rede-adversa.mjs`, proxy com 0, 80
    e 150 ms). Nenhuma correção grande; remotos sem congelar com o buffer adaptativo. Falta
    repetir numa GPU real, onde o cliente roda a 60 fps.

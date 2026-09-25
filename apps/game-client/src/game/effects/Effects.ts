@@ -1,4 +1,4 @@
-import { Color3, Matrix, Mesh, MeshBuilder, Quaternion, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, Matrix, Mesh, MeshBuilder, Quaternion, Scene, StandardMaterial, TransformNode, Vector3 } from '../babylon';
 import type { TeamId, Vec3, WorldObjectState } from '@borrifo/game-contracts';
 import { MORINGA, RODA_DE_OLEIRO } from '@borrifo/game-content';
 import type { PhysicsWorld } from '@borrifo/game-simulation';

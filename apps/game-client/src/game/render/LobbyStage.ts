@@ -1,4 +1,4 @@
-import { Color3, FreeCamera, Mesh, MeshBuilder, Scene, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, FreeCamera, Mesh, MeshBuilder, Scene, TransformNode, Vector3 } from '../babylon';
 import type { AppearanceId, TeamId, Vec3, WeaponId } from '@borrifo/game-contracts';
 import type { MapSpec } from '@borrifo/game-content';
 import type { PhysicsWorld } from '@borrifo/game-simulation';

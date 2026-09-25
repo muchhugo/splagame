@@ -7,7 +7,7 @@
  *          aceleração pela posição; a cena congela logo depois do evento)
  *   &giro=0..6.28 (ângulo da câmera)  &arma=esguicho|rodo|estilingue
  */
-import { ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, MeshBuilder, Scene, StandardMaterial, Vector3 } from '@babylonjs/core';
+import { ArcRotateCamera, Color3, Color4, Engine, HemisphericLight, MeshBuilder, Scene, StandardMaterial, Vector3 } from '../game/babylon';
 import { APPEARANCE_IDS, type WeaponId } from '@borrifo/game-contracts';
 import { CharacterView, type CharacterVisual } from '../game/render/CharacterView';
 import { setToonLight } from '../game/render/ToonMaterial';

@@ -1,4 +1,4 @@
-import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, FreeCamera, HemisphericLight, RenderTargetTexture, Scene, Vector3 } from '@babylonjs/core';
+import { Color3, Color4, DefaultRenderingPipeline, DirectionalLight, Engine, FreeCamera, HemisphericLight, RenderTargetTexture, Scene, Vector3 } from './babylon';
 import type { AppearanceId, BuffKind, GameEvent, GameModeId, LobbyPlayer, ObjectiveSnapshot, PaintDeltaWire, PaintSnapshotWire, RoomPhase, SnapshotMessage, TeamId, Vec3 } from '@borrifo/game-contracts';
 
 const BUFF_NAME: Record<BuffKind, string> = { embalo: 'Embalo', folego: 'Fôlego' };

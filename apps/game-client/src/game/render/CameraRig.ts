@@ -1,4 +1,4 @@
-import { FreeCamera, Scene, Vector3 } from '@babylonjs/core';
+import { FreeCamera, Scene, Vector3 } from '../babylon';
 import type { Vec3 } from '@borrifo/game-contracts';
 import type { PhysicsWorld } from '@borrifo/game-simulation';
 

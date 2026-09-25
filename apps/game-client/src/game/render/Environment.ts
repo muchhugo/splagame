@@ -1,5 +1,5 @@
 import { SCENERY_TOKENS } from '@borrifo/game-content';
-import { Color3, DynamicTexture, Matrix, Mesh, MeshBuilder, Quaternion, Scene, ShaderMaterial, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { Color3, DynamicTexture, Matrix, Mesh, MeshBuilder, Quaternion, Scene, ShaderMaterial, StandardMaterial, TransformNode, Vector3 } from '../babylon';
 import type { DecorSpec, MapSpec } from '@borrifo/game-content';
 import { GAME_NAME } from '@borrifo/game-contracts';
 import { Rng } from '@borrifo/game-simulation';

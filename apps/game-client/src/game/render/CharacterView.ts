@@ -1,4 +1,4 @@
-import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, DynamicTexture } from '@babylonjs/core';
+import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, DynamicTexture } from '../babylon';
 import type { AppearanceId, AppearanceParts, TeamId, WeaponId } from '@borrifo/game-contracts';
 import { DEFAULT_APPEARANCE, parseAppearanceId } from '@borrifo/game-contracts';
 import { STEALTH } from '@borrifo/game-content';
