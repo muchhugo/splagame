@@ -81,6 +81,7 @@ import type { ResultSink } from '../results';
 import { staticWorld, type StaticWorld } from '../world';
 import { planFormation, type Formation } from '../formation';
 import { StealthFilter, type StealthSubject } from '../visibility';
+import { CLIENT_IP_HEADER, rateKey } from '../clientIp';
 
 interface RoomPlayer {
   playerId: number;
@@ -174,8 +175,9 @@ export class ArenaRoom extends Room {
   /* ------------------------- autenticação ------------------------- */
 
   static override async onAuth(_token: string | undefined, options: unknown, context: AuthContext): Promise<VerifiedIdentity> {
-    const ip = context.ip ?? 'desconhecido';
-    if (!ArenaRoom.joinLimiter.take(ip)) throw new ServerError(429, 'muitas tentativas de entrada; aguarde');
+    // cliente resolvido pelo servidor (clientIp.ts); nunca o X-Forwarded-For cru
+    const ip = context.headers.get(CLIENT_IP_HEADER) ?? 'desconhecido';
+    if (!ArenaRoom.joinLimiter.take(rateKey(ip))) throw new ServerError(429, 'muitas tentativas de entrada; aguarde');
     const parsed = JoinOptionsSchema.safeParse(options);
     if (!parsed.success) throw new ServerError(400, 'opções de entrada inválidas');
     const { activitySessionId, credential, mapHash } = parsed.data;

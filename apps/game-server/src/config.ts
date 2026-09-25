@@ -23,6 +23,8 @@ export interface ServerConfig {
   /** Janela de reconexão (s); ao expirar durante a rodada, o slot vira bot. Ajustável para testes. */
   reconnectWindowSeconds: number;
   joinRateBurst: number;
+  /** Proxies reversos confiáveis (IP ou CIDR), separados por vírgula. Vazio: vale o socket. */
+  trustedProxies: string;
   joinRatePerSecond: number;
   /** Hosts de onde avatares podem vir (https). Vazio = ninguém tem avatar por URL; a interface usa iniciais. */
   avatarAllowedHosts: string[];
@@ -67,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     correioDurationSeconds: num('CORREIO_DURATION_SECONDS', MODES.correio.durationSeconds ?? 240, 1, 3600),
     reconnectWindowSeconds: num('RECONNECT_WINDOW_SECONDS', RECONNECT_WINDOW_SECONDS, 1, 120),
     joinRateBurst: num('JOIN_RATE_BURST', 10, 1, 100_000),
+    trustedProxies: env.TRUSTED_PROXIES ?? '',
     joinRatePerSecond: num('JOIN_RATE_PER_SECOND', 1, 0.01, 100_000),
     avatarAllowedHosts: (env.AVATAR_ALLOWED_HOSTS ?? '')
       .split(',')

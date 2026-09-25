@@ -113,8 +113,10 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 
 ### Pendências conhecidas da caça a bugs (não corrigidas)
 
-- **S6:** o limitador por IP confia no endereço de conexão e não tem LRU; atrás de proxy
-  reverso precisa de `trust proxy` configurado e de um teto de entradas.
+- ~~**S6**~~ **resolvido:** o Colyseus confiava em `X-Real-IP`/`X-Forwarded-For` de
+  qualquer um. Agora esses cabeçalhos são removidos e o cliente é resolvido pelo socket
+  e por `TRUSTED_PROXIES`; o limitador é LRU com teto e IPv6 conta pelo /64
+  ([networking.md](networking.md#limite-de-taxa-e-proxy-reverso)).
 - ~~**S19**~~ **resolvido:** teto no ar, Embalo (início e fim) e coleta previstos; além
   disso, entrada quantizada na previsão, estado próprio sem arredondar e servidor que
   espera e recupera em vez de repetir e descartar

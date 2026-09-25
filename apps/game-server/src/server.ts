@@ -8,6 +8,7 @@ import { JsonlResultSink, type ResultSink } from './results';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { preloadAllWorlds } from './world';
 import { KeyedRateLimiter } from './rateLimit';
+import { TrustedProxies, sanitizeForwarding } from './clientIp';
 
 export interface StartedServer {
   server: Server;
@@ -23,6 +24,8 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
   // todas as variantes de todos os mapas: a escolha por rodada é síncrona e sem espera
   await preloadAllWorlds();
   ArenaRoom.joinLimiter = new KeyedRateLimiter(cfg.joinRateBurst, cfg.joinRatePerSecond);
+  // falha na partida (não em silêncio) se TRUSTED_PROXIES estiver malformado
+  const proxies = new TrustedProxies(cfg.trustedProxies);
   ArenaRoom.deps = {
     verifier: new CredentialVerifier(cfg),
     sink: opts.sink ?? new JsonlResultSink(cfg.resultsFile),
@@ -62,7 +65,21 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
   server.define(MATCH_ROOM_NAME, ArenaRoom).filterBy(['activitySessionId']);
   const port = opts.port ?? cfg.port;
   await server.listen(port, cfg.host);
-  log('info', 'server.listening', { port, authMode: cfg.authMode, allowedOrigins: cfg.allowedOrigins });
+  // Antes de qualquer ouvinte do Colyseus (matchmaking HTTP e upgrade do WebSocket):
+  // remove cabeçalhos de encaminhamento vindos de fora e grava o cliente resolvido.
+  const http = (transport as unknown as { server?: import('node:http').Server }).server;
+  if (!http) throw new Error('transporte sem servidor HTTP: não dá para proteger o limite por IP');
+  let warnedProxyWithoutXff = false;
+  const guard = (req: import('node:http').IncomingMessage) => {
+    const ip = sanitizeForwarding(req, proxies);
+    if (!warnedProxyWithoutXff && proxies.trusts(ip)) {
+      warnedProxyWithoutXff = true;
+      log('warn', 'proxy.no_forwarded_for', { hint: 'o proxy confiável não mandou X-Forwarded-For: todos dividem o mesmo limite' });
+    }
+  };
+  http.prependListener('request', guard);
+  http.prependListener('upgrade', guard);
+  log('info', 'server.listening', { port, authMode: cfg.authMode, allowedOrigins: cfg.allowedOrigins, trustedProxies: proxies.entries });
   return {
     server,
     port,

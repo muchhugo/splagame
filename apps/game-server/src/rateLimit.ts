@@ -20,24 +20,30 @@ export class TokenBucket {
   }
 }
 
-/** Limitador por chave (ex.: IP) com expiração de entradas ociosas. */
+/**
+ * Limitador por chave (ex.: IP) com LRU de verdade: a chave usada vai para o fim; acima do
+ * teto, as menos recentes saem primeiro (uma enxurrada de chaves novas não cresce a memória
+ * sem limite e não apaga quem está ativo antes dos ociosos).
+ */
 export class KeyedRateLimiter {
   private buckets = new Map<string, { b: TokenBucket; seen: number }>();
   constructor(
     private readonly capacity: number,
     private readonly refillPerSecond: number,
+    readonly maxKeys = 50_000,
+    private readonly now: () => number = () => Date.now(),
   ) {}
   take(key: string): boolean {
-    const now = Date.now();
+    const now = this.now();
     let e = this.buckets.get(key);
-    if (!e) {
-      e = { b: new TokenBucket(this.capacity, this.refillPerSecond), seen: now };
-      this.buckets.set(key, e);
-    }
+    if (e) this.buckets.delete(key);
+    else e = { b: new TokenBucket(this.capacity, this.refillPerSecond), seen: now };
     e.seen = now;
-    if (this.buckets.size > 10000) {
-      for (const [k, v] of this.buckets) if (now - v.seen > 60000) this.buckets.delete(k);
-    }
+    this.buckets.set(key, e);
+    while (this.buckets.size > this.maxKeys) this.buckets.delete(this.buckets.keys().next().value!);
     return e.b.take();
+  }
+  get size() {
+    return this.buckets.size;
   }
 }

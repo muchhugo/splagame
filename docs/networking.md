@@ -145,6 +145,35 @@ precisa liderar o alvo. É uma limitação consciente
 - Janela expirada durante a rodada: o slot vira bot da mesma equipe. Fora da rodada, o jogador
   sai.
 
+## Limite de taxa e proxy reverso
+
+O limite de entradas na sala (`JOIN_RATE_BURST`, `JOIN_RATE_PER_SECOND`) é por cliente, e o
+cliente é decidido pelo servidor, não por cabeçalho (`apps/game-server/src/clientIp.ts`):
+
+- **Por padrão** (`TRUSTED_PROXIES` vazio) vale o endereço do socket. `X-Forwarded-For`,
+  `X-Real-IP`, `X-Client-IP`, `Forwarded`, `CF-Connecting-IP` e `True-Client-IP` são
+  **removidos** antes de chegar ao Colyseus. O Colyseus, sozinho, confia no primeiro
+  deles que aparecer, e qualquer um poderia trocar de "IP" a cada tentativa ou esgotar o
+  limite de outra pessoa.
+- **Atrás de proxy:** `TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1` (IP ou CIDR, IPv4 e IPv6). Só
+  se a conexão vier de um desses endereços o `X-Forwarded-For` é lido, **da direita para a
+  esquerda**, pulando os saltos confiáveis. O primeiro salto não confiável é o cliente, e o
+  que o cliente escreveu à esquerda nunca é usado.
+- O proxy precisa **acrescentar** o endereço que ele viu (nginx:
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`, ou `$remote_addr` para
+  substituir) e repassar o upgrade de WebSocket. Configuração malformada impede o servidor
+  de subir. Se um proxy confiável não mandar o cabeçalho, o servidor registra
+  `proxy.no_forwarded_for` uma vez: todos dividem o mesmo limite.
+- **IPv6** conta pelo /64. O limitador é LRU com teto de 50 000 chaves: uma enxurrada de
+  chaves novas não cresce a memória e não apaga quem está ativo.
+- **Testes:** `clientIp.test.ts` (regras, IPv6, configuração inválida, LRU) e
+  `proxySpoof.untrusted.test.ts` / `proxySpoof.trusted.test.ts`, que mandam pedidos reais ao
+  matchmaking com cabeçalhos falsificados. Eles cobrem: troca de cabeçalho a cada tentativa,
+  prefixo no `X-Forwarded-For`, `X-Real-IP`, o cabeçalho interno e rotação dentro de um /64.
+  Sem a proteção, os dois testes sem proxy falham.
+- **Não validado:** um proxy real (nginx, Caddy, balanceador de nuvem) na frente do
+  servidor; o laboratório simula o proxy com cabeçalhos a partir de 127.0.0.1.
+
 ## Tinta pela rede
 
 Ver [paint-system.md](paint-system.md#sincronização). Resumo: snapshot binário completo
