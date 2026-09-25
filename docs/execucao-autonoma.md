@@ -226,4 +226,7 @@ durante o teste não recarrega as páginas.
 - **CP7** (`984afce`, `5b54030`, `0c2b76f`): rede sob latência emulada, buffer adaptativo,
   banco de espectadores, caça a bugs de cliente e servidor; 219 testes.
 - **CP8** (`4a6fc02` e seguinte): celular só na horizontal e correções da auditoria de UI/UX.
+- **CP9**: filtragem por interesse de quem está imerso; previsão alinhada ao servidor
+  (ADR 0015); limite de entrada seguro atrás de proxy; alocações por quadro −28%;
+  resultados no PostgreSQL com Drizzle (ADR 0016).
 

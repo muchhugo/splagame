@@ -16,6 +16,10 @@ export interface ServerConfig {
   expectedIssuer: string | null;
   allowedOrigins: string[];
   resultsFile: string;
+  /** Onde gravar resultados: arquivo JSONL (laboratório) ou PostgreSQL (produção). */
+  resultSink: 'jsonl' | 'postgres';
+  databaseUrl: string | null;
+  databaseSsl: boolean;
   maxRooms: number;
   roundDurationSeconds: number;
   /** Duração do Correio do Ara (s); padrão do modo, ajustável para testes. */
@@ -51,6 +55,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     if (!Number.isFinite(v) || v < min || v > max) throw new Error(`${name} inválido ("${raw}"): use um número entre ${min} e ${max}.`);
     return v;
   };
+  // produção grava no banco; o JSONL é só de laboratório (ADR 0006)
+  const resultSink = (env.RESULT_SINK ?? (nodeEnv === 'production' ? 'postgres' : 'jsonl')) as 'jsonl' | 'postgres';
+  if (resultSink !== 'jsonl' && resultSink !== 'postgres') throw new Error(`RESULT_SINK inválido: ${resultSink}`);
+  if (resultSink === 'jsonl' && nodeEnv === 'production') throw new Error('RESULT_SINK=jsonl é só de laboratório; em produção use RESULT_SINK=postgres com DATABASE_URL.');
+  const databaseUrl = env.DATABASE_URL || null;
+  if (resultSink === 'postgres' && !databaseUrl) throw new Error('RESULT_SINK=postgres exige DATABASE_URL.');
   return {
     port: num('GAME_SERVER_PORT', 2567, 1, 65535),
     host: env.GAME_SERVER_HOST ?? '0.0.0.0',
@@ -64,6 +74,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .map((s) => s.trim())
       .filter(Boolean),
     resultsFile: env.RESULTS_FILE ?? 'data/results.jsonl',
+    resultSink,
+    databaseUrl,
+    databaseSsl: env.DATABASE_SSL === '1',
     maxRooms: num('MAX_ROOMS', 50, 1, 10_000),
     roundDurationSeconds: num('ROUND_DURATION_SECONDS', 180, 1, 3600),
     correioDurationSeconds: num('CORREIO_DURATION_SECONDS', MODES.correio.durationSeconds ?? 240, 1, 3600),

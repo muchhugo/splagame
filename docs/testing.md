@@ -261,3 +261,11 @@ Com ela passaram (SwiftShader): `gameplay`, `tutorial`, `menus`, `banco`, `gamep
 - `capturas.mjs`: a captura em pé só carrega a página (a tela de girar cobre a entrada).
 - `pnpm test`: **244 de 244**.
 
+
+## Resultados no PostgreSQL (25/09/2026)
+
+- `apps/game-server/test/postgresSink.test.ts`: **5 de 5**, num PostgreSQL de verdade
+  (PGlite, no processo) com as migrações de produção. Cobre idempotência, dez gravações
+  simultâneas de dois "servidores" (uma linha), falha do banco, rodada completa pelo
+  servidor real e regras de configuração.
+- `pnpm test`: **249 de 249**. `pnpm -r typecheck`: sem erros.

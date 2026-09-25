@@ -102,7 +102,7 @@ Legenda:
 | 2: multiplayer real e arsenal | Concluída (latência emulada no laboratório; rede real pendente) |
 | 3: Atividade e LiveKit | Contrato e host de laboratório concluídos; **LiveKit e Trivo reais pendentes** |
 | 4: acabamento | Em grande parte feita (arte, áudio, HUD, acessibilidade); falta playtest com pessoas |
-| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; rede emulada feita; faltam GPU real, várias salas e persistência de produção |
+| 5: validação, segurança e operação | Parcial: testes adversariais, carga local e E2E feitos; rede emulada e persistência em PostgreSQL feitas; faltam GPU real, várias salas e banco gerenciado real |
 | 6: modos e conteúdo | Em andamento no laboratório: Correio do Ara, buffs, Mutirão, dois mapas com variantes, formação flexível e banco de espectadores; falta playtest |
 
 ## Próximo ponto de continuação
@@ -116,10 +116,10 @@ infraestrutura existente, em ordem sugerida:
    fechar o jogo mantém a chamada.
 2. **Controle físico** (Xbox, DualSense e genérico) no Chrome, no Electron e no celular:
    glifos, vibração e destravamento de áudio pelo botão.
-3. **Persistência de produção.** Implementar `ResultSink` sobre PostgreSQL com Drizzle
-   (`apps/game-server/src/results.ts`), com constraint única `(match_id, round_id)`, e testar a
-   idempotência (PGlite no teste). *Feito quando:* gravar duas vezes o mesmo resultado resulta
-   em uma linha, e uma falha do banco gera o log `result.persist_failed` sem derrubar a sala.
+3. **Persistência de produção: feita no laboratório** ([ADR 0016](decisions/0016-resultados-postgres-drizzle.md)).
+   `PostgresResultSink` com Drizzle, constraint única `(match_id, round_id)` e testes num
+   PostgreSQL de verdade (PGlite). Falta um banco gerenciado real (exige autorização e
+   custo; não foi criado).
 4. **Medir numa GPU real.** Rodar `pnpm e2e` sem `E2E_SWIFTSHADER` numa máquina com GPU e
    registrar FPS e tempo de quadro por qualidade em `docs/performance.md`. Se preciso: importar o
    Babylon por subcaminhos (`@babylonjs/core/...`) para reduzir os 1,5 MB gzip e fundir as peças

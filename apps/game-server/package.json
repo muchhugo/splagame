@@ -7,7 +7,9 @@
     "dev": "tsx watch --clear-screen=false src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "load-test": "tsx scripts/load-test.ts"
+    "load-test": "tsx scripts/load-test.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@borrifo/game-content": "workspace:*",
@@ -15,13 +17,18 @@
     "@borrifo/game-simulation": "workspace:*",
     "@colyseus/core": "0.18.16",
     "@colyseus/ws-transport": "0.18.3",
+    "drizzle-orm": "0.45.3",
     "express": "^5.2.1",
     "jose": "6.2.12",
+    "pg": "8.23.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@borrifo/test-utils": "workspace:*",
+    "@electric-sql/pglite": "0.5.8",
     "@types/express": "^5.0.6",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
     "tsx": "4.23.15"
   }
 }

@@ -5,6 +5,8 @@ import type { ServerConfig } from './config';
 import { CredentialVerifier } from './auth';
 import { log } from './logger';
 import { JsonlResultSink, type ResultSink } from './results';
+import { connectPostgres } from './db/postgres';
+import { PostgresResultSink } from './db/resultSink';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { preloadAllWorlds } from './world';
 import { KeyedRateLimiter } from './rateLimit';
@@ -26,9 +28,21 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
   ArenaRoom.joinLimiter = new KeyedRateLimiter(cfg.joinRateBurst, cfg.joinRatePerSecond);
   // falha na partida (não em silêncio) se TRUSTED_PROXIES estiver malformado
   const proxies = new TrustedProxies(cfg.trustedProxies);
+  // destino dos resultados: injetado (testes), PostgreSQL (produção) ou JSONL (laboratório)
+  let closeDb: (() => Promise<void>) | null = null;
+  let sink = opts.sink;
+  if (!sink && cfg.resultSink === 'postgres') {
+    const pg = connectPostgres(cfg.databaseUrl!, { ssl: cfg.databaseSsl });
+    // confere a conexão e o esquema na subida: falha cedo e com mensagem clara
+    await pg.pool.query('select 1 from round_results limit 1').catch((e: unknown) => {
+      throw new Error(`banco de resultados indisponível ou sem migração (pnpm --filter @borrifo/game-server db:migrate): ${String(e)}`);
+    });
+    sink = new PostgresResultSink(pg.db);
+    closeDb = () => pg.pool.end();
+  }
   ArenaRoom.deps = {
     verifier: new CredentialVerifier(cfg),
-    sink: opts.sink ?? new JsonlResultSink(cfg.resultsFile),
+    sink: sink ?? new JsonlResultSink(cfg.resultsFile),
     roundDurationSeconds: cfg.roundDurationSeconds,
     correioDurationSeconds: cfg.correioDurationSeconds,
     reconnectWindowSeconds: cfg.reconnectWindowSeconds,
@@ -79,12 +93,13 @@ export async function startGameServer(cfg: ServerConfig, opts: { sink?: ResultSi
   };
   http.prependListener('request', guard);
   http.prependListener('upgrade', guard);
-  log('info', 'server.listening', { port, authMode: cfg.authMode, allowedOrigins: cfg.allowedOrigins, trustedProxies: proxies.entries });
+  log('info', 'server.listening', { port, authMode: cfg.authMode, allowedOrigins: cfg.allowedOrigins, trustedProxies: proxies.entries, resultSink: opts.sink ? 'injetado' : cfg.resultSink });
   return {
     server,
     port,
     async shutdown() {
       await server.gracefullyShutdown(false);
+      await closeDb?.().catch(() => {});
     },
   };
 }
