@@ -25,6 +25,10 @@ export interface SimPlayer {
   lastProcessedSeq: number;
   /** Ticks simulados com entrada repetida ainda não compensados. */
   inputDebt: number;
+  /** Ticks em que o jogador esperou a entrada (sem passo) ainda não recuperados. */
+  holdDebt: number;
+  /** Diagnóstico da entrada: esperas, repetições, movimentos descartados e estouros da fila. */
+  inputStats: { holds: number; repeats: number; drops: number; overflows: number; catchUps: number; neutral: number };
   hpRegenDelay: number;
   stats: PlayerStats;
   contactCooldowns: Map<number, number>;

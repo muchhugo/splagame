@@ -109,6 +109,8 @@ interface RoomPlayer {
   /** Na fila/espectador nesta rodada. */
   queued: boolean;
   lastRateNoticeAt?: number;
+  /** Entradas descartadas pelo limite de taxa (diagnóstico). */
+  inputRateDrops?: number;
 }
 
 export interface ArenaDeps {
@@ -366,6 +368,7 @@ export class ArenaRoom extends Room {
       if (!p || p.sessionId !== client.sessionId) return;
       const b = bucket === 'input' ? p.inputBucket : p.controlBucket;
       if (!b.take()) {
+        if (bucket === 'input') p.inputRateDrops = (p.inputRateDrops ?? 0) + 1;
         // no máximo um aviso por segundo (o aviso não pode virar amplificador de tráfego)
         if (bucket === 'control' && Date.now() - (p.lastRateNoticeAt ?? 0) > 1000) {
           p.lastRateNoticeAt = Date.now();
@@ -773,6 +776,8 @@ export class ArenaRoom extends Room {
     this.sendSnapshots();
     this.broadcast(S2C.ROUND_RESULT, result);
     log('info', 'round.finished', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, winner: result.winner, percent: result.percent });
+    // diagnóstico da cadência de entradas dos humanos (esperas, repetições, descartes)
+    if (this.sim) for (const sp of this.sim.players.values()) if (!sp.isBot) log('info', 'round.input_stats', { matchId: this.matchId, roundId: this.roundId, playerId: sp.id, ...sp.inputStats, rateDropped: this.players.get(sp.id)?.inputRateDrops ?? 0 });
     ArenaRoom.deps.sink.write(this.activitySessionId, result).catch((e) => log('error', 'result.persist_failed', { activitySessionId: this.activitySessionId, matchId: this.matchId, roundId: this.roundId, error: String(e) }));
     this.broadcastLobby();
   }
@@ -902,7 +907,7 @@ export class ArenaRoom extends Room {
         ack: sp?.lastProcessedSeq ?? 0,
         ph: this.phase,
         tl: Math.round(sim.phaseRemainingMs),
-        me: sp ? { ...toSelfSnapshot(sp.state), bf: sp.mode.buff, bt: Math.round(sp.mode.buffTicks / TICK_RATE * 10) / 10, mt: Math.round(sp.mode.mutiraoTicks / TICK_RATE * 10) / 10, mc: Math.round(sp.mode.mutiraoCooldownTicks / TICK_RATE * 10) / 10 } : null,
+        me: sp ? { ...toSelfSnapshot(sp.state), bf: sp.mode.buff, bt: Math.round(sp.mode.buffTicks / TICK_RATE * 10) / 10, bk: sp.mode.buffTicks, mt: Math.round(sp.mode.mutiraoTicks / TICK_RATE * 10) / 10, mc: Math.round(sp.mode.mutiraoCooldownTicks / TICK_RATE * 10) / 10 } : null,
         pl: sp ? byTeam[sp.team] : bench,
         ob: objects,
         ev: events.filter((e) => e.to === undefined || (p.inRound && e.to === p.playerId)).map((e) => e.ev),

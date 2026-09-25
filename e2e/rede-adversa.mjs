@@ -120,7 +120,7 @@ for (const rtt of CENARIOS) {
   report.cenarios.push(row);
   console.log(JSON.stringify(row));
   check(row.correcoesGrandes === 0, `RTT ${rtt} ms: nenhuma correção grande (> 2,5 m) da previsão`);
-  check(row.correcaoP95m < 0.5, `RTT ${rtt} ms: correção p95 abaixo de 0,5 m (${row.correcaoP95m} m)`);
+  check(row.correcaoP95m < 0.1, `RTT ${rtt} ms: correção p95 abaixo de 10 cm (${row.correcaoP95m} m)`);
   check(row.remotoCongeladoPct < 5, `RTT ${rtt} ms: remotos quase nunca congelam (${row.remotoCongeladoPct}% dos quadros)`);
   check(pages.every((p) => p.errs.length === 0), `RTT ${rtt} ms: sem erros de página`);
   for (const p of pages) await p.ctx.close();

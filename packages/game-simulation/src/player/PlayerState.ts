@@ -93,35 +93,42 @@ export function createPlayerState(pos: Vec3, yaw: number): PlayerSimState {
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
+/**
+ * Estado próprio para a reconciliação. Posição, velocidade e temporizadores vão SEM
+ * arredondar: o msgpack codifica não inteiros como float64 de qualquer jeito (arredondar
+ * não economiza banda) e meio milímetro de diferença basta para o controlador de
+ * personagem decidir diferente no cliente e no servidor (correção de ~0,1 m).
+ */
 export function toSelfSnapshot(s: PlayerSimState): SelfSnapshot {
   return {
-    p: [r3(s.pos[0]), r3(s.pos[1]), r3(s.pos[2])],
-    v: [r3(s.vel[0]), r3(s.vel[1]), r3(s.vel[2])],
+    p: [s.pos[0], s.pos[1], s.pos[2]],
+    v: [s.vel[0], s.vel[1], s.vel[2]],
     f: s.form,
-    ft: r3(s.formTimer),
+    ft: s.formTimer,
     g: s.grounded ? 1 : 0,
-    co: r3(s.coyote),
+    co: s.coyote,
     cs: s.climbSurface,
-    cn: [r3(s.climbNormal[0]), r3(s.climbNormal[1])],
+    cn: [s.climbNormal[0], s.climbNormal[1]],
     gs: s.groundState,
-    ink: r3(s.ink),
-    ird: r3(s.inkRegenDelay),
-    wc: r3(s.weaponCooldown),
-    ch: r3(s.charge),
+    ink: s.ink,
+    ird: s.inkRegenDelay,
+    wc: s.weaponCooldown,
+    ch: s.charge,
     cha: s.charging ? 1 : 0,
-    sw: r3(s.swingPhase + s.swingTimer / 10),
+    sw: s.swingPhase + s.swingTimer / 10,
     dr: s.dragging ? 1 : 0,
-    sc: r3(s.secondaryCooldown),
+    sc: s.secondaryCooldown,
     hp: Math.round(s.hp * 10) / 10,
     sp: Math.round(s.special * 10) / 10,
     spa: s.specialActive ? 1 : 0,
     al: s.alive ? 1 : 0,
     rs: r3(s.respawnTimer),
-    pr: r3(s.spawnProtect),
+    pr: s.spawnProtect,
     tt: s.travelPhase,
-    ttt: r3(s.travelTimer),
-    sm: r3(s.speedMul),
-    im: r3(s.inkRegenMul),
+    ttt: s.travelTimer,
+    sm: s.speedMul,
+    im: s.inkRegenMul,
+    ac: s.airSpeedCap,
   };
 }
 
@@ -155,6 +162,7 @@ export function applySelfSnapshot(s: PlayerSimState, snap: SelfSnapshot, prevFir
   s.travelTimer = snap.ttt;
   s.prevFire = prevFireHeld;
   s.speedMul = snap.sm ?? 1;
+  if (snap.ac !== undefined) s.airSpeedCap = snap.ac;
   s.inkRegenMul = snap.im ?? 1;
 }
 

@@ -77,9 +77,18 @@ sc   placar parcial em unidades internas
 - Cada snapshot traz `me` e `ack`. O `LocalPredictor` descarta as entradas confirmadas, aplica o
   estado autoritativo e reaplica as pendentes. A diferença visual vira um deslocamento que
   **decai** em vez de teletransportar.
-- A física não é considerada determinística entre navegador e servidor. As correções medidas no
-  laboratório (mesma máquina) foram de 6 a 14 mm ao caminhar e de ~30 cm só na transição de
-  contagem para corrida. Isso não prova o comportamento sob latência real.
+- O cliente prevê com a entrada exatamente como o servidor a decodifica e recebe o próprio
+  estado sem arredondar, com o teto de velocidade no ar (`ac`), os ticks exatos do buff
+  (`bk`) e dos pickups (`tk`): o Embalo começa e termina no mesmo tick nos dois lados, e a
+  coleta é prevista (se outra pessoa levar, a reconciliação corrige).
+- O servidor simula cada entrada uma vez e na ordem: com a fila vazia espera até 500 ms e
+  depois recupera um passo extra por tick ([ADR 0015](decisions/0015-entrada-uma-vez-na-ordem.md)).
+- **Medido:** na bancada `apps/game-client/test/prediction.test.ts` (servidor e cliente no
+  mesmo processo, relógio emulado, 30/10/~5 fps, 80/150 ms com jitter), correção p95
+  0,00 m (antes 0,18–0,42 m). No navegador (`e2e/rede-adversa.mjs`, proxy com atraso,
+  SwiftShader), p95 0 e 0/3/8 correções acima de 5 cm por 12 s a 0/80/150 ms.
+- A física não é garantida como determinística entre navegadores e CPUs diferentes; as
+  medições são da mesma máquina.
 - Disparos, tinta e dano **não** são previstos como verdade: o cliente toca efeitos locais de
   disparo e espera o servidor confirmar impacto, tinta e dano.
 

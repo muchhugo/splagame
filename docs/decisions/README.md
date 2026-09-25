@@ -19,3 +19,4 @@ estão marcados.
 | [0012](0012-transporte-colyseus-voz-livekit.md) | Gameplay continua no Colyseus; LiveKit só na voz do host (benchmark isolado) | — |
 | [0013](0013-tokens-e-pares-de-cores.md) | Tokens de cor em três conjuntos; par de equipe escolhido pelo servidor por rodada | — |
 | [0014](0014-controle-gamepad.md) | Controle pela Gamepad API, lido a ~8 ms, glifos por família | — |
+| [0015](0015-entrada-uma-vez-na-ordem.md) | Cada entrada simulada uma vez e na ordem: esperar e recuperar em vez de repetir e descartar | — |

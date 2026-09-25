@@ -1,5 +1,5 @@
 import type { GameEvent, GameModeId, ObjectiveSnapshot, PickupSnapshot, PlayerInput, PlayerRoundStats, RoundResult, TeamId, Vec3, WeaponId } from '@borrifo/game-contracts';
-import { FORM_FLOW, GROUND_ENEMY, INPUT_QUEUE_MAX, INPUT_STALE_TICKS, TICK_DT, neutralInput, otherTeam, Buttons } from '@borrifo/game-contracts';
+import { FORM_FLOW, GROUND_ENEMY, INPUT_HOLD_DEBT_MAX, INPUT_HOLD_TICKS, INPUT_QUEUE_MAX, INPUT_STALE_TICKS, TICK_DT, neutralInput, otherTeam, Buttons } from '@borrifo/game-contracts';
 import type { ChargeWeaponDefinition, ContactWeaponDefinition, AutomaticWeaponDefinition, MapSpec } from '@borrifo/game-content';
 import { HEALTH, MODES, MORINGA, MOVEMENT, PIAO_GUIA, RODA_DE_OLEIRO, WEAPONS } from '@borrifo/game-content';
 import { BuffPickups, CorreioMode, MutiraoTracker, applyModifiers, freshModeState, type ModeHost } from './modes';
@@ -25,6 +25,8 @@ export interface MatchSimulationOptions {
   countdownSeconds: number;
   /** Modo da rodada (padrão: território). */
   mode?: GameModeId;
+  /** Política de entrada (testes e bancada comparam alternativas; o jogo usa o padrão). */
+  input?: { holdTicks?: number; holdDebtMax?: number; queueMax?: number };
 }
 
 /** Posição do cano da ferramenta a partir do estado do personagem. */
@@ -130,6 +132,8 @@ export class MatchSimulation {
       staleTicks: 0,
       lastProcessedSeq: 0,
       inputDebt: 0,
+      holdDebt: 0,
+      inputStats: { holds: 0, repeats: 0, drops: 0, overflows: 0, catchUps: 0, neutral: 0 },
       hpRegenDelay: 0,
       stats: { paintedUnits: 0, eliminations: 0, deaths: 0, specialsUsed: 0 },
       contactCooldowns: new Map(),
@@ -158,7 +162,10 @@ export class MatchSimulation {
     if (input.sequence <= lastQueued) return 'stale';
     p.inputQueue.push(input);
     // Fila limitada: excesso descarta as mais antigas (impede "speedhack" por rajada).
-    while (p.inputQueue.length > INPUT_QUEUE_MAX) p.inputQueue.shift();
+    while (p.inputQueue.length > (this.opts.input?.queueMax ?? INPUT_QUEUE_MAX)) {
+      p.inputQueue.shift();
+      p.inputStats.overflows++;
+    }
     return 'queued';
   }
 
@@ -200,6 +207,9 @@ export class MatchSimulation {
       // Durante a contagem: entradas são consumidas mas o personagem não se move.
       for (const p of this.sortedPlayers()) {
         const inp = this.takeInput(p);
+        // na contagem ninguém anda: espera não vira passo a recuperar na largada
+        p.holdDebt = 0;
+        if (!inp) continue;
         p.state.yaw = inp.yaw;
         p.state.pitch = inp.pitch;
       }
@@ -208,7 +218,15 @@ export class MatchSimulation {
     }
 
     const dt = TICK_DT;
-    for (const p of this.sortedPlayers()) this.stepOnePlayer(p, dt);
+    for (const p of this.sortedPlayers()) {
+      this.stepOnePlayer(p, dt);
+      // recupera um passo de espera por tick, com a entrada seguinte já na fila
+      if (p.holdDebt > 0 && p.inputQueue.length > 0) {
+        p.holdDebt--;
+        p.inputStats.catchUps++;
+        this.stepOnePlayer(p, dt);
+      }
+    }
     this.stepProjectiles(dt);
     this.stepObjects(dt);
     this.stepModes();
@@ -247,6 +265,7 @@ export class MatchSimulation {
     p.lastProcessedSeq = 0;
     p.staleTicks = 0;
     p.inputDebt = 0;
+    p.holdDebt = 0;
     p.state.lastActionId = 0;
     p.lastInput = neutralInput(0, p.state.yaw, p.state.pitch);
   }
@@ -278,7 +297,7 @@ export class MatchSimulation {
     return [...this.players.values()].sort((a, b) => a.id - b.id);
   }
 
-  private takeInput(p: SimPlayer): PlayerInput {
+  private takeInput(p: SimPlayer): PlayerInput | null {
     if (p.bot) {
       const inp = p.bot.think(p, this);
       p.lastInput = inp;
@@ -293,6 +312,7 @@ export class MatchSimulation {
       p.inputQueue[0] = { ...p.inputQueue[0], pressedActions: [...dropped.pressedActions, ...p.inputQueue[0].pressedActions].slice(-8) };
       p.lastProcessedSeq = dropped.sequence;
       p.inputDebt--;
+      p.inputStats.drops++;
     }
     const next = p.inputQueue.shift();
     if (next) {
@@ -301,11 +321,25 @@ export class MatchSimulation {
       p.staleTicks = 0;
       return next;
     }
-    // Sem entrada nova: repete o movimento por poucos ticks; depois neutraliza.
+    // Sem entrada nova. Primeiro espera (até INPUT_HOLD_TICKS, sem simular): quando as
+    // entradas chegam juntas (cliente a poucos quadros por segundo, rajada de rede), cada
+    // uma é simulada uma vez e na ordem, igual à previsão, e o passo é recuperado depois.
     p.staleTicks++;
+    // O atraso a recuperar tem teto: tempo que o cliente nunca simulou (quadro mais longo
+    // que o teto da previsão) é perdoado, não vira parada nem repetição depois.
+    if (p.staleTicks <= (this.opts.input?.holdTicks ?? INPUT_HOLD_TICKS) && p.state.alive && p.state.travelPhase === 0) {
+      p.holdDebt = Math.min(this.opts.input?.holdDebtMax ?? INPUT_HOLD_DEBT_MAX, p.holdDebt + 1);
+      p.inputStats.holds++;
+      return null;
+    }
+    // Espera esgotada: repete o movimento por poucos ticks; depois neutraliza.
     const last = p.lastInput;
-    if (p.staleTicks > INPUT_STALE_TICKS) return { ...neutralInput(last.sequence, last.yaw, last.pitch), heldButtons: last.heldButtons & Buttons.FLOW };
+    if (p.staleTicks > INPUT_STALE_TICKS) {
+      p.inputStats.neutral++;
+      return { ...neutralInput(last.sequence, last.yaw, last.pitch), heldButtons: last.heldButtons & Buttons.FLOW };
+    }
     p.inputDebt = Math.min(INPUT_STALE_TICKS, p.inputDebt + 1);
+    p.inputStats.repeats++;
     return { ...last, pressedActions: [] };
   }
 
@@ -327,6 +361,7 @@ export class MatchSimulation {
       this.stepTravel(p, dt);
       return;
     }
+    if (!input) return; // esperando a entrada (fila vazia): este tick do jogador fica para depois
     const intents = stepPlayer(s, input, dt, this.stepCtx(p));
     for (const d of intents.denied) this.emit({ k: 'denied', reason: d }, p.id);
     if (!s.alive) return;

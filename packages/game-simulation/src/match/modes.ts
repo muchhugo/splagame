@@ -48,6 +48,23 @@ export function applyModifiers(p: SimPlayer, m: PlayerModeState) {
 /* Pickups: Embalo e Fôlego                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Distância horizontal até o pickup se `s` pode coletá-lo agora (vivo, fora da proteção e
+ * do deslocamento, perto, na mesma altura e com linha livre), ou null. Usada pelo
+ * servidor e pela previsão local, para as duas decidirem igual.
+ */
+export function pickupReach(s: PlayerSimStateLike, pos: Vec3, physics: Pick<PhysicsWorld, 'segmentBlocked'>): number | null {
+  if (!s.alive || s.spawnProtect > 0 || s.travelPhase !== 0) return null;
+  const d = hdist(s.pos, pos);
+  if (d > BUFFS.pickupRadius || Math.abs(s.pos[1] - pos[1]) > 1.2) return null;
+  if (physics.segmentBlocked([s.pos[0], s.pos[1] + 0.8, s.pos[2]], [pos[0], pos[1] + 0.5, pos[2]], 0)) return null;
+  return d;
+}
+type PlayerSimStateLike = { alive: boolean; spawnProtect: number; travelPhase: number; pos: Vec3 };
+
+/** Duração do buff em ticks (mesma conta do servidor). */
+export const buffTicksFor = (kind: BuffKind) => secs(kind === 'embalo' ? BUFFS.embalo.duration : BUFFS.folego.duration);
+
 export class BuffPickups {
   private readonly items: Array<{ pos: Vec3; kind: BuffKind; readyAt: number; available: boolean }>;
 
@@ -68,11 +85,8 @@ export class BuffPickups {
       let best: SimPlayer | null = null;
       let bestD = Infinity;
       for (const p of sorted(h)) {
-        const s = p.state;
-        if (!s.alive || s.spawnProtect > 0 || s.travelPhase !== 0) continue;
-        const d = hdist(s.pos, it.pos);
-        if (d > BUFFS.pickupRadius || Math.abs(s.pos[1] - it.pos[1]) > 1.2) continue;
-        if (h.physics.segmentBlocked([s.pos[0], s.pos[1] + 0.8, s.pos[2]], [it.pos[0], it.pos[1] + 0.5, it.pos[2]], 0)) continue;
+        const d = pickupReach(p.state, it.pos, h.physics);
+        if (d === null) continue;
         // coleta simultânea: o mais próximo leva; empate exato → menor id (ordem determinística)
         if (d < bestD - 1e-9) {
           best = p;
@@ -83,7 +97,7 @@ export class BuffPickups {
       const m = state(best);
       const replaced = m.buff && m.buffTicks > 0 ? m.buff : null;
       m.buff = it.kind;
-      m.buffTicks = secs(it.kind === 'embalo' ? BUFFS.embalo.duration : BUFFS.folego.duration);
+      m.buffTicks = buffTicksFor(it.kind);
       it.available = false;
       it.readyAt = h.tick + secs(BUFFS.respawnSeconds);
       h.emit({ k: 'buff', pid: best.id, kind: it.kind, replaced, pickup: i });
@@ -91,7 +105,7 @@ export class BuffPickups {
   }
 
   snapshot(): PickupSnapshot[] {
-    return this.items.map((it, i) => ({ i, k: it.kind, a: it.available ? 1 : 0, t: it.available ? 0 : Math.max(0, Math.round((it.readyAt - this.h.tick) * TICK_DT * 10) / 10) }));
+    return this.items.map((it, i) => ({ i, k: it.kind, a: it.available ? 1 : 0, t: it.available ? 0 : Math.max(0, Math.round((it.readyAt - this.h.tick) * TICK_DT * 10) / 10), tk: it.available ? 0 : Math.max(0, it.readyAt - this.h.tick) }));
   }
 }
 

@@ -203,3 +203,45 @@ Pilha própria em portas livres, SwiftShader:
   porque a captura de tela no SwiftShader pode durar mais que ele.
 - Passaram também, um por vez: `gamepad.mjs`, `gameplay.mjs`, `tutorial.mjs`.
 
+
+## Previsão local e política de entrada (25/09/2026)
+
+**Bancada sem navegador** (`apps/game-client/test/prediction.test.ts` e
+`predictionHarness.ts`): servidor (`MatchSimulation`) e cliente (`LocalPredictor`) no mesmo
+processo, a entrada passando pelo mesmo codificador do fio, relógio emulado (quadros do
+cliente, ticks do servidor, atraso e jitter da rede). Mede a correção de cada
+reconciliação.
+
+| Caso | Antes | Depois |
+| --- | --- | --- |
+| RTT 0, andando (estado arredondado em mm) | até 0,53 m, 8 correções > 5 cm | 0 |
+| Pulos da tinta própria para o chão neutro, 150 ms | 20 > 5 cm, máx. 0,65 m | 0 |
+| Embalo (coleta e fim), 150 ms | 33 > 5 cm, p95 0,37 m | 0 |
+| 30 fps, 150 ms + jitter | p95 0,37 m, 45 > 25 cm | p95 0,00, 0 |
+| 10 fps, 150 ms + jitter | p95 0,37 m, 70 > 25 cm | p95 0,00, 0 |
+| ~5 fps (quadros medidos no laboratório), 150 ms + jitter | p95 0,42 m, 121 > 25 cm | p95 0,00, até 3 |
+
+As quatro causas encontradas e corrigidas, em ordem de peso:
+
+1. o servidor repetia a última entrada com a fila vazia e depois descartava as excedentes
+   (o caminho divergia) → agora espera e recupera ([ADR 0015](decisions/0015-entrada-uma-vez-na-ordem.md));
+2. a previsão usava a mira sem a quantização do fio;
+3. o estado próprio chegava arredondado em milímetros (sem economizar banda);
+4. faltavam o teto de velocidade no ar e os ticks exatos do buff e dos pickups.
+
+A primeira medição da bancada parecia mostrar divergência mesmo sem latência: era a
+bancada perdendo a primeira entrada no tick de contagem (corrigido na bancada, não no
+jogo).
+
+**No navegador** (`e2e/rede-adversa.mjs`, proxy TCP, SwiftShader a ~5–10 fps, 12 s de
+zigue-zague de duas pessoas):
+
+| RTT alvo | Antes: > 5 cm / p95 / máx. | Depois: > 5 cm / p95 / máx. |
+| --- | --- | --- |
+| 0 ms | 100 / 0,37 m / 0,40 m | 0 / 0 / 0 |
+| 80 ms | 108 / 0,38 m / 0,61 m | 3 / 0 / 1,10 m |
+| 150 ms | 56 / 0,37 m / 0,53 m | 8 / 0 / 0,81 m |
+
+As poucas que sobram vêm de quadros acima de 500 ms no SwiftShader compartilhado (o
+servidor registra 5 a 25 passos neutros por rodada em `round.input_stats`). Isso ainda
+**não foi medido** numa GPU real nem num celular.

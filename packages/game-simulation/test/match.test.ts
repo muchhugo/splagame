@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Buttons, INPUT_QUEUE_MAX, INPUT_STALE_TICKS, TICK_DT, neutralInput, type PlayerInput, type TeamId, type Vec3 } from '@borrifo/game-contracts';
+import { Buttons, INPUT_HOLD_DEBT_MAX, INPUT_HOLD_TICKS, INPUT_QUEUE_MAX, INPUT_STALE_TICKS, TICK_DT, neutralInput, type PlayerInput, type TeamId, type Vec3 } from '@borrifo/game-contracts';
 import { HEALTH, MOVEMENT, RODA_DE_OLEIRO, PIAO_GUIA } from '@borrifo/game-content';
 import { MatchSimulation, PaintLayout, PhysicsWorld, initPhysics, muzzlePosition, pitchFromDir, yawFromDir, type SimPlayer } from '../src/index';
 import { TEST_MAP } from './fixtures';
@@ -239,6 +239,65 @@ describe('política de entradas', () => {
     for (let t = 0; t < 20; t++) sim.step();
     expect(a.state.ink).toBeGreaterThanOrEqual(inkBefore);
     expect(sim.enqueueInput(999, neutralInput(1))).toBe('unknown');
+  });
+});
+
+describe('entradas em rajada: espera e recupera, sem repetir nem descartar', () => {
+  // o mesmo percurso (zigue-zague) entregue a cada tick ou em rajadas de 3 com variação
+  const route = (n: number) => Array.from({ length: n }, (_, i) => ({ moveY: 1, yaw: Math.floor(i / 21) % 2 ? Math.PI / 2 : -Math.PI / 2 }));
+  function run(deliver: (tick: number, pending: number) => number, n = 150) {
+    const { sim, add } = makeSim();
+    const a = add(1, 0, [-5, 0, -7]);
+    sim.step();
+    const r = route(n);
+    let sent = 0;
+    let steps = 0;
+    const count = () => (steps = a.lastProcessedSeq);
+    for (let t = 0; sent < n || a.inputQueue.length; t++) {
+      const k = Math.min(n - sent, deliver(t, n - sent));
+      for (let i = 0; i < k; i++) {
+        sent++;
+        sim.enqueueInput(1, { ...neutralInput(sent, r[sent - 1].yaw, 0), ...r[sent - 1], sequence: sent });
+      }
+      sim.step();
+      count();
+      if (t > n * 3) break;
+    }
+    return { pos: [...a.state.pos], steps, holdDebt: a.holdDebt };
+  }
+
+  it('rajadas de 3 (±1 tick) chegam ao mesmo lugar que a entrega suave', () => {
+    const smooth = run(() => 1);
+    // intervalos de 3, 2 e 4 ticks: média de uma entrada por tick, com variação de ±1 tick
+    const at = new Set<number>();
+    for (let t = 2, k = 0; t < 1000; t += [3, 2, 4][k++ % 3]) at.add(t);
+    const burst = run((t) => (at.has(t) ? 3 : 0));
+    expect(burst.steps).toBe(smooth.steps);
+    expect(Math.hypot(burst.pos[0] - smooth.pos[0], burst.pos[2] - smooth.pos[2])).toBeLessThan(1e-6);
+  });
+
+  it('inundar ou "segurar e despejar" nunca dá mais passos que ticks (sem ganho de velocidade)', () => {
+    const { sim, add } = makeSim();
+    const a = add(1, 0, [-5, 0, -7]);
+    sim.step();
+    let seq = 0;
+    const t0 = sim.tick;
+    const startSeq = a.lastProcessedSeq;
+    // segura por 30 ticks (espera no máximo INPUT_HOLD_TICKS, depois neutraliza) e despeja 40
+    for (let t = 0; t < 30; t++) sim.step();
+    for (let i = 0; i < 40; i++) sim.enqueueInput(1, { ...neutralInput(++seq), moveY: 1 });
+    for (let t = 0; t < 10; t++) {
+      for (let i = 0; i < 4; i++) sim.enqueueInput(1, { ...neutralInput(++seq), moveY: 1 });
+      sim.step();
+    }
+    const ticks = sim.tick - t0;
+    const processed = a.lastProcessedSeq - startSeq;
+    expect(a.holdDebt).toBeLessThanOrEqual(INPUT_HOLD_DEBT_MAX);
+    // a fila limitada descarta o excesso; o que foi simulado cabe no tempo decorrido
+    const x0 = -5;
+    expect(Math.abs(a.state.pos[0] - x0) + Math.abs(a.state.pos[2] + 7)).toBeLessThanOrEqual(MOVEMENT.walkSpeed * ticks * TICK_DT + 0.05);
+    expect(processed).toBeGreaterThan(0);
+    void INPUT_HOLD_TICKS;
   });
 });
 

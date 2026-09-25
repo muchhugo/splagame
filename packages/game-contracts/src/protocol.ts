@@ -330,8 +330,10 @@ export interface SelfSnapshot {
   ttt: number; // tempo restante da fase de deslocamento tático
   sm?: number; // multiplicador de velocidade horizontal (Embalo)
   im?: number; // multiplicador de recarga de pigmento (Fôlego/Mutirão)
+  ac?: number; // teto de velocidade horizontal no ar (velocidade do último chão)
   bf?: BuffKind | null; // buff ativo
   bt?: number; // tempo restante do buff (s)
+  bk?: number; // ticks restantes do buff (exato: a previsão desliga o Embalo no mesmo tick)
   mt?: number; // tempo restante do Mutirão (s)
   mc?: number; // recarga do Mutirão (s)
 }
@@ -401,6 +403,8 @@ export interface PickupSnapshot {
   k: BuffKind;
   a: 0 | 1;
   t: number;
+  /** Ticks exatos até aparecer (0 se disponível): a previsão acerta o tick da coleta. */
+  tk?: number;
 }
 
 /** Objetos de mundo persistentes (Roda de Oleiro ativa, Moringa armada). */

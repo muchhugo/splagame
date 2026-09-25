@@ -567,11 +567,12 @@ export class GameRuntime {
       if (!this.predictor) {
         const me = this.roster.get(this.myId);
         this.predictor = new LocalPredictor(this.physics, { layout: this.layout, owner: this.replica.state.owner }, this.myTeam, me?.weaponId ?? 'esguicho', m.me.p, this.myTeam === 0 ? Math.PI / 2 : -Math.PI / 2);
+        this.predictor.setMapPickups(this.map.objectives.pickups);
         this.input.yaw = this.myTeam === 0 ? Math.PI / 2 : -Math.PI / 2;
         this.input.pitch = 0.12;
       }
       const wasAlive = this.predictor.state.alive;
-      this.predictor.reconcile(m.me, m.ack);
+      this.predictor.reconcile(m.me, m.ack, { buff: m.me.bf, buffTicks: m.me.bk, pickups: m.pk });
       if (!wasAlive && this.predictor.state.alive) {
         // reaparecimento: câmera volta a olhar para o centro
         this.input.yaw = this.myTeam === 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -805,7 +806,8 @@ export class GameRuntime {
     // tolerância de 1,5 ms: o rAF oscila em torno do intervalo e não pode descartar quadros bons
     if (budget > 0 && now - this.lastRenderAt < budget - 1.5) return;
     this.lastRenderAt = now;
-    const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
+    const rawDt = (now - this.lastFrame) / 1000;
+    const dt = Math.min(0.1, rawDt);
     this.lastFrame = now;
     this.frames++;
     this.fpsTimer += dt;
@@ -821,9 +823,11 @@ export class GameRuntime {
 
     // ---------- previsão em passo fixo (30 Hz) + envio de entradas ----------
     if (pred && inRound) {
-      this.acc += dt;
+      // a previsão não perde tempo em quadro lento (até 500 ms / 15 passos): o servidor
+      // recebe uma entrada por tick e não precisa repetir nem descartar (ADR 0015)
+      this.acc += Math.min(0.5, rawDt);
       let steps = 0;
-      while (this.acc >= TICK_DT && steps < 4) {
+      while (this.acc >= TICK_DT && steps < 15) {
         this.acc -= TICK_DT;
         steps++;
         const aim = this.computeAim(pred);
@@ -844,7 +848,7 @@ export class GameRuntime {
         this.localCosmetics(pred, res.intents, aim.dir);
       }
       this.stepDelay = 0;
-      if (steps === 4) this.acc = 0;
+      if (steps === 15) this.acc = 0;
     }
 
     // ---------- câmera e personagens ----------

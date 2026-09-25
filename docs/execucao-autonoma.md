@@ -115,8 +115,10 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 
 - **S6:** o limitador por IP confia no endereço de conexão e não tem LRU; atrás de proxy
   reverso precisa de `trust proxy` configurado e de um teto de entradas.
-- **S19:** o teto de velocidade no ar e o fim do Embalo não são previstos no cliente; geram
-  pequenas correções nessas transições.
+- ~~**S19**~~ **resolvido:** teto no ar, Embalo (início e fim) e coleta previstos; além
+  disso, entrada quantizada na previsão, estado próprio sem arredondar e servidor que
+  espera e recupera em vez de repetir e descartar
+  ([ADR 0015](decisions/0015-entrada-uma-vez-na-ordem.md)).
 - ~~**S22**~~ **resolvido:** filtragem por interesse no servidor; adversários e banco
   recebem só a última posição vista de quem está oculto
   ([networking.md](networking.md#filtragem-por-interesse-quem-está-imerso)).
