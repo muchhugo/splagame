@@ -5,7 +5,7 @@
 //
 //   ROUND_DURATION_SECONDS=40 no servidor para chegar ao resultado rápido.
 //   PREFIXO=antes node e2e/capturas.mjs
-import { OUT, launch, openStandalone, watchErrors } from './lib.mjs';
+import { GAME_URL, OUT, launch, openStandalone, watchErrors } from './lib.mjs';
 import { mkdirSync } from 'node:fs';
 
 const PREFIXO = process.env.PREFIXO ?? 'depois';
@@ -112,8 +112,10 @@ for (const k of SO.split(',')) await flows[k]();
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  await openStandalone(page, 'carla', `cap-pe-${Date.now().toString(36)}`);
-  await page.waitForTimeout(900);
+  // a tela de girar cobre tudo, inclusive a entrada: só carrega a página
+  await page.goto(GAME_URL);
+  await page.waitForSelector('.rotate-screen', { timeout: 30000 });
+  await page.waitForTimeout(400);
   await shot(page, 'celular-em-pe-girar');
   await ctx.close();
 }

@@ -124,7 +124,10 @@ real"**, porque este repositório não tem acesso ao Trivo nem a aparelhos físi
 - ~~**S22**~~ **resolvido:** filtragem por interesse no servidor; adversários e banco
   recebem só a última posição vista de quem está oculto
   ([networking.md](networking.md#filtragem-por-interesse-quem-está-imerso)).
-- **G24 / L21:** ainda há alocações por quadro em trechos do HUD e das etiquetas.
+- ~~**G24 / L21**~~ **tratado com medição:** −28% de bytes alocados por quadro (mediana),
+  shaders no meio da partida de 7 para 1, Moringa/Roda reutilizadas
+  ([performance.md](performance.md#alocações-por-quadro-25092026)). O HUD em React e o render
+  do Babylon ficaram como estão (sem ganho claro no nosso código).
 - Freio falso nos remotos quando falta amostra: mitigado pela extrapolação, não eliminado.
 
 ### Auditoria de UI/UX (25/09/2026)

@@ -29,16 +29,22 @@ const TITLES: Record<StepId, string> = {
  * partida. O texto muda com o dispositivo (tecla, botão ou gesto).
  */
 export function Tutorial() {
-  const t = useStore(tutorialStore, (x) => x);
+  // campos separados e já arredondados como aparecem: o treino atualiza o progresso a cada
+  // quadro e o HUD atualiza tanque e especial a 15 Hz; o cartão só redesenha quando o que
+  // ele mostra muda (antes: todo quadro, ~8 KB de JSX por quadro no perfil de alocações)
+  const active = useStore(tutorialStore, (x) => x.active);
+  const stepIdx = useStore(tutorialStore, (x) => x.step);
+  const steps = useStore(tutorialStore, (x) => x.steps);
+  const pct = useStore(tutorialStore, (x) => Math.round(x.progress * 100));
   const hints = useHints();
   const locked = useStore(uiStore, (s) => s.pointerLocked);
   const flowMode = useStore(settingsStore, (s) => s.flowMode);
   const fireAlt = useStore(settingsStore, (s) => s.keybinds.fireAlt);
-  const special = useStore(hudStore, (s) => s.special);
-  const ink = useStore(hudStore, (s) => s.ink);
+  const special = useStore(hudStore, (s) => Math.floor(s.special));
+  const ink = useStore(hudStore, (s) => Math.round(s.ink));
   const weapon = WEAPONS[useStore(hudStore, (s) => s.weaponId)].name;
-  if (!t.active) return null;
-  const step = t.steps[t.step];
+  if (!active) return null;
+  const step = steps[stepIdx];
   const k = (a: HintAction) => <kbd>{hints.label(a)}</kbd>;
   const d = hints.device;
   const hold = flowMode === 'hold' ? 'Segure' : 'Aperte';
@@ -103,10 +109,10 @@ export function Tutorial() {
     <aside className="tutorial" aria-live="polite" aria-label="Treino rápido">
       <div className="tut-head">
         <span>
-          Treino rápido · {t.step + 1}/{t.steps.length}
+          Treino rápido · {stepIdx + 1}/{steps.length}
         </span>
         <span className="tut-bar" aria-hidden="true">
-          <i style={{ width: `${Math.round(t.progress * 100)}%` }} />
+          <i style={{ width: `${pct}%` }} />
         </span>
       </div>
       <strong>{TITLES[step]}</strong>

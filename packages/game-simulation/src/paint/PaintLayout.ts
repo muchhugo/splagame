@@ -204,10 +204,15 @@ export class PaintLayout {
     for (let x = ax0; x <= ax1; x++) for (let y = ay0; y <= ay1; y++) for (let z = az0; z <= az1; z++) this.grid[this.gridIndex(x, y, z)].push(s.index);
   }
 
-  private cellCoords(p: Vec3): [number, number, number] {
-    const c = (k: number) => Math.min(this.gridDims[k] - 1, Math.max(0, Math.floor((p[k] - this.gridMin[k]) / this.gridCell)));
-    return [c(0), c(1), c(2)];
+  private cellCoords(p: Vec3, out: [number, number, number] = [0, 0, 0]): [number, number, number] {
+    for (let k = 0; k < 3; k++) out[k] = Math.min(this.gridDims[k] - 1, Math.max(0, Math.floor((p[k] - this.gridMin[k]) / this.gridCell)));
+    return out;
   }
+  // rascunhos das consultas quentes (piso sob os pés 5× por passo, no servidor e na previsão)
+  private readonly qa: [number, number, number] = [0, 0, 0];
+  private readonly qb: [number, number, number] = [0, 0, 0];
+  private readonly qmin: Vec3 = [0, 0, 0];
+  private readonly qmax: Vec3 = [0, 0, 0];
 
   private gridIndex(x: number, y: number, z: number) {
     return (x * this.gridDims[1] + y) * this.gridDims[2] + z;
@@ -221,8 +226,10 @@ export class PaintLayout {
       this.stamp.fill(0);
       this.stampId = 1;
     }
-    const [ax0, ay0, az0] = this.cellCoords(min);
-    const [ax1, ay1, az1] = this.cellCoords(max);
+    const a = this.cellCoords(min, this.qa);
+    const b = this.cellCoords(max, this.qb);
+    const ax0 = a[0], ay0 = a[1], az0 = a[2];
+    const ax1 = b[0], ay1 = b[1], az1 = b[2];
     for (let x = ax0; x <= ax1; x++)
       for (let y = ay0; y <= ay1; y++)
         for (let z = az0; z <= az1; z++) {
@@ -255,39 +262,44 @@ export class PaintLayout {
    * piso cujo plano está entre `maxAbove` acima e `maxBelow` abaixo do ponto.
    */
   floorAt(p: Vec3, maxBelow = 0.3, maxAbove = 0.12): CellHit | null {
-    const list = this.querySurfaces([p[0] - 0.05, p[1] - maxBelow - 0.5, p[2] - 0.05], [p[0] + 0.05, p[1] + maxAbove + 0.2, p[2] + 0.05], this.tmpList);
-    let best: CellHit | null = null;
-    for (const s of list) {
-      if (s.traversal !== 'floor') continue;
-      const d = dot(s.normal, p) - s.planeD;
-      if (d < -maxAbove || d > maxBelow) continue;
-      const rel: Vec3 = [p[0] - s.origin[0], p[1] - s.origin[1], p[2] - s.origin[2]];
-      const u = dot(rel, s.axisU);
-      const v = dot(rel, s.axisV);
-      const cell = this.cellAtUV(s, u, v);
-      if (cell < 0) continue;
-      if (!best || Math.abs(d) < Math.abs(best.d)) best = { surface: s, cell, d, u, v };
-    }
-    return best;
+    const mn = this.qmin, mx = this.qmax;
+    mn[0] = p[0] - 0.05; mn[1] = p[1] - maxBelow - 0.5; mn[2] = p[2] - 0.05;
+    mx[0] = p[0] + 0.05; mx[1] = p[1] + maxAbove + 0.2; mx[2] = p[2] + 0.05;
+    return this.bestHit(this.querySurfaces(mn, mx, this.tmpList), p, 'floor', null, -maxAbove, maxBelow);
   }
 
   /** Parede pintável num ponto de contato, com normal esperada (apontando para fora). */
   wallAt(p: Vec3, outward: Vec3, maxDist = 0.25): CellHit | null {
-    const list = this.querySurfaces([p[0] - maxDist, p[1] - 0.05, p[2] - maxDist], [p[0] + maxDist, p[1] + 0.05, p[2] + maxDist], this.tmpList);
-    let best: CellHit | null = null;
-    for (const s of list) {
-      if (s.traversal !== 'wall') continue;
-      if (dot(s.normal, outward) < 0.8) continue;
-      const d = dot(s.normal, p) - s.planeD;
-      if (Math.abs(d) > maxDist) continue;
-      const rel: Vec3 = [p[0] - s.origin[0], p[1] - s.origin[1], p[2] - s.origin[2]];
-      const u = dot(rel, s.axisU);
-      const v = dot(rel, s.axisV);
+    const mn = this.qmin, mx = this.qmax;
+    mn[0] = p[0] - maxDist; mn[1] = p[1] - 0.05; mn[2] = p[2] - maxDist;
+    mx[0] = p[0] + maxDist; mx[1] = p[1] + 0.05; mx[2] = p[2] + maxDist;
+    return this.bestHit(this.querySurfaces(mn, mx, this.tmpList), p, 'wall', outward, -maxDist, maxDist);
+  }
+
+  /** Superfície mais próxima do plano entre as candidatas; aloca só o resultado. */
+  private bestHit(list: PaintSurface[], p: Vec3, traversal: 'floor' | 'wall', outward: Vec3 | null, dMin: number, dMax: number): CellHit | null {
+    let bs: PaintSurface | null = null;
+    let bc = -1, bd = 0, bu = 0, bv = 0;
+    for (let k = 0; k < list.length; k++) {
+      const s = list[k];
+      if (s.traversal !== traversal) continue;
+      if (outward && s.normal[0] * outward[0] + s.normal[1] * outward[1] + s.normal[2] * outward[2] < 0.8) continue;
+      const d = s.normal[0] * p[0] + s.normal[1] * p[1] + s.normal[2] * p[2] - s.planeD;
+      if (d < dMin || d > dMax) continue;
+      const rx = p[0] - s.origin[0], ry = p[1] - s.origin[1], rz = p[2] - s.origin[2];
+      const u = rx * s.axisU[0] + ry * s.axisU[1] + rz * s.axisU[2];
+      const v = rx * s.axisV[0] + ry * s.axisV[1] + rz * s.axisV[2];
       const cell = this.cellAtUV(s, u, v);
       if (cell < 0) continue;
-      if (!best || Math.abs(d) < Math.abs(best.d)) best = { surface: s, cell, d, u, v };
+      if (!bs || Math.abs(d) < Math.abs(bd)) {
+        bs = s;
+        bc = cell;
+        bd = d;
+        bu = u;
+        bv = v;
+      }
     }
-    return best;
+    return bs ? { surface: bs, cell: bc, d: bd, u: bu, v: bv } : null;
   }
 }
 

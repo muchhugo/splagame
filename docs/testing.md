@@ -245,3 +245,19 @@ zigue-zague de duas pessoas):
 As poucas que sobram vêm de quadros acima de 500 ms no SwiftShader compartilhado (o
 servidor registra 5 a 25 passos neutros por rodada em `round.input_stats`). Isso ainda
 **não foi medido** numa GPU real nem num celular.
+
+## Pilha própria para testes de navegador (25/09/2026)
+
+`e2e/stack.mjs` sobe servidor de partidas, cliente Vite e um backend mínimo de credencial
+(só o endpoint standalone de desenvolvimento, só para a origem do jogo da pilha). O
+segredo de desenvolvimento é gerado na hora, e a pilha encerra os processos ao sair.
+`node e2e/stack.mjs` a deixa de pé até Ctrl+C; `alocacoes.mjs` a usa por conta própria.
+Com ela passaram (SwiftShader): `gameplay`, `tutorial`, `menus`, `banco`, `gamepad`,
+`personagens` e `capturas`.
+
+- `personagens.mjs`: o orçamento de malhas por personagem passou a ser medido em regime
+  (três amostras, o mínimo de cada um). Na troca de forma as duas formas ficam ligadas por
+  um instante, e uma amostra caiu nesse instante (44 > 40).
+- `capturas.mjs`: a captura em pé só carrega a página (a tela de girar cobre a entrada).
+- `pnpm test`: **244 de 244**.
+

@@ -49,13 +49,18 @@ const FOOT_SAMPLE_OFFSETS: Array<[number, number]> = [
   [0, -0.2],
 ];
 
+const FOOT_PROBE: Vec3 = [0, 0, 0];
+
 /** Classifica a tinta sob os pés com histerese (evita oscilação na borda das células). */
 export function sampleGround(pos: Vec3, team: TeamId, paint: PaintQuery, prev: number): number {
   let own = 0,
     enemy = 0,
     none = 0;
-  for (const [ox, oz] of FOOT_SAMPLE_OFFSETS) {
-    const hit = paint.layout.floorAt([pos[0] + ox, pos[1], pos[2] + oz]);
+  for (let k = 0; k < FOOT_SAMPLE_OFFSETS.length; k++) {
+    FOOT_PROBE[0] = pos[0] + FOOT_SAMPLE_OFFSETS[k][0];
+    FOOT_PROBE[1] = pos[1];
+    FOOT_PROBE[2] = pos[2] + FOOT_SAMPLE_OFFSETS[k][1];
+    const hit = paint.layout.floorAt(FOOT_PROBE);
     if (!hit) {
       none++;
       continue;

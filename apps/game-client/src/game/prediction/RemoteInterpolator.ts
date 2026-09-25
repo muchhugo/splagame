@@ -69,10 +69,22 @@ export class RemoteInterpolator {
     return (now / 1000) * 30 + this.tickOffset - this.delayTicks;
   }
 
+  /**
+   * Amostra no tick de render. O resultado é um objeto REUTILIZADO por jogador (vale até a
+   * próxima chamada com outro tick; quem precisa guardar, copia). O mesmo tick devolve o
+   * mesmo resultado sem recalcular: o render, a mira (a cada passo previsto), a mira
+   * assistida e as etiquetas pedem a mesma amostra no mesmo quadro.
+   */
   sample(playerId: number, tick: number): RemoteSample | null {
     const arr = this.buf.get(playerId);
     if (!arr || arr.length === 0) return null;
+    let o = this.out.get(playerId);
+    if (o && o.tick === tick && o.src === arr[arr.length - 1]) return o.s;
+    if (!o) this.out.set(playerId, (o = { tick: NaN, src: null, s: blankSample() }));
+    o.tick = tick;
+    o.src = arr[arr.length - 1];
     this.sampled++;
+    const r = o.s;
     const last = arr[arr.length - 1];
     if (tick > last.tick) {
       // sem amostra nova: extrapola pela velocidade por até 3 ticks (100 ms), depois segura
@@ -80,31 +92,36 @@ export class RemoteInterpolator {
       if (ahead > MAX_EXTRAPOLATION) this.starved++;
       else this.extrapolated++;
       const dt = Math.min(ahead, MAX_EXTRAPOLATION) / 30;
-      return { ...last, pos: [last.pos[0] + last.vel[0] * dt, last.pos[1], last.pos[2] + last.vel[1] * dt] };
+      copySample(r, last);
+      r.pos[0] = last.pos[0] + last.vel[0] * dt;
+      r.pos[2] = last.pos[2] + last.vel[1] * dt;
+      return r;
     }
-    if (tick <= arr[0].tick) return arr[0];
+    if (tick <= arr[0].tick) return copySample(r, arr[0]);
     for (let i = arr.length - 1; i >= 0; i--) {
       const a = arr[i];
       if (a.tick <= tick) {
         const b = arr[i + 1];
-        if (!b) return a;
+        if (!b) return copySample(r, a);
         // teleporte (reaparecimento/deslocamento) ou troca oculto ↔ visível: não interpola
         // (a posição oculta é a última vista; deslizar dela até a real inventaria um trajeto)
         const jump = (a.flags ^ b.flags) & PFLAG_HIDDEN || Math.hypot(b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]) > 4;
         const t = jump ? 1 : (tick - a.tick) / Math.max(1, b.tick - a.tick);
-        return {
-          ...b,
-          pos: [a.pos[0] + (b.pos[0] - a.pos[0]) * t, a.pos[1] + (b.pos[1] - a.pos[1]) * t, a.pos[2] + (b.pos[2] - a.pos[2]) * t],
-          yaw: lerpAngle(a.yaw, b.yaw, t),
-          pitch: a.pitch + (b.pitch - a.pitch) * t,
-          charge: a.charge + (b.charge - a.charge) * t,
-          flags: jump ? b.flags : t < 0.5 ? a.flags : b.flags,
-          form: jump ? b.form : t < 0.5 ? a.form : b.form,
-        };
+        copySample(r, b);
+        r.pos[0] = a.pos[0] + (b.pos[0] - a.pos[0]) * t;
+        r.pos[1] = a.pos[1] + (b.pos[1] - a.pos[1]) * t;
+        r.pos[2] = a.pos[2] + (b.pos[2] - a.pos[2]) * t;
+        r.yaw = lerpAngle(a.yaw, b.yaw, t);
+        r.pitch = a.pitch + (b.pitch - a.pitch) * t;
+        r.charge = a.charge + (b.charge - a.charge) * t;
+        r.flags = jump ? b.flags : t < 0.5 ? a.flags : b.flags;
+        r.form = jump ? b.form : t < 0.5 ? a.form : b.form;
+        return r;
       }
     }
-    return arr[0];
+    return copySample(r, arr[0]);
   }
+  private out = new Map<number, { tick: number; src: RemoteSample | null; s: RemoteSample }>();
 
   latest(playerId: number): RemoteSample | null {
     const arr = this.buf.get(playerId);
@@ -117,6 +134,7 @@ export class RemoteInterpolator {
 
   clear() {
     this.buf.clear();
+    this.out.clear();
     this.tickOffset = null;
     this.late = 0;
     this.delayTicks = MIN_DELAY;
@@ -128,4 +146,24 @@ function lerpAngle(a: number, b: number, t: number) {
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   return a + d * t;
+}
+
+function blankSample(): RemoteSample {
+  return { tick: 0, pos: [0, 0, 0], yaw: 0, pitch: 0, form: 0, flags: 0, hp: 0, charge: 0, vel: [0, 0] };
+}
+
+function copySample(r: RemoteSample, a: RemoteSample): RemoteSample {
+  r.tick = a.tick;
+  r.pos[0] = a.pos[0];
+  r.pos[1] = a.pos[1];
+  r.pos[2] = a.pos[2];
+  r.yaw = a.yaw;
+  r.pitch = a.pitch;
+  r.form = a.form;
+  r.flags = a.flags;
+  r.hp = a.hp;
+  r.charge = a.charge;
+  r.vel[0] = a.vel[0];
+  r.vel[1] = a.vel[1];
+  return r;
 }

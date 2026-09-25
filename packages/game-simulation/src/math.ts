@@ -93,10 +93,9 @@ export class Rng {
 /** Interseção segmento–cápsula vertical (eixo Y). Retorna t ∈ [0,1] ou -1. */
 export function segmentCapsuleHit(p0: Vec3, p1: Vec3, base: Vec3, height: number, radius: number): number {
   // Aproxima a cápsula por cilindro com tampas esféricas, amostrando o segmento
-  // pela distância mínima entre o segmento e o eixo da cápsula.
-  const a0: Vec3 = [base[0], base[1] + radius, base[2]];
-  const a1: Vec3 = [base[0], base[1] + Math.max(radius, height - radius), base[2]];
-  const res = closestSegmentSegment(p0, p1, a0, a1);
+  // pela distância mínima entre o segmento e o eixo da cápsula. Sem alocar: roda por
+  // projétil × jogador a cada tick no servidor e por passo previsto na mira do cliente.
+  const res = closestSegSeg(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], base[0], base[1] + radius, base[2], base[0], base[1] + Math.max(radius, height - radius), base[2]);
   if (res.dist > radius) return -1;
   // Recuo aproximado até a superfície para obter o primeiro contato.
   const segLen = dist(p0, p1);
@@ -106,27 +105,39 @@ export function segmentCapsuleHit(p0: Vec3, p1: Vec3, base: Vec3, height: number
 }
 
 export function closestSegmentSegment(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3): { s: number; t: number; dist: number } {
-  const d1 = sub(q1, p1);
-  const d2 = sub(q2, p2);
-  const r = sub(p1, p2);
-  const a = dot(d1, d1);
-  const e = dot(d2, d2);
-  const f = dot(d2, r);
+  const r = closestSegSeg(p1[0], p1[1], p1[2], q1[0], q1[1], q1[2], p2[0], p2[1], p2[2], q2[0], q2[1], q2[2]);
+  return { s: r.s, t: r.t, dist: r.dist };
+}
+
+/** Resultado reutilizado de `closestSegSeg` (vale até a próxima chamada). */
+const SEG_OUT = { s: 0, t: 0, dist: 0 };
+
+/** Mesma conta de antes (mesma ordem de operações), em escalares. */
+function closestSegSeg(p1x: number, p1y: number, p1z: number, q1x: number, q1y: number, q1z: number, p2x: number, p2y: number, p2z: number, q2x: number, q2y: number, q2z: number) {
+  const d1x = q1x - p1x, d1y = q1y - p1y, d1z = q1z - p1z;
+  const d2x = q2x - p2x, d2y = q2y - p2y, d2z = q2z - p2z;
+  const rx = p1x - p2x, ry = p1y - p2y, rz = p1z - p2z;
+  const a = d1x * d1x + d1y * d1y + d1z * d1z;
+  const e = d2x * d2x + d2y * d2y + d2z * d2z;
+  const f = d2x * rx + d2y * ry + d2z * rz;
   let s = 0;
   let t = 0;
   if (a <= 1e-9 && e <= 1e-9) {
-    return { s: 0, t: 0, dist: len(r) };
+    SEG_OUT.s = 0;
+    SEG_OUT.t = 0;
+    SEG_OUT.dist = Math.hypot(rx, ry, rz);
+    return SEG_OUT;
   }
   if (a <= 1e-9) {
     s = 0;
     t = clamp(f / e, 0, 1);
   } else {
-    const c = dot(d1, r);
+    const c = d1x * rx + d1y * ry + d1z * rz;
     if (e <= 1e-9) {
       t = 0;
       s = clamp(-c / a, 0, 1);
     } else {
-      const b = dot(d1, d2);
+      const b = d1x * d2x + d1y * d2y + d1z * d2z;
       const denom = a * e - b * b;
       s = denom !== 0 ? clamp((b * f - c * e) / denom, 0, 1) : 0;
       t = (b * s + f) / e;
@@ -139,7 +150,8 @@ export function closestSegmentSegment(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3): {
       }
     }
   }
-  const c1 = addScaled(p1, d1, s);
-  const c2 = addScaled(p2, d2, t);
-  return { s, t, dist: dist(c1, c2) };
+  SEG_OUT.s = s;
+  SEG_OUT.t = t;
+  SEG_OUT.dist = Math.hypot(p1x + d1x * s - (p2x + d2x * t), p1y + d1y * s - (p2y + d2y * t), p1z + d1z * s - (p2z + d2z * t));
+  return SEG_OUT;
 }

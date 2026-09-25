@@ -183,3 +183,78 @@ cliente). Nenhum dos dois perdeu mensagens, e a voz no mesmo SFU não teve burac
 3. Carga com várias salas por processo, para achar o limite por núcleo.
 4. Latência, jitter e perda emulados (por exemplo `tc netem`) para validar previsão e interpolação.
 5. Mobile real.
+
+## Alocações por quadro (25/09/2026)
+
+`e2e/alocacoes.mjs`: amostragem de heap do V8 pelo DevTools (inclui objetos já coletados),
+partida 8 × 8 com bots, 10 s, SwiftShader a ~12 fps, build de desenvolvimento (React com
+JSX de desenvolvimento). Cada alocação é atribuída à função **do nosso código** mais
+próxima na pilha. Três execuções de cada lado, alternando antes e depois na mesma
+máquina; a variação entre execuções é grande (a mesma versão deu 412 e 525 KB/quadro).
+
+- **Total alocado por quadro:** antes 412 / 525 / 432 KB (mediana 432); depois 310 / 310 /
+  354 KB (mediana 310), **cerca de −28%**.
+- **Shaders compilados no meio da partida** (primeiros 25 s, `e2e/shaders.mjs` contando o
+  processamento de shader no protótipo do `Effect`): **7 → 1**. Nas medições de 10 s do
+  depois, 0.
+
+| Onde (nosso código mais próximo) | Antes (KB/quadro) | Depois (KB/quadro) |
+| --- | --- | --- |
+| `frame` (GameRuntime.ts) | 117.4 | 84.7 |
+| `reconcile` (LocalPredictor.ts) | 38.3 | 20.6 |
+| `(anônima)` (ToonMaterial.ts) | 37.4 | 31.5 |
+| `step` (LocalPredictor.ts) | 28.1 | 17.7 |
+| `computeAim` (GameRuntime.ts) | 20.0 | 15.6 |
+| `update` (CharacterView.ts) | 19.3 | 19.4 |
+| `Hud` (Hud.tsx) | 16.1 | 17.6 |
+| `(anônima)` (Hud.tsx) | 11.5 | 12.1 |
+| `update` (Effects.ts) | 11.6 | 7.0 |
+| `impact` (Effects.ts) | 10.4 | 7.0 |
+| `onPaintDelta` (GameRuntime.ts) | 9.1 | 9.4 |
+| `sample` (RemoteInterpolator.ts) | 8.9 | 0.0 |
+| `Tutorial` (Tutorial.tsx) | 8.4 | 0.0 |
+| `looseLayer` (CharacterView.ts) | 8.3 | 7.5 |
+| `updateView` (GameRuntime.ts) | 7.0 | 6.0 |
+| `bind` () | 4.6 | 4.4 |
+| `sunAt` (GameRuntime.ts) | 4.6 | 1.9 |
+| `(anônima)` (MatchConnection.ts) | 4.4 | 4.2 |
+
+O que foi feito, cada item com a medição que o justificou:
+
+- **`ToonMaterial.isReady`:** o `ShaderMaterial` refazia a lista de defines e a juntava
+  numa string a cada verificação de cada malha, a cada quadro. Agora a resposta fica
+  guardada por configuração enquanto o efeito do submesh for o mesmo e estiver pronto
+  (taxa de acerto medida: 96%). Congelar o material não serve: ele é compartilhado entre
+  personagens com estado por malha no bind.
+- **Shaders dos efeitos:** a Moringa, a Roda, o feixe, a mira e o marcador compilavam no
+  primeiro uso. Pior: o motor descarta o efeito quando o último usuário some, então cada
+  Moringa nova (a anterior já explodida) podia recompilar. Agora os modelos reais são
+  compilados na carga e ficam vivos, e Moringas e Rodas são reutilizadas por tipo e turma
+  em vez de criadas e descartadas a cada arremesso.
+- **Consultas de piso e parede** (`PaintLayout.floorAt`/`wallAt`, 5× por passo, no servidor
+  e na previsão): rascunhos e contas em escalares. A matemática de segmento × cápsula
+  (acertos no servidor e mira no cliente) também ficou em escalares; um teste confere
+  resultado **idêntico bit a bit** em 20 000 casos (`mathEquivalence.test.ts`).
+- **Interpolador:** a mesma amostra é pedida pelo render, pela mira (a cada passo
+  previsto), pela mira assistida e pelas etiquetas. Agora ela é calculada uma vez por tick
+  de render, num objeto reutilizado por jogador, e há um tick de render por quadro.
+- **Mira:** parou de copiar o estado inteiro do jogador a cada passo só para achar o cano.
+- **Cartão do treino:** redesenhava todo quadro (o progresso muda a cada quadro). Agora
+  assina só o que mostra, já arredondado.
+- **Partículas e projéteis visuais:** criação em escalares, lista compactada no lugar.
+  Raycast com um raio reutilizado. `lastPos` e os vetores do corpo solto são atualizados
+  no lugar.
+
+**Não mexido (sem ganho claro ou fora do nosso código):**
+
+- o bind do `ToonMaterial` (~31 KB/quadro): é o valor por malha que tem de ir ao shader;
+  a maior parte é número em ponto flutuante embalado nos níveis baixos do JIT;
+- o render do Babylon (culling e iteradores, ~85 KB/quadro): código do motor;
+- o HUD em React (~30 KB/quadro, JSX de desenvolvimento): o build de produção é mais leve
+  e não foi medido aqui;
+- os deltas de tinta (~9 KB/quadro): dado de rede decodificado.
+
+**Não validado:** GPU real e build de produção (as medições são SwiftShader e build de
+desenvolvimento, que é o que expõe os ganchos de teste). O efeito em travadas de GC não
+foi medido diretamente; o que se mediu é o volume alocado e as compilações.
+

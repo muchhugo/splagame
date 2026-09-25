@@ -43,8 +43,15 @@ for (const p of roster) {
     await page.screenshot({ path: `${DIR}personagem-${p.a}-${p.bot ? 'bot' : 'local'}-${lado}.png` });
   }
 }
-const meshes = await page.evaluate(() => [...window.__borrifo.controller.runtime.views.values()].map((v) => v.activeMeshCount()));
-check(Math.max(...meshes) <= 40, `malhas ativas por personagem: ${meshes.join(', ')}`);
+// orçamento em regime: na troca de forma as duas formas ficam ligadas por ~0,15 s (até ~44
+// malhas); três amostras espaçadas e o mínimo de cada personagem medem o estado estável
+const samples = [];
+for (let i = 0; i < 3; i++) {
+  samples.push(await page.evaluate(() => [...window.__borrifo.controller.runtime.views.values()].map((v) => v.activeMeshCount())));
+  await page.waitForTimeout(200);
+}
+const meshes = samples[0].map((_, i) => Math.min(...samples.map((s) => s[i] ?? Infinity)));
+check(Math.max(...meshes) <= 40, `malhas ativas por personagem (em regime): ${meshes.join(', ')}`);
 await page.evaluate(() => (window.__borrifo.controller.runtime.debugView = null));
 check(errs.length === 0, `sem erros de página${errs.length ? `: ${errs.slice(0, 3).join(' | ')}` : ''}`);
 await browser.close();

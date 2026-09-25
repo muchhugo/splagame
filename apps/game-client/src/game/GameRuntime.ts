@@ -149,6 +149,8 @@ export class GameRuntime {
   private lastRenderAt = 0;
   private hooks: RuntimeHooks;
   private lastPos = new Map<number, Vec3>();
+  /** Tick de render dos remotos neste quadro (calculado uma vez no começo do quadro). */
+  private frameRTick = 0;
   /** Relógio da previsão local (s), avança um passo fixo por passo previsto. */
   private predClock = 0;
   private lastShotSimAt = -Infinity;
@@ -216,6 +218,8 @@ export class GameRuntime {
     rt.level.setTeamColors(colors[0], colors[1]);
     rt.env = new Environment(rt.scene, map);
     rt.effects = new Effects(rt.scene, rt.physics, colors);
+    // shaders dos efeitos de meio de rodada compilam agora, na carga (não no primeiro uso)
+    void rt.effects.warmUp();
     rt.modeView = new ModeView(rt.scene, map, colors);
     rt.rig = new CameraRig(rt.scene, rt.physics);
     rt.scene.activeCamera = rt.rig.camera;
@@ -557,7 +561,14 @@ export class GameRuntime {
     if (this.disposed) return;
     this.lastSnapshot = m;
     this.interp.push(m.t, receivedAt, m.pl.filter((t) => t[0] !== this.myId));
-    for (const t of m.pl) this.lastPos.set(t[0], [t[1] / 100, t[2] / 100, t[3] / 100]);
+    for (const t of m.pl) {
+      const lp = this.lastPos.get(t[0]);
+      if (lp) {
+        lp[0] = t[1] / 100;
+        lp[1] = t[2] / 100;
+        lp[2] = t[3] / 100;
+      } else this.lastPos.set(t[0], [t[1] / 100, t[2] / 100, t[3] / 100]);
+    }
     if (m.ph !== this.phase) this.setPhase(m.ph, m.tl);
     else {
       this.timeLeftMs = m.tl;
@@ -819,6 +830,9 @@ export class GameRuntime {
     this.impactBudget = Math.max(0, this.impactBudget - dt * 20);
     const inRound = this.phase === 'countdown' || this.phase === 'running';
     const pred = this.predictor;
+    // um tick de render por quadro: render, mira (a cada passo), mira assistida e etiquetas
+    // pedem a mesma amostra dos remotos (o interpolador devolve a mesma sem recalcular)
+    this.frameRTick = this.interp.renderTick(now);
     this.input.consumeLook(dt, this.aimAssistStep(dt, inRound));
 
     // ---------- previsão em passo fixo (30 Hz) + envio de entradas ----------
@@ -902,7 +916,7 @@ export class GameRuntime {
         /* câmera do banco acompanhando alguém */
       } else this.mapFlyover(now, dt);
     }
-    const rTick = this.interp.renderTick(now);
+    const rTick = this.frameRTick;
     for (const id of this.interp.ids()) {
       const smp = this.interp.sample(id, rTick);
       if (!smp) continue;
@@ -982,7 +996,7 @@ export class GameRuntime {
     if (!s.alive || s.form !== 0 || s.travelPhase !== 0) return NO_ASSIST;
     const mag = this.input.padMagnitudes();
     const camPos = this.rig.position();
-    const rTick = this.interp.renderTick(performance.now());
+    const rTick = this.frameRTick;
     const targets: AimTarget[] = [];
     for (const id of this.interp.ids()) {
       if (this.roster.get(id)?.team === this.myTeam) continue;
@@ -1021,7 +1035,7 @@ export class GameRuntime {
     if (hit) tDist = hit.toi;
     // considera inimigos visíveis como alvo da câmera
     const end: Vec3 = [camPos[0] + camFwd[0] * tDist, camPos[1] + camFwd[1] * tDist, camPos[2] + camFwd[2] * tDist];
-    const rTick = this.interp.renderTick(performance.now());
+    const rTick = this.frameRTick;
     for (const id of this.interp.ids()) {
       const smp = this.interp.sample(id, rTick);
       // submerso é invisível: a mira não pode "grudar" em quem não se vê
@@ -1030,8 +1044,10 @@ export class GameRuntime {
       if (t >= 0 && t * tDist < tDist) tDist = t * tDist;
     }
     const target: Vec3 = [camPos[0] + camFwd[0] * tDist, camPos[1] + camFwd[1] * tDist, camPos[2] + camFwd[2] * tDist];
-    const probe = { ...pred.state, yaw: this.input.yaw };
-    const muzzle = muzzlePosition(probe);
+    // o cano só depende da posição e da direção: sem copiar o estado inteiro a cada passo
+    this.aimProbe.pos = pred.state.pos;
+    this.aimProbe.yaw = this.input.yaw;
+    const muzzle = muzzlePosition(this.aimProbe as unknown as typeof pred.state);
     let dir: Vec3 = [target[0] - muzzle[0], target[1] - muzzle[1], target[2] - muzzle[2]];
     const dl = Math.hypot(dir[0], dir[1], dir[2]);
     if (dl < 2.2 || tDist < 2) dir = camFwd;
@@ -1043,6 +1059,7 @@ export class GameRuntime {
     return { yaw: yawFromDir(dir), pitch: pitchFromDir(dir), dir, blocked, target };
   }
   private aimBlocked: Vec3 | null = null;
+  private readonly aimProbe: { pos: Vec3; yaw: number } = { pos: [0, 0, 0], yaw: 0 };
 
   /** Efeitos imediatos do próprio jogador (visuais, sem autoridade). */
   private localCosmetics(pred: LocalPredictor, intents: import('@borrifo/game-simulation').StepIntents, dir: Vec3) {
@@ -1343,7 +1360,7 @@ export class GameRuntime {
     if (this.visible && (this.phase === 'running' || this.phase === 'countdown')) {
       const c = this.rig.camera.position;
       const cam: Vec3 = [c.x, c.y, c.z];
-      const rTick = this.interp.renderTick(now);
+      const rTick = this.frameRTick;
       // no banco, a visão é a de quem está sendo acompanhado (visão geral: ninguém é aliado)
       const viewTeam: TeamId | null = this.spectating ? (this.specTarget !== null ? (this.roster.get(this.specTarget)?.team ?? null) : null) : this.myTeam;
       for (const id of this.interp.ids()) {

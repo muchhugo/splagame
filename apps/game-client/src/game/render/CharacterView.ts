@@ -897,8 +897,8 @@ export class CharacterView {
         dz = v.pos[2] - this.prevPos[2];
       if (Math.hypot(dx, dz) > 3) {
         // teleporte (reaparecer, Pião-Guia, correção grande): recomeça sem tranco
-        this.velS = [0, 0];
-        this.accS = [0, 0];
+        this.velS[0] = this.velS[1] = 0;
+        this.accS[0] = this.accS[1] = 0;
         vx = vz = 0;
       } else {
         vx = dx / dt;
@@ -908,14 +908,21 @@ export class CharacterView {
     const k = Math.min(1, dt * 14);
     const ax = (vx - this.velS[0]) / dt,
       az = (vz - this.velS[1]) / dt;
-    this.velS = [this.velS[0] + (vx - this.velS[0]) * k, this.velS[1] + (vz - this.velS[1]) * k];
-    this.accS = [this.accS[0] + (clampAbs(ax, 60) - this.accS[0]) * k, this.accS[1] + (clampAbs(az, 60) - this.accS[1]) * k];
+    // no lugar (16 personagens × quadro): sem arrays novos
+    this.velS[0] += (vx - this.velS[0]) * k;
+    this.velS[1] += (vz - this.velS[1]) * k;
+    this.accS[0] += (clampAbs(ax, 60) - this.accS[0]) * k;
+    this.accS[1] += (clampAbs(az, 60) - this.accS[1]) * k;
     let yawRate = 0;
     if (this.prevPos) {
       const dy = Math.atan2(Math.sin(v.yaw - this.prevYaw), Math.cos(v.yaw - this.prevYaw));
       yawRate = clampAbs(dy / dt, 14);
     }
-    this.prevPos = [v.pos[0], v.pos[1], v.pos[2]];
+    if (this.prevPos) {
+      this.prevPos[0] = v.pos[0];
+      this.prevPos[1] = v.pos[1];
+      this.prevPos[2] = v.pos[2];
+    } else this.prevPos = [v.pos[0], v.pos[1], v.pos[2]];
     this.prevYaw = v.yaw;
     const fx = Math.sin(v.yaw),
       fz = Math.cos(v.yaw);

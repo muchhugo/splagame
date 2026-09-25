@@ -52,19 +52,33 @@ class InstancePool {
   }
 
   spawn(p: Vec3, v: Vec3, life: number, size: number, color: Color3, gravity = 18, flat = false) {
+    this.spawnXYZ(p[0], p[1], p[2], v[0], v[1], v[2], life, size, color, gravity, flat);
+  }
+
+  /** Mesma coisa em escalares (os respingos de impacto chamam dezenas de vezes por quadro). */
+  spawnXYZ(px: number, py: number, pz: number, vx: number, vy: number, vz: number, life: number, size: number, color: Color3, gravity = 18, flat = false) {
     let i = this.count;
     if (i >= this.capacity) {
       // pool cheio: substitui a partícula mais antiga (índice 0)
       i = 0;
     } else this.count++;
-    this.pos.set(p, i * 3);
-    this.vel.set(v, i * 3);
+    const i3 = i * 3;
+    this.pos[i3] = px;
+    this.pos[i3 + 1] = py;
+    this.pos[i3 + 2] = pz;
+    this.vel[i3] = vx;
+    this.vel[i3 + 1] = vy;
+    this.vel[i3 + 2] = vz;
     this.life[i] = life;
     this.maxLife[i] = life;
     this.size[i] = size;
     this.gravity[i] = gravity;
     this.flat[i] = flat ? 1 : 0;
-    this.colors.set([color.r, color.g, color.b, 1], i * 4);
+    const i4 = i * 4;
+    this.colors[i4] = color.r;
+    this.colors[i4 + 1] = color.g;
+    this.colors[i4 + 2] = color.b;
+    this.colors[i4 + 3] = 1;
   }
 
   update(dt: number) {
@@ -142,7 +156,9 @@ export class Effects {
   private projectiles: VisualProjectile[] = [];
   private beams: Beam[] = [];
   private lasers = new Map<number, Beam>();
-  private objects = new Map<number, { node: TransformNode; kind: 'moringa' | 'wheel'; ring?: Mesh; seen: number }>();
+  private objects = new Map<number, ObjEntry>();
+  /** Moringas e Rodas desligadas para reuso, por tipo e turma (sem criar/descartar malha a cada arremesso). */
+  private objPool = new Map<string, ObjEntry[]>();
   private objectMats: StandardMaterial[] = [];
   /** Materiais compartilhados dos objetos de mundo (um por tipo e equipe; nunca por objeto). */
   private objMat: { clay: StandardMaterial | null; team: [StandardMaterial | null, StandardMaterial | null]; ring: [StandardMaterial | null, StandardMaterial | null] } = {
@@ -212,6 +228,65 @@ export class Effects {
     }
   }
 
+  /**
+   * Compila na carga os shaders dos efeitos que só aparecem no meio da rodada (primeira
+   * Moringa, Roda, feixe do Estilingue, mira laser, marcador de pouso). Sem isso, 7
+   * variantes eram compiladas nos primeiros 25 s da partida (medido), cada uma um tranco.
+   * Os materiais de modelo ficam vivos (o efeito compilado é compartilhado pelo cache do
+   * motor enquanto alguém o usa).
+   */
+  warmUp(): Promise<void> {
+    // Com os objetos REAIS (mesma geometria, escala e material): os defines batem com os do
+    // uso na partida. Ficam desligados e vivos, porque o efeito compilado mora no submesh e o
+    // motor o descarta quando o último usuário some; sem isso, cada Moringa nova (a anterior
+    // já explodiu e foi descartada) recompilava o shader no meio da partida.
+    const meshes: Mesh[] = [];
+    const warmObjs: ObjEntry[] = [];
+    for (const team of [0, 1] as TeamId[])
+      for (const kind of ['moringa', 'wheel'] as const) {
+        const o = this.makeObject({ id: -1 - meshes.length, kind, team, owner: -1, p: [0, -500, 0], t: 0 });
+        o.node.position.y = -500;
+        meshes.push(...(o.node.getChildMeshes(false) as Mesh[]));
+        warmObjs.push(o);
+      }
+    // feixe, mira laser e marcador de pouso: mesmas malhas e materiais dos criados por jogador
+    const beam = MeshBuilder.CreateCylinder('feixe-modelo', { height: 1, diameter: 1, tessellation: 8 }, this.scene);
+    const beamMat = new StandardMaterial('mat-feixe-modelo', this.scene);
+    beamMat.disableLighting = true;
+    beam.material = beamMat;
+    const laser = MeshBuilder.CreateCylinder('laser-modelo', { height: 1, diameter: 1, tessellation: 6 }, this.scene);
+    const laserMat = new StandardMaterial('mat-laser-modelo', this.scene);
+    laserMat.disableLighting = true;
+    laserMat.alpha = 0.55;
+    laser.material = laserMat;
+    const mark = MeshBuilder.CreateTorus('chegada-modelo', { diameter: 1.6, thickness: 0.1, tessellation: 28 }, this.scene);
+    const markMat = new StandardMaterial('mat-chegada-modelo', this.scene);
+    markMat.disableLighting = true;
+    mark.material = markMat;
+    for (const m of [beam, laser, mark]) {
+      m.position.y = -500;
+      m.isPickable = false;
+      this.warmNodes.push(m);
+      meshes.push(m);
+    }
+    this.objectMats.push(beamMat, laserMat, markMat);
+    const jobs = meshes.map((m) => (m.material ? m.material.forceCompilationAsync(m).catch(() => {}) : Promise.resolve()));
+    return Promise.all(jobs).then(() => {
+      // o submesh de cada modelo passa a segurar o próprio efeito (referência viva no cache)
+      for (const m of meshes) for (const sm of m.subMeshes ?? []) m.material?.isReadyForSubMesh(m, sm, false);
+      for (const n of this.warmNodes) n.setEnabled(false);
+      // os modelos de Moringa/Roda já compilados são os primeiros do reuso
+      for (const o of warmObjs) {
+        o.node.setEnabled(false);
+        const k = `${o.kind}-${o.team}`;
+        const pool = this.objPool.get(k) ?? [];
+        pool.push(o);
+        this.objPool.set(k, pool);
+      }
+    });
+  }
+  private warmNodes: TransformNode[] = [];
+
   private clayMat() {
     if (!this.objMat.clay) {
       const m = new StandardMaterial('mat-barro-obj', this.scene);
@@ -264,10 +339,15 @@ export class Effects {
     const camD = Math.hypot(p[0] - this.cameraPos[0], p[1] - this.cameraPos[1], p[2] - this.cameraPos[2]);
     const near = camD < 2.5 ? 0.35 : 1;
     const count = Math.round((6 + size * 6) * near * (this.reduceFlashes ? 0.5 : 1) * this.particleScale);
+    const ox = p[0] + n[0] * 0.05,
+      oy = p[1] + n[1] * 0.05,
+      oz = p[2] + n[2] * 0.05;
     for (let i = 0; i < count; i++) {
-      const r = () => Math.random() - 0.5;
       const sp = 2 + Math.random() * 3 * size;
-      this.splash.spawn([p[0] + n[0] * 0.05, p[1] + n[1] * 0.05, p[2] + n[2] * 0.05], [n[0] * sp + r() * 3, n[1] * sp + r() * 3 + 1, n[2] * sp + r() * 3], 0.35 + Math.random() * 0.3, (0.07 + Math.random() * 0.09 * size) * (near < 1 ? 0.6 : 1), c, 16);
+      const jx = Math.random() - 0.5,
+        jy = Math.random() - 0.5,
+        jz = Math.random() - 0.5;
+      this.splash.spawnXYZ(ox, oy, oz, n[0] * sp + jx * 3, n[1] * sp + jy * 3 + 1, n[2] * sp + jz * 3, 0.35 + Math.random() * 0.3, (0.07 + Math.random() * 0.09 * size) * (near < 1 ? 0.6 : 1), c, 16);
     }
     // coroa de respingo: anel curto no ponto de impacto (tamanho controlado)
     if (size >= 0.6 && camD > 2.5) this.rings.spawn([p[0] + n[0] * 0.04, p[1] + n[1] * 0.04, p[2] + n[2] * 0.04], [0, 0, 0], 0.22, 0.5 + size * 0.5, c, 0, n[1] > 0.6);
@@ -402,7 +482,10 @@ export class Effects {
       seen.add(o.id);
       let e = this.objects.get(o.id);
       if (!e) {
-        e = this.makeObject(o);
+        e = this.objPool.get(`${o.kind}-${o.team}`)?.pop() ?? this.makeObject(o);
+        e.node.scaling.setAll(1);
+        e.ring?.setEnabled(false);
+        e.node.setEnabled(true);
         this.objects.set(o.id, e);
       }
       e.node.position.set(o.p[0], o.p[1], o.p[2]);
@@ -416,8 +499,14 @@ export class Effects {
     }
     for (const [id, e] of this.objects) {
       if (!seen.has(id)) {
-        e.node.dispose(false, false);
+        // volta para o reuso: desligada, fora do mapa
+        e.node.setEnabled(false);
+        e.node.position.y = -500;
         this.objects.delete(id);
+        const k = `${e.kind}-${e.team}`;
+        const pool = this.objPool.get(k) ?? [];
+        pool.push(e);
+        this.objPool.set(k, pool);
       }
     }
   }
@@ -438,7 +527,7 @@ export class Effects {
       const band = MeshBuilder.CreateTorus('faixa', { diameter: 0.4, thickness: 0.05, tessellation: 16 }, this.scene);
       band.material = team;
       band.parent = node;
-      return { node, kind: 'moringa' as const, seen: performance.now() };
+      return { node, kind: 'moringa' as const, team: o.team, seen: performance.now() };
     }
     const disc = MeshBuilder.CreateCylinder('roda', { height: 0.16, diameter: 1.1, tessellation: 24 }, this.scene);
     disc.position.y = 0.12;
@@ -454,31 +543,45 @@ export class Effects {
     ring.position.y = 0.05;
     ring.material = this.ringMat(o.team);
     ring.parent = node;
-    return { node, kind: 'wheel' as const, ring, seen: performance.now() };
+    return { node, kind: 'wheel' as const, team: o.team, ring, seen: performance.now() };
   }
+
+  private readonly projDir: Vec3 = [0, 0, 0];
 
   update(dt: number) {
     this.time += dt;
     // projéteis visuais
-    const keep: VisualProjectile[] = [];
-    for (const p of this.projectiles) {
+    // no lugar: compacta a lista e move sem vetores novos por projétil
+    let w = 0;
+    const dir = this.projDir;
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const p = this.projectiles[i];
       const vy = p.age >= p.gd ? p.vel[1] - p.g * dt : p.vel[1];
       p.vel[1] = vy;
-      const next: Vec3 = [p.pos[0] + p.vel[0] * dt, p.pos[1] + vy * dt, p.pos[2] + p.vel[2] * dt];
-      const seg: Vec3 = [next[0] - p.pos[0], next[1] - p.pos[1], next[2] - p.pos[2]];
-      const L = Math.hypot(seg[0], seg[1], seg[2]);
-      const hit = L > 1e-4 ? this.physics.raycast(p.pos, [seg[0] / L, seg[1] / L, seg[2] / L], L) : null;
+      const sx = p.vel[0] * dt,
+        sy = vy * dt,
+        sz = p.vel[2] * dt;
+      const L = Math.hypot(sx, sy, sz);
+      let hit = null;
+      if (L > 1e-4) {
+        dir[0] = sx / L;
+        dir[1] = sy / L;
+        dir[2] = sz / L;
+        hit = this.physics.raycast(p.pos, dir, L);
+      }
       p.age += dt;
       if (hit) {
         this.impact(hit.point, hit.normal, p.team, 0.5);
         continue;
       }
-      p.pos = next;
+      p.pos[0] += sx;
+      p.pos[1] += sy;
+      p.pos[2] += sz;
       if (p.age > p.life) continue;
-      keep.push(p);
-      this.droplets.spawn(p.pos, [0, 0, 0], dt * 1.01, 0.17, this.teamColors[p.team], 0);
+      this.projectiles[w++] = p;
+      this.droplets.spawnXYZ(p.pos[0], p.pos[1], p.pos[2], 0, 0, 0, dt * 1.01, 0.17, this.teamColors[p.team], 0);
     }
-    this.projectiles = keep;
+    this.projectiles.length = w;
     this.droplets.update(dt);
     this.splash.update(dt);
     this.rings.update(dt);
@@ -526,12 +629,23 @@ export class Effects {
     this.droplets.clear();
     this.splash.clear();
     this.rings.clear();
-    for (const e of this.objects.values()) e.node.dispose(false, false);
+    // objetos ativos voltam para o reuso (o efeito compilado continua referenciado)
+    for (const e of this.objects.values()) {
+      e.node.setEnabled(false);
+      e.node.position.y = -500;
+      const k = `${e.kind}-${e.team}`;
+      const pool = this.objPool.get(k) ?? [];
+      pool.push(e);
+      this.objPool.set(k, pool);
+    }
     this.objects.clear();
   }
 
   dispose() {
     this.clearAll();
+    for (const list of this.objPool.values()) for (const e of list) e.node.dispose(false, false);
+    this.objPool.clear();
+    for (const n of this.warmNodes) n.dispose(false, false);
     this.droplets.mesh.dispose();
     this.splash.mesh.dispose();
     this.rings.mesh.dispose();
@@ -541,6 +655,8 @@ export class Effects {
     for (const m of this.objectMats) m.dispose();
   }
 }
+
+type ObjEntry = { node: TransformNode; kind: 'moringa' | 'wheel'; team: TeamId; ring?: Mesh; seen: number };
 
 export function quatFromTo(a: Vector3, b: Vector3): Quaternion {
   const axis = Vector3.Cross(a, b);

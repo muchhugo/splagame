@@ -1,4 +1,4 @@
-import { Color3, Effect, Scene, ShaderMaterial, Vector3 } from '@babylonjs/core';
+import { Color3, Effect, Scene, ShaderMaterial, Vector3, VertexBuffer, type AbstractMesh, type SubMesh } from '@babylonjs/core';
 
 /**
  * Cel shading suave para personagens, ferramentas e objetos de jogo:
@@ -136,6 +136,32 @@ export class ToonMaterial extends ShaderMaterial {
       const cam = scene.activeCamera;
       if (cam) e.setVector3('cameraPosition', cam.globalPosition);
     });
+  }
+
+  /**
+   * Efeito pronto por configuração de malha (instâncias, cor por vértice, ossos). O
+   * `ShaderMaterial` refaz a lista de defines e a junta numa string a CADA verificação,
+   * para cada malha, a cada quadro (~50 KB/quadro com 16 personagens, medido em
+   * `e2e/alocacoes.mjs`). Congelar o material não serve: ele é compartilhado entre
+   * personagens com estado por malha no bind. Aqui a resposta fica guardada enquanto o
+   * efeito da configuração continuar o mesmo e pronto.
+   */
+  private readyEffects: Array<unknown> = [];
+
+  override isReady(mesh?: AbstractMesh, useInstances?: boolean, subMesh?: SubMesh): boolean {
+    const key = (useInstances ? 1 : 0) | (mesh?.isVerticesDataPresent(VertexBuffer.ColorKind) ? 2 : 0) | (mesh?.useBones ? 4 : 0) | (mesh?.hasThinInstances ? 8 : 0);
+    // o ShaderMaterial guarda o efeito no submesh (é lá que o Babylon olha)
+    const dw = subMesh && this._storeEffectOnSubMeshes ? subMesh._drawWrapper : this._drawWrapper;
+    const effect = dw.effect;
+    if (effect && this.readyEffects[key] === effect && effect.isReady()) return true;
+    const ok = super.isReady(mesh, useInstances, subMesh);
+    this.readyEffects[key] = ok ? dw.effect : undefined;
+    return ok;
+  }
+
+  override markDirty(forceMaterialDirty?: boolean): void {
+    this.readyEffects.length = 0;
+    super.markDirty(forceMaterialDirty);
   }
 
   get color() {

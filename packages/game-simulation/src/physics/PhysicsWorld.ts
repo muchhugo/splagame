@@ -77,7 +77,14 @@ export class PhysicsWorld {
 
   /** Raycast apenas contra o cenário. `dir` deve ser unitário. */
   raycast(origin: Vec3, dir: Vec3, maxDist: number): RayHit | null {
-    const ray = new RAPIER.Ray({ x: origin[0], y: origin[1], z: origin[2] }, { x: dir[0], y: dir[1], z: dir[2] });
+    // um raio reutilizado: consulta quente (projéteis, linha de visão dos bots, pickups)
+    const ray = (this.ray ??= new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }));
+    ray.origin.x = origin[0];
+    ray.origin.y = origin[1];
+    ray.origin.z = origin[2];
+    ray.dir.x = dir[0];
+    ray.dir.y = dir[1];
+    ray.dir.z = dir[2];
     const hit = this.world.castRayAndGetNormal(ray, maxDist, true, undefined, WORLD_QUERY_GROUPS);
     if (!hit) return null;
     const t = hit.timeOfImpact;
@@ -95,9 +102,15 @@ export class PhysicsWorld {
       dz = to[2] - from[2];
     const L = Math.hypot(dx, dy, dz);
     if (L < 1e-4) return false;
-    const hit = this.raycast(from, [dx / L, dy / L, dz / L], L);
+    const d = this.segDir;
+    d[0] = dx / L;
+    d[1] = dy / L;
+    d[2] = dz / L;
+    const hit = this.raycast(from, d, L);
     return !!hit && hit.toi < L - endMargin;
   }
+  private ray: RAPIER.Ray | null = null;
+  private readonly segDir: Vec3 = [0, 0, 0];
 
   /** Teste de ponto dentro do cenário sólido. */
   pointInsideWorld(p: Vec3): boolean {
